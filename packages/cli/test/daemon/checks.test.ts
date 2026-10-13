@@ -935,13 +935,18 @@ describe("the daemon's checks", () => {
       checks: { firstMs: 0, statMs: 3_600_000, minGapMs: 60_000 },
     });
     await d.start();
-    await until(() => runs === 1, 10_000, "a check run");
     const state = () =>
       readdirSync(h.paths.checks)
         .filter((n) => n.endsWith(".json"))
         .map((n) => readFileSync(join(h.paths.checks, n), "utf8"))
         .join("\n");
-    expect(state()).toContain("docs/adr.md");
+    // The state file is written once the report is answered, after the
+    // fake server has counted the run.
+    await until(
+      () => runs === 1 && state().includes("docs/adr.md"),
+      10_000,
+      "a check run",
+    );
 
     // M-0001 is forgotten: its tombstone, and the receipt that moves the feed.
     st.tombstones.set(sp.id, [tombstoneFixture(sp, "M-0001", new Date())]);
@@ -956,6 +961,50 @@ describe("the daemon's checks", () => {
     unlinkRepo(h.paths, root);
     d.reload();
     await until(() => state() === "", 5_000, "the state file to go");
+  });
+
+  it("checks nothing while the space is on V1, and again once it is back", async () => {
+    h = await harness();
+    const sp = h.fake.addSpace("memax-v2");
+    const { root } = repository({ "go.mod": "module x\n" });
+    const conds = conditions(["M-0001", { path: "go.mod" }]);
+    conds.space_id = sp.id;
+    let reads = 0;
+    let runs = 0;
+    h.fake.extra.push((method, path) => {
+      if (method === "GET" && path === `/v2/spaces/${sp.id}/conditions`) {
+        reads++;
+        return { status: 200, data: conds };
+      }
+      if (method === "POST" && path === `/v2/spaces/${sp.id}/check-runs`) {
+        runs++;
+        return { status: 201, data: { run: { id: "run-1" }, flagged: [] } };
+      }
+      return null;
+    });
+    // On V1, which takes no check reports: nothing is read or sent.
+    h.fake.switchSpace(sp, false);
+    h.link(sp, root);
+    const d = h.daemon({
+      checks: { firstMs: 300, statMs: 3_600_000, minGapMs: 0 },
+    });
+    await d.start();
+    await until(
+      () => d.snapshot().repos[0]?.on_v1 === true,
+      5_000,
+      "the poll that says V1",
+    );
+    expect((await d.checker(root)!.run("verify")).skipped).toBe("on_v1");
+    await new Promise((r) => setTimeout(r, 400)); // past the first run's time
+    expect([reads, runs]).toEqual([0, 0]);
+    expect(h.log.lines.join("\n")).toContain(
+      "the space is on V1 again, and Memax checks only spaces on V2",
+    );
+
+    // On V2 again: the conditions are read and checked at once.
+    h.fake.switchSpace(sp, true);
+    await until(() => runs === 1, 10_000, "a check run on V2");
+    expect(reads).toBe(1);
   });
 });
 

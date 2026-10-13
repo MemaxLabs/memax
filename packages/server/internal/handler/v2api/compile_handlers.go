@@ -44,6 +44,9 @@ type restoreBriefResult struct {
 
 type targetList struct {
 	Items []ledger.Target `json:"items"`
+	// OnV2 tells a daemon whether to deliver: a space switched back to V1
+	// has its files written by V1's sync again.
+	OnV2 bool `json:"on_v2"`
 }
 
 type targetResult struct {
@@ -323,7 +326,7 @@ func (h *Handler) listTargets(w http.ResponseWriter, r *http.Request) {
 		writeError(w, h.fromLedger(r, err))
 		return
 	}
-	writeData(w, http.StatusOK, targetList{Items: nonNil(targets)})
+	writeData(w, http.StatusOK, targetList{Items: nonNil(targets), OnV2: sp.OnV2})
 }
 
 // POST /v2/spaces/{space}/targets

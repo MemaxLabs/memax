@@ -29,6 +29,29 @@ describe("a repository's targets", () => {
     const memax = {
       v2: { targets: { list: async () => ({ items: [repo, home] }) } },
     } as unknown as Memax;
-    expect(await sdkDaemonApi(memax).listTargets("personal")).toEqual([repo]);
+    // A server from before on_v2 served the daemon spaces it delivered.
+    expect(await sdkDaemonApi(memax).listTargets("personal")).toEqual({
+      targets: [repo],
+      onV2: true,
+    });
+  });
+
+  it("come with whether the space is on V2", async () => {
+    const memax = {
+      v2: {
+        targets: {
+          list: async () => ({ items: [repo, home], on_v2: false }),
+        },
+      },
+    } as unknown as Memax;
+    const api = sdkDaemonApi(memax);
+    expect(await api.listTargets("acme-web")).toEqual({
+      targets: [repo],
+      onV2: false,
+    });
+    expect(await api.machineTargets("personal", "m1")).toEqual({
+      targets: [home],
+      onV2: false,
+    });
   });
 });

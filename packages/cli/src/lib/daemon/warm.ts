@@ -16,7 +16,7 @@ import {
   type WarmSpace,
   type WarmTarget,
 } from "../hook/warm.js";
-import { failureOf, type DaemonApi } from "./api.js";
+import { failureOf, type DaemonApi, type TargetPoll } from "./api.js";
 import { cleanLine } from "./compiler/sanitize.js";
 import { writeJsonAtomic } from "./json-file.js";
 import type { Logger } from "./log.js";
@@ -140,6 +140,11 @@ export function forgottenRefs(forgotten: WarmForget[]): string[] {
   return [...new Set(forgotten.flatMap((f) => [f.ref, ...f.with]))];
 }
 
+function onV1(s: WarmSpace, poll: TargetPoll): void {
+  if (poll.onV2) delete s.on_v1;
+  else s.on_v1 = true;
+}
+
 export class WarmCache {
   private data: WarmFile;
   private saveTimer: NodeJS.Timeout | null = null;
@@ -169,18 +174,23 @@ export class WarmCache {
   }
 
   /** What a poll of the space's targets says. */
-  setTargets(spaceId: string, slug: string, targets: V2.Target[]): void {
+  setTargets(spaceId: string, slug: string, poll: TargetPoll): void {
     const s = this.space(spaceId, slug);
-    const next = warmTargets(targets, s.targets);
-    if (JSON.stringify(next) === JSON.stringify(s.targets)) return;
+    const next = warmTargets(poll.targets, s.targets);
+    if (
+      JSON.stringify(next) === JSON.stringify(s.targets) &&
+      !s.on_v1 === poll.onV2
+    )
+      return;
     s.targets = next;
+    onV1(s, poll);
     this.changed(s);
   }
 
   /** What a poll of this machine's home files says (its home link). */
   setHome(
     link: { space_id: string; space_slug: string; machine_id: string },
-    targets: V2.Target[],
+    poll: TargetPoll,
   ): void {
     const prev = this.data.home;
     const same =
@@ -197,9 +207,15 @@ export class WarmCache {
           gates: [],
         };
     h.slug = link.space_slug;
-    const next = warmTargets(targets, h.targets, true);
-    if (same && JSON.stringify(next) === JSON.stringify(h.targets)) return;
+    const next = warmTargets(poll.targets, h.targets, true);
+    if (
+      same &&
+      JSON.stringify(next) === JSON.stringify(h.targets) &&
+      !h.on_v1 === poll.onV2
+    )
+      return;
     h.targets = next;
+    onV1(h, poll);
     this.data.home = h;
     this.changed(h);
   }

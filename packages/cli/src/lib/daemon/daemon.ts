@@ -5,7 +5,7 @@
 import { watch, type FSWatcher } from "node:fs";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import { failureOf, type DaemonApi } from "./api.js";
+import { failureOf, type DaemonApi, type TargetPoll } from "./api.js";
 import { CheckReporter, RepoChecker, type CheckTiming } from "./checks.js";
 import { LoadReporter } from "./loads.js";
 import {
@@ -64,6 +64,8 @@ interface Space {
   roots: Set<string>;
   feed: TargetFeed;
   lastError?: string;
+  /** Switched back to V1, as the last poll said. */
+  onV1?: boolean;
 }
 
 /** This machine's home link: its own delivery, watcher and feed. */
@@ -73,6 +75,8 @@ interface Home {
   watcher: RepoWatcher;
   feed: TargetFeed;
   lastError?: string;
+  /** Switched back to V1, as the last poll said. */
+  onV1?: boolean;
   /** The layer is off because this machine was signed out. */
   signedOut: boolean;
   /** The layer is off because the Personal space answered 404. */
@@ -267,6 +271,8 @@ export class Daemon {
       if (this.running) space.feed.start();
     }
     space.roots.add(link.root);
+    // A second repository of a space already on V1 isn't checked either.
+    checker.setOnV1(space.onV1 ?? false);
     if (this.running) {
       watcher.start();
       checker.start();
@@ -326,7 +332,7 @@ export class Daemon {
           fetch: (signal) =>
             this.o.api.machineTargets(link.space_id, link.machine_id, signal),
           probe: (signal) => this.o.api.changeToken(link.space_id, signal),
-          onTargets: async (targets, info) => {
+          onTargets: async (poll, info) => {
             this.reload();
             if (this.home !== home) return { busy: false };
             if (home.lastError || home.signedOut || home.gone) {
@@ -340,9 +346,10 @@ export class Daemon {
             delivery.setError(undefined);
             // The hook's Personal section reads these, and the space's
             // forgets and gates (fetched when something changed).
-            this.warm.setHome(link, targets);
+            this.warm.setHome(link, poll);
             if (info.changed) this.warm.requestRefresh(HOME, link.space_slug);
-            const r = await delivery.sync(targets);
+            this.switched(home, poll, link.space_slug);
+            const r = await delivery.sync(poll.targets, poll.onV2);
             watcher!.setPaths(delivery.trackedPaths());
             return r;
           },
@@ -483,11 +490,11 @@ export class Daemon {
       {
         fetch: (signal) => this.o.api.listTargets(spaceId, signal),
         probe: (signal) => this.o.api.changeToken(spaceId, signal),
-        onTargets: async (targets, info) => {
+        onTargets: async (poll, info) => {
           this.reload();
           const space = this.spaces.get(spaceId);
           if (!space) return { busy: false };
-          this.warm.setTargets(spaceId, space.slug, targets);
+          this.warm.setTargets(spaceId, space.slug, poll);
           if (info.changed) {
             this.warm.requestRefresh(spaceId, space.slug);
             // Its conditions may have changed: every change to them
@@ -499,12 +506,14 @@ export class Daemon {
             this.o.log.info("reached the space again", { space: space.slug });
             space.lastError = undefined;
           }
+          this.switched(space, poll, space.slug);
           let busy = false;
           for (const root of space.roots) {
             const repo = this.repos.get(root);
             if (!repo) continue;
             repo.delivery.setError(undefined);
-            const r = await repo.delivery.sync(targets);
+            repo.checker.setOnV1(!poll.onV2);
+            const r = await repo.delivery.sync(poll.targets, poll.onV2);
             busy = busy || r.busy;
             repo.watcher.setPaths(repo.delivery.trackedPaths());
           }
@@ -532,6 +541,24 @@ export class Daemon {
     );
   }
 
+  /** Says once that a space is on V1 again, and once that it is back. */
+  private switched(
+    s: { onV1?: boolean },
+    poll: TargetPoll,
+    slug: string,
+  ): void {
+    const was = s.onV1 ?? false;
+    s.onV1 = !poll.onV2;
+    if (s.onV1 && !was)
+      this.o.log.info("the space is on V1 again: leaving its files to V1", {
+        space: slug,
+      });
+    else if (!s.onV1 && was)
+      this.o.log.info("the space is on V2 again: writing its files", {
+        space: slug,
+      });
+  }
+
   /** Polls now: one space, or all of them. */
   wake(spaceIdOrSlug?: string): void {
     for (const [id, s] of this.spaces) {
@@ -557,14 +584,16 @@ export class Daemon {
     for (const [spaceId, space] of this.spaces) {
       if (only && spaceId !== only) continue;
       try {
-        const targets = await this.o.api.listTargets(spaceId);
-        this.warm.setTargets(spaceId, space.slug, targets);
+        const poll = await this.o.api.listTargets(spaceId);
+        this.warm.setTargets(spaceId, space.slug, poll);
         await this.warm.refresh(spaceId, space.slug);
+        this.switched(space, poll, space.slug);
         for (const root of space.roots) {
           const repo = this.repos.get(root);
           if (!repo) continue;
           repo.delivery.setError(undefined);
-          await repo.delivery.sync(targets);
+          repo.checker.setOnV1(!poll.onV2);
+          await repo.delivery.sync(poll.targets, poll.onV2);
         }
       } catch (err) {
         const f = failureOf(err);
@@ -577,16 +606,17 @@ export class Daemon {
     const home = this.home;
     if (home && (!only || only === home.link.space_id)) {
       try {
-        const targets = await this.o.api.machineTargets(
+        const poll = await this.o.api.machineTargets(
           home.link.space_id,
           home.link.machine_id,
         );
         home.signedOut = false;
         home.gone = false;
         home.delivery.setError(undefined);
-        this.warm.setHome(home.link, targets);
+        this.warm.setHome(home.link, poll);
         await this.warm.refresh(HOME, home.link.space_slug);
-        await home.delivery.sync(targets);
+        this.switched(home, poll, home.link.space_slug);
+        await home.delivery.sync(poll.targets, poll.onV2);
       } catch (err) {
         if (definitelyGone(err) && !home.gone) {
           home.gone = true;

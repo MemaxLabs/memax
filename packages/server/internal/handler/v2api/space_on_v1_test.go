@@ -525,11 +525,12 @@ func TestSpaceOnV1RefusesEveryCommand(t *testing.T) {
 	f.do(call{method: "POST", path: agentPath(f.conn, ":pause"), token: f.tok}).ok(http.StatusOK, nil)
 	var polled struct {
 		Items []wireTarget `json:"items"`
+		OnV2  bool         `json:"on_v2"`
 	}
 	f.do(call{method: "GET", path: "/v2/spaces/" + f.personal.slug + "/targets?machine=" + f.machine.String(), token: f.tok}).
 		ok(http.StatusOK, &polled)
-	if len(polled.Items) != 2 {
-		t.Errorf("the machine's targets on V1: %d", len(polled.Items))
+	if len(polled.Items) != 2 || polled.OnV2 {
+		t.Errorf("the machine's targets on V1: %d, on_v2 %v (its daemon leaves V1's files alone)", len(polled.Items), polled.OnV2)
 	}
 	var unlinked wireMachineResult
 	f.do(call{method: "POST", path: "/v2/machines/" + f.machine.String() + ":unlink", token: f.tok}).ok(http.StatusOK, &unlinked)

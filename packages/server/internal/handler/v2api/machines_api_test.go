@@ -108,10 +108,14 @@ func TestMachinesOverV2(t *testing.T) {
 	}
 	var polled struct {
 		Items []wireTarget `json:"items"`
+		OnV2  bool         `json:"on_v2"`
 	}
 	e.do(call{method: "GET", path: base + "/targets?machine=" + linked.Machine.ID.String(), token: tok}).ok(http.StatusOK, &polled)
 	if len(polled.Items) != 3 {
 		t.Errorf("the machine's targets = %d", len(polled.Items))
+	}
+	if !polled.OnV2 {
+		t.Error("a space on V2 answered on_v2 false: its daemon would leave its files alone")
 	}
 	e.do(call{method: "GET", path: base + "/machines", token: tok}).ok(http.StatusOK, &machines)
 	if machines.Items[0].LastSeenAt == nil {

@@ -156,8 +156,13 @@ export const ledgerMemoryZh: Translations["ledger"]["memory"] = {
       until: "在 {date} 之前",
     },
     checked:
-      "{name} 在{when}核对过。任何一条不再成立，Memax 都会把它标成过时。",
-    checkedOne: "{name} 在{when}核对过。它不再成立时，Memax 会把它标成过时。",
+      "{when}在 {branch} 上核对过。任何一条不再成立，Memax 都会把它标成过时。",
+    checkedOne:
+      "{when}在 {branch} 上核对过。它不再成立时，Memax 会把它标成过时。",
+    checkedFor:
+      "{when}在 {branch} 上核对过，正值 {name} 启动。任何一条不再成立，Memax 都会把它标成过时。",
+    checkedForOne:
+      "{when}在 {branch} 上核对过，正值 {name} 启动。它不再成立时，Memax 会把它标成过时。",
     notChecked: "还没核对过。",
     proposed: "还在审阅里等着。去那儿保留，或者先改一改。",
     openReview: "打开审阅",

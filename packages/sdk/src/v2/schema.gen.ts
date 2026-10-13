@@ -3930,6 +3930,30 @@ export interface components {
             reads?: components["schemas"]["MemoryReads"];
             /** @description Agents' requests to forget it, waiting for a person (forget it, or keep it with `:decline-forget`). */
             forget_requests?: components["schemas"]["ForgetRequestRecord"][];
+            /**
+             * @description When its conditions were last checked: the space's latest check
+             *     run since one first reported on them (every run reads every
+             *     condition, so one with nothing new still checked them). Absent
+             *     until one has, and for a forgotten memory.
+             */
+            checked?: components["schemas"]["MemoryChecked"];
+        };
+        /** @description A check of a memory's conditions, where, by what and for whom. No words. */
+        MemoryChecked: {
+            /** @description When it ran (the machine's clock). */
+            at: components["schemas"]["Timestamp"];
+            /** @description The default branch it read. */
+            branch: string;
+            /** @description The commit it read. */
+            commit: string;
+            /**
+             * @description A member's machine (`device`), the GitHub App (`github`) or Memax.
+             * @enum {string}
+             */
+            observer: "device" | "github" | "memax";
+            trigger: components["schemas"]["CheckTrigger"];
+            /** @description The agent whose session start asked for it, if one did. */
+            agent?: components["schemas"]["AgentKind"];
         };
         /**
          * @description How a memory has been read: directly (recall, search, get, list) and

@@ -180,6 +180,8 @@ export type Read = Schemas["Read"];
 export type ReadPage = Schemas["ReadPage"];
 /** How a memory has been read, and by which agents (MemoryDetail.reads). */
 export type MemoryReads = Schemas["MemoryReads"];
+/** When a memory's conditions were last checked, where and for whom. */
+export type MemoryChecked = Schemas["MemoryChecked"];
 export type MemoryReader = Schemas["MemoryReader"];
 export type CompileLoadResult = Schemas["CompileLoadResult"];
 /**

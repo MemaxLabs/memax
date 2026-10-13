@@ -7,6 +7,7 @@ import type {
   MemoryRecord,
   SourceLine,
 } from "./memories";
+import { registryKey } from "./agents-sdk";
 import { forgetRequestsOf } from "./sdk-forget";
 import { actorOf, displayState, isRecordAction, railOf } from "./sdk-records";
 import { FOLD_UNDO_WINDOW_MS } from "./undo";
@@ -222,9 +223,17 @@ export function recordOf(
     }),
     sources: (memory.sources ?? []).map(sourceLineOf),
     conditions: conditionsOf(memory.conditions ?? [], memory.stale_after),
-    // The checks of its conditions arrive with the checker (stale design
-    // §4): a person's Verify is a lineage line, not a check of these.
-    checked: null,
+    // A member's machine (or the GitHub App) checking its conditions; a
+    // person's Verify is a lineage line, not a check of these.
+    checked: detail.checked
+      ? {
+          at: detail.checked.at,
+          branch: detail.checked.branch,
+          agent: detail.checked.agent
+            ? { kind: "agent", agent: registryKey(detail.checked.agent) }
+            : null,
+        }
+      : null,
     forgotten:
       state === "forgotten"
         ? {

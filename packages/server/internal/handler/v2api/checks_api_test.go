@@ -253,3 +253,54 @@ func TestChecksRefusals(t *testing.T) {
 		t.Errorf("%d runs recorded", n)
 	}
 }
+
+// A memory's page says when its conditions were last checked: nothing
+// before a check reported on them; then the space's latest run, even one
+// with nothing new to report, with the agent whose session start asked.
+func TestAMemorysPageSaysWhenItWasChecked(t *testing.T) {
+	t.Parallel()
+	c := newChecksEnv(t)
+	type detail struct {
+		Checked *struct {
+			At       time.Time `json:"at"`
+			Branch   string    `json:"branch"`
+			Commit   string    `json:"commit"`
+			Observer string    `json:"observer"`
+			Trigger  string    `json:"trigger"`
+			Agent    string    `json:"agent"`
+		} `json:"checked"`
+	}
+	get := func() detail {
+		var d detail
+		c.do(call{method: "GET", path: memoryPath(c.mem, ""), token: c.tok}).ok(http.StatusOK, &d)
+		return d
+	}
+	if d := get(); d.Checked != nil {
+		t.Fatalf("checked before any check: %+v", d.Checked)
+	}
+
+	c.report(c.tok, uuid.NewString(), c.runBody(1, 3, "holds")).ok(http.StatusCreated, nil)
+	if d := get(); d.Checked == nil || d.Checked.Trigger != "head_moved" || d.Checked.Branch != "main" ||
+		d.Checked.Commit != fmt.Sprintf("%040x", 1) || d.Checked.Observer != "device" || d.Checked.Agent != "" {
+		t.Fatalf("after a run: %+v", d.Checked)
+	}
+
+	// A session start's run with nothing new: it checked them all the same.
+	body := c.runBody(1, 3, "holds")
+	body["trigger"], body["agent"], body["results"] = "session_start", "claude-code", []any{}
+	body["checked_at"] = time.Now().Add(time.Second).UTC().Format(time.RFC3339Nano)
+	c.report(c.tok, uuid.NewString(), body).ok(http.StatusCreated, nil)
+	if d := get(); d.Checked == nil || d.Checked.Trigger != "session_start" || d.Checked.Agent != "claude-code" {
+		t.Fatalf("after a session start's run: %+v", d.Checked)
+	}
+
+	// A memory without conditions has no check to tell of.
+	var res result
+	c.do(call{method: "POST", path: memoriesPath(c.sp), token: c.tok,
+		body: map[string]any{"statement": "Releases go out on Thursdays.", "section": "conventions"}}).ok(http.StatusCreated, &res)
+	var other detail
+	c.do(call{method: "GET", path: memoryPath(res.Memory, ""), token: c.tok}).ok(http.StatusOK, &other)
+	if other.Checked != nil {
+		t.Errorf("a memory without conditions says it was checked: %+v", other.Checked)
+	}
+}

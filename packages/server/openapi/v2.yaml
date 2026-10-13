@@ -7155,6 +7155,38 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ForgetRequestRecord'
+        checked:
+          description: |
+            When its conditions were last checked: the space's latest check
+            run since one first reported on them (every run reads every
+            condition, so one with nothing new still checked them). Absent
+            until one has, and for a forgotten memory.
+          $ref: '#/components/schemas/MemoryChecked'
+
+    MemoryChecked:
+      description: A check of a memory's conditions, where, by what and for whom. No words.
+      type: object
+      additionalProperties: false
+      required: [at, branch, commit, observer, trigger]
+      properties:
+        at:
+          description: When it ran (the machine's clock).
+          $ref: '#/components/schemas/Timestamp'
+        branch:
+          description: The default branch it read.
+          type: string
+        commit:
+          description: The commit it read.
+          type: string
+        observer:
+          description: A member's machine (`device`), the GitHub App (`github`) or Memax.
+          type: string
+          enum: [device, github, memax]
+        trigger:
+          $ref: '#/components/schemas/CheckTrigger'
+        agent:
+          description: The agent whose session start asked for it, if one did.
+          $ref: '#/components/schemas/AgentKind'
 
     MemoryReads:
       description: |

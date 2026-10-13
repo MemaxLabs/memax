@@ -169,11 +169,16 @@ export const ledgerMemoryEn = {
       },
       until: "Until {date}",
     },
-    // The checker flags, so the stamp is Memax's (stale design, decision 7).
+    // A machine checks when an agent starts; the checker flags, so the
+    // stamp is Memax's (stale design §3.1, decision 7).
     checked:
-      "Checked {when} by {name}. Memax marks it stale if one stops holding.",
+      "Checked on {branch} {when}. Memax marks it stale if one stops holding.",
     checkedOne:
-      "Checked {when} by {name}. Memax marks it stale if it stops holding.",
+      "Checked on {branch} {when}. Memax marks it stale if it stops holding.",
+    checkedFor:
+      "Checked on {branch} {when}, when {name} started. Memax marks it stale if one stops holding.",
+    checkedForOne:
+      "Checked on {branch} {when}, when {name} started. Memax marks it stale if it stops holding.",
     notChecked: "Not checked yet.",
     proposed: "Waiting in Review. Keep it there, or edit it first.",
     openReview: "Open Review",

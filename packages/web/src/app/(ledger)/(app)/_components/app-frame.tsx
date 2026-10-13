@@ -16,12 +16,12 @@ import {
 } from "../_lib/data";
 import { useCurrentSpace, useFrameLocation } from "../_lib/location";
 import { OverlayProvider, useOverlays } from "../_lib/overlays";
-import { ownsPhoneHeader } from "../_lib/phone";
 import { SpaceViewContext, type SpaceView } from "../_lib/space-context";
 import { CommandCenter } from "./command-center";
 import { FrameKeys } from "./frame-keys";
 import { FrameFailed, FrameSkeleton } from "./frame-states";
 import { MobileTabBar, MobileTopBar } from "./mobile-bars";
+import { ownsPhoneHeader } from "./phone-header";
 import { NewSpaceDialog } from "./new-space";
 import { PasskeyCheckHost } from "./passkey-check";
 import { useRailProps } from "./rail-props";

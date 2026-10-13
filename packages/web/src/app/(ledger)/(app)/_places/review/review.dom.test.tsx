@@ -1170,7 +1170,7 @@ describe("Decision gates in Review", () => {
 });
 
 describe("Review on a phone", () => {
-  // A phone's viewport (below 640px): what _lib/phone.ts reads.
+  // A phone's viewport (below 640px): what _lib/use-narrow.ts reads.
   function asPhone() {
     window.matchMedia = ((query: string) => ({
       matches: query === "(max-width: 639px)",

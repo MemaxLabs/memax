@@ -3,12 +3,27 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Icon } from "@memaxlabs/ledger";
+import type { PlaceRoute } from "@/lib/v2/places";
 import styles from "./phone-header.module.css";
+
+/**
+ * Whether a page draws its own phone header (a back link and its title)
+ * in place of the space's top bar: Review and its cards (MobileReview,
+ * MobileGate), and a memory's page (MobileMemory). `detail` is whether
+ * the path goes past the place (/memories/M-0219; /review/M-0431/compare
+ * keeps the top bar).
+ */
+export function ownsPhoneHeader(
+  route: PlaceRoute | undefined,
+  detail: boolean,
+): boolean {
+  return detail ? route === "memories" : route === "review";
+}
 
 /**
  * A page's own header on a phone (MobileReview.png, MobileGate.png,
  * MobileMemory.png), in place of the space's top bar (the frame leaves
- * it out on these pages, _lib/phone.ts ownsPhoneHeader): a 44px back
+ * it out on these pages, ownsPhoneHeader): a 44px back
  * link, the title in the middle and an end slot, with anything below
  * (Review's progress). Above 640px it isn't shown; the page's own
  * heading is.

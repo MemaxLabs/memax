@@ -8,7 +8,7 @@ import { useKeycap } from "@/lib/v2/keymap/react";
 import { clashTitle, expiryText } from "@/lib/v2/records-copy";
 import { EditClash } from "../../_components/edit-clash";
 import { StatementEditor } from "../../_components/statement-editor";
-import { usePhone } from "../../_lib/phone";
+import { useNarrow } from "../../_lib/use-narrow";
 import type { RecordsView } from "../records-view";
 import { FlagCard } from "./flag-card";
 import { GateCard } from "./gate-card";
@@ -37,7 +37,7 @@ export function CardColumn({
   const r = l.review;
   const { selected: item, index, entries, card, state } = review;
   const keepChord = useKeycap("command.keep");
-  const phone = usePhone();
+  const phone = useNarrow();
 
   if (review.queue.data === undefined || review.gatesLoading) {
     return (

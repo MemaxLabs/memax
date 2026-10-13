@@ -11,7 +11,7 @@ import {
   type GateView,
 } from "@/lib/v2/data/gates";
 import { useSource } from "../../_lib/data";
-import { usePhone } from "../../_lib/phone";
+import { useNarrow } from "../../_lib/use-narrow";
 import { useSignInAgain } from "../../_lib/sign-in";
 import type { RecordsView } from "../records-view";
 import { memoryHref } from "./hrefs";
@@ -40,7 +40,7 @@ export function GateCard({
   const { l, rc, space, viewer, now, timeZone, locale, agentName } = view;
   const g = l.review.gate;
   const source = useSource();
-  const phone = usePhone();
+  const phone = useNarrow();
   const signInAgain = useSignInAgain();
   const gates = review.gateCards;
   const card = gates.cardOf(gate.ref);

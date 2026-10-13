@@ -8,7 +8,7 @@ import { useAriaKeys, useKeycap } from "@/lib/v2/keymap/react";
 import { placeHref } from "@/lib/v2/places";
 import { memoryReadsText, reachText } from "@/lib/v2/reads-copy";
 import { StatementText } from "../../_components/statement-text";
-import { usePhone } from "../../_lib/phone";
+import { useNarrow } from "../../_lib/use-narrow";
 import type { RecordsView } from "../records-view";
 import { ForgetConfirm } from "./forget-confirm";
 import type { MemoryForget } from "./use-memory-forget";
@@ -44,7 +44,7 @@ export function MemoryHead({
   const verifyKey = useKeycap("memory.verify");
   const citeKeys = useAriaKeys("memory.cite");
   // A phone's row has room for "Cite" (MobileMemory.png).
-  const phone = usePhone();
+  const phone = useNarrow();
   const forgotten = record.forgotten;
   const request = record.forgetRequests?.[0] ?? null;
   // The Keep the seal is for, or the latest receipt while it isn't kept.

@@ -19,7 +19,7 @@ import {
 //
 // Each page departs from its board on purpose, so each has its own bar,
 // a point above what it measured on Oct 11, 2026 (Playwright's ratios,
-// rounded up: Landing 0.04, Pricing 0.03, Security 0.08, Docs 0.03):
+// rounded up: Landing 0.04, Pricing 0.03, Security 0.03, Docs 0.08):
 // - Landing: `npx memax-cli init` (D12), the personal layer's line and
 //   transcript row (D1), Cursor reading AGENTS.md and ChatGPT live over
 //   its connector (D2/D3), Trust in the nav, and no Undo on the example.
@@ -59,14 +59,14 @@ const BOARDS = [
     path: "/security",
     heading: "What Memax keeps, and how it lets go.",
     height: 1800,
-    max: 0.09,
+    max: 0.04,
   },
   {
     board: "Docs",
     path: "/docs",
     heading: "Quickstart",
     height: 1586,
-    max: 0.04,
+    max: 0.09,
   },
 ] as const;
 

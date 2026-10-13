@@ -1,14 +1,7 @@
-// The agents whose session-start hook runs `memax hook session-start`,
-// and how each wants the block (checked against each agent's hook docs,
-// Oct 2026; see docs-site cli/hook.mdx for the links):
-//
-// - Claude Code: plain stdout is added to the context (capped at 10,000
-//   characters).
-// - Codex: plain stdout is added as developer context (about 2,500 tokens
-//   by default, `additionalContextLimit`); it must not start with { or [.
-// - Gemini CLI: JSON only, `hookSpecificOutput.additionalContext`.
-// - Cursor: JSON only, `additional_context`.
-// - Copilot CLI: JSON only, `additionalContext`.
+// The agents whose session-start hook runs `memax hook session-start`, and
+// how each wants the block: the hooks of the agents registry
+// (@memaxlabs/agents, copied into lib/agents/; its header has the docs
+// checked for each).
 //
 // Which compiled files each loads at session start: AGENTS.md, plus its
 // own shim when the space compiles one (CLAUDE.md, GEMINI.md). Scoped
@@ -22,8 +15,10 @@
 // canonical copy's kept lines in full at every session start (`prints`),
 // held to 1,500 tokens; a session-start hook's `additional_context` is the
 // one way in (cursor.com/docs/hooks.md, sessionStart).
+import { AGENTS as REGISTRY } from "../agents/agents.js";
+import type { HookFormat } from "../agents/types.js";
 
-export type HookFormat = "plain" | "gemini" | "cursor" | "copilot";
+export type { HookFormat };
 
 export interface HookAgent {
   /** The agent kind the server knows it by (AgentKind). */
@@ -42,57 +37,42 @@ export interface HookAgent {
   maxTokens: number;
 }
 
-const AGENTS: Record<string, HookAgent> = {
-  "claude-code": {
-    kind: "claude-code",
-    format: "plain",
-    loads: ["claude_md", "agents_md"],
-    home: ["claude_user"],
-    prints: [],
-    maxTokens: 3000,
-  },
-  codex: {
-    kind: "codex",
-    format: "plain",
-    loads: ["agents_md"],
-    home: ["codex_user"],
-    prints: [],
-    maxTokens: 2400,
-  },
-  "gemini-cli": {
-    kind: "gemini-cli",
-    format: "gemini",
-    loads: ["gemini_md", "agents_md"],
-    home: ["gemini_user"],
-    prints: [],
-    maxTokens: 3000,
-  },
-  cursor: {
-    kind: "cursor",
-    format: "cursor",
-    loads: ["agents_md"],
-    home: [],
-    prints: ["agents_md"],
-    maxTokens: 3000,
-  },
-  copilot: {
-    kind: "copilot",
-    format: "copilot",
-    loads: ["agents_md"],
-    home: ["copilot_user"],
-    prints: [],
-    maxTokens: 3000,
-  },
-};
+const AGENTS: Record<string, HookAgent> = Object.fromEntries(
+  REGISTRY.flatMap((a) =>
+    a.hook
+      ? [
+          [
+            a.id,
+            {
+              kind: a.id,
+              format: a.hook.format,
+              loads: [...a.hook.loads],
+              home: a.home ? [a.home.kind] : [],
+              prints: [...a.hook.prints],
+              maxTokens: a.hook.maxTokens,
+            },
+          ],
+        ]
+      : [],
+  ),
+);
 
+/**
+ * The `--agent` values the hook takes: each hooked agent's id and short
+ * key (`gemini`), and `claude` for Claude Code, whose hook this was first.
+ */
 const ALIASES: Record<string, string> = {
   claude: "claude-code",
-  "claude-code": "claude-code",
-  codex: "codex",
-  gemini: "gemini-cli",
-  "gemini-cli": "gemini-cli",
-  cursor: "cursor",
-  copilot: "copilot",
+  ...Object.fromEntries(
+    REGISTRY.flatMap((a) =>
+      a.hook
+        ? [
+            [a.id, a.id],
+            [a.key, a.id],
+          ]
+        : [],
+    ),
+  ),
 };
 
 /** The agent a `--agent` value names; unknown agents get plain text and AGENTS.md. */

@@ -14,14 +14,17 @@
  * Claude Code's file too it loads the Personal space twice; its Copilot
  * harness doesn't. The CLI says so when it links both (lib/home/files.ts).
  */
+import { agent } from "@memaxlabs/agents";
 import { basename } from "../text.js";
 import { home } from "./home.js";
 
+const COPILOT = agent("copilot");
+
 export const copilotUser = home({
   kind: "copilot_user",
-  tool: "Copilot",
-  agent: "copilot",
-  defaultPath: ".copilot/copilot-instructions.md",
+  tool: COPILOT.name,
+  agent: COPILOT.key,
+  defaultPath: COPILOT.home!.path,
   pathHint: "ending in copilot-instructions.md, in Copilot's folder",
   acceptsPath: (path) =>
     basename(path) === "copilot-instructions.md" &&

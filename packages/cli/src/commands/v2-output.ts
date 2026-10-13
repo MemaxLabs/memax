@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import chalk from "chalk";
 import type { V2 } from "memax-sdk";
 import { holdDetail } from "../lib/daemon/holds.js";
+import { AGENTS as REGISTRY } from "../lib/agents/agents.js";
 
 export const MARK = {
   kept: "●",
@@ -128,21 +129,10 @@ export function apiFailureMessage(err: unknown, command?: string): string {
   return e?.message ?? String(err);
 }
 
-/** The board's two-letter agent marks. */
+/** The board's two-letter agent marks, from the agents registry. */
 export function agentMark(agent: V2.AgentKind, name: string): string {
-  const marks: Partial<Record<V2.AgentKind, string>> = {
-    "claude-code": "CC",
-    codex: "CX",
-    cursor: "CU",
-    chatgpt: "GPT",
-    claude: "CL",
-    "gemini-cli": "GM",
-    copilot: "CP",
-    opencode: "OC",
-    windsurf: "WS",
-  };
   return (
-    marks[agent] ??
+    REGISTRY.find((a) => a.id === agent)?.mark ??
     (name
       .replace(/[^A-Za-z0-9]/g, "")
       .slice(0, 2)

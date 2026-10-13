@@ -175,12 +175,14 @@ jobs:
           case "$WORKER" in
             web)
               pnpm --filter memax-sdk build
+              pnpm --filter @memaxlabs/agents build
               pnpm --filter @memaxlabs/web run build:cf
               ;;
             docs)
               pnpm --filter @memaxlabs/docs-site run build
               ;;
             compile)
+              pnpm --filter @memaxlabs/agents build
               pnpm --filter @memaxlabs/compiler build
               ;;
             ui)

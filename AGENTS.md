@@ -227,7 +227,8 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 - When modifying `@memaxlabs/ui`, verify `packages/web/` still renders correctly. (`packages/docs-site` no longer depends on `@memaxlabs/ui` — it inlines its own `MemaxLogo` so the Apache-licensed docs site does not link the AGPL `ui` package.)
 - Prefer editing existing files over creating new ones. Follow the established patterns in each package.
 - `memax-sdk` is the canonical TypeScript client for Memax backend `/v1/*` routes. New product API calls in `packages/web/` should go through the SDK rather than raw `fetch` or duplicated route helpers. Direct object-store transfers are separate and do not count as backend `/v1/*` calls.
-- **Licensing is per-package** (this repo mixes licenses — see root `LICENSE`): `cli`, `sdk`, `docs-site` are Apache-2.0; `server`, `ui`, `web` are AGPL-3.0. Do not introduce a dependency from an Apache-2.0 package onto an AGPL-3.0 package.
+- **Licensing is per-package** (this repo mixes licenses — see root `LICENSE`): `cli`, `sdk`, `docs-site`, `agents`, `compiler` are Apache-2.0; `server`, `ui`, `web`, `ledger` are AGPL-3.0. Do not introduce a dependency from an Apache-2.0 package onto an AGPL-3.0 package (which is why the agents' names and marks live in `@memaxlabs/agents` and `@memaxlabs/ledger` imports them).
+- **The agents registry** (`packages/agents`, `@memaxlabs/agents`) is the one place each agent's id, name, mark, home file, session-start hook and MCP settings, and the load matrix, live. The compiler and `@memaxlabs/ledger` import it (it builds with tsc, so build it before them where turbo doesn't: `pnpm --filter @memaxlabs/agents build`); the CLI carries a verbatim copy. A new agent starts there, with its `AgentKind` in `openapi/v2.yaml` (`packages/agents/test/registry.test.ts` holds the two equal).
 - The public CLI has two distinct ingest surfaces:
   - `memax import <dir>` — one-way directory → memory ingest (with `memax import status` for source/history)
   - `memax agents ...` — agent config sync (configs only — session sync was removed in migration 008; agent CLIs change session formats too often):
@@ -261,6 +262,7 @@ memax/
     start/           # @memaxlabs/start — the cloud start (bin memax-start), the CLI's cloud-start code bundled into one file with no dependencies; private until a founder decides to publish — Apache-2.0
     ledger-tokens/   # V2 Ledger tokens, type styles, fonts, marks (@memaxlabs/ledger-tokens) — Apache-2.0
     ledger/          # V2 Ledger React components, mx- styles, en/zh strings, previews (@memaxlabs/ledger) — AGPL-3.0
+    agents/          # The agents registry (@memaxlabs/agents): each agent's id, name and mark, what shows it's installed, its home file, session-start hook and MCP settings, and the load matrix (which of Memax's files each tool loads, with the evidence); data only, private until a founder decides to publish — Apache-2.0
     compiler/        # V2 compiler: kept record → AGENTS.md, CLAUDE.md shim, scoped rules; parse-back; the condition evaluator (@memaxlabs/compiler) — Apache-2.0
     compile-service/ # V2 compile service: the compiler over HTTP, a Cloudflare Worker or node:http (@memaxlabs/compile-service) — AGPL-3.0
   plugins/
@@ -569,8 +571,8 @@ E2E_STACK=1 pnpm --filter @memaxlabs/web test:e2e --project=chromium auth-bff
 - **Compatibility flags**: `nodejs_compat` (the proxy's `node:crypto` signing, `Buffer`, streams), `global_fetch_strictly_public`, and `enable_request_signal`, without which a browser that leaves an Ask (or V1's `/v1/events`) doesn't stop the stream on the API.
 
 ```bash
-# Build the Worker (the SDK first) and run it under workerd, then Playwright against it
-pnpm --filter memax-sdk build
+# Build the Worker (the SDK and the agents registry first) and run it under workerd, then Playwright against it
+pnpm --filter memax-sdk build && pnpm --filter @memaxlabs/agents build
 NEXT_PUBLIC_DEV_FIXTURES=1 pnpm --filter @memaxlabs/web build:cf
 pnpm --filter @memaxlabs/web preview:cf --port 8790 --ip 127.0.0.1
 E2E_BASE_URL=http://localhost:8790 pnpm --filter @memaxlabs/web test:e2e
@@ -862,7 +864,7 @@ Every route but `/health` needs `Authorization: Bearer $COMPILE_SERVICE_TOKEN`; 
 
 ### CLI: init, connect, link, the daemon, status, compile and the session-start hook (V2 local delivery)
 
-The daemon (`packages/cli/src/lib/daemon/`) writes each space's compiled files into the repositories linked on the machine and reports hand edits; it never writes over one (rule 6). Its state, log, pid and control socket live in `~/.memax/daemon/`, beside the session-start hook's files (`warm.json`, which the daemon keeps current, `seen/` and the `loads/` queue it reports) and its checks' (`checks/`). `memax daemon run` is reached through `src/bin.ts` without loading the rest of the CLI (the MCP SDK alone is ~30 MB of memory), and it talks to `/v2` over `node:http(s)` (`lib/daemon/http.ts`), not `fetch`. The CLI carries a verbatim copy of the compiler's managed block, line cleaner and condition evaluator (`lib/daemon/compiler/`) because `@memaxlabs/compiler` isn't published yet; edit the compiler, then re-copy.
+The daemon (`packages/cli/src/lib/daemon/`) writes each space's compiled files into the repositories linked on the machine and reports hand edits; it never writes over one (rule 6). Its state, log, pid and control socket live in `~/.memax/daemon/`, beside the session-start hook's files (`warm.json`, which the daemon keeps current, `seen/` and the `loads/` queue it reports) and its checks' (`checks/`). `memax daemon run` is reached through `src/bin.ts` without loading the rest of the CLI (the MCP SDK alone is ~30 MB of memory), and it talks to `/v2` over `node:http(s)` (`lib/daemon/http.ts`), not `fetch`. The CLI carries a verbatim copy of the compiler's managed block, line cleaner and condition evaluator (`lib/daemon/compiler/`) because `@memaxlabs/compiler` isn't published yet; edit the compiler, then re-copy. It carries the agents registry the same way (`lib/agents/`, `scripts/sync-agents.mjs`), which its hook, `memax init`, `memax connect` and the MCP writers read: change `packages/agents`, then re-copy.
 
 ```bash
 # Point the CLI at a local server, sign in, link a repository and run the daemon in the foreground
@@ -932,6 +934,11 @@ pnpm --filter memax-cli exec vitest run test/export && pnpm --filter memax-sdk e
 # Re-copy the compiler's managed block (and init's cleanLine, lib/daemon/compiler/sanitize.ts)
 # into the CLI after changing them (lint checks the copy)
 node packages/cli/scripts/sync-compiler.mjs
+
+# The agents registry: its tests (every AgentKind of the spec is in it, and only those; each
+# hook and home file agrees with the load matrix), then re-copy it into the CLI (lint checks the copy)
+pnpm --filter @memaxlabs/agents test && pnpm --filter @memaxlabs/agents build
+node packages/cli/scripts/sync-agents.mjs
 
 # Init tests: detection fixtures in temporary homes, the splitter, the secret scan (against the
 # server's corpus), hidden characters, and the whole flow against the fake /v2 server

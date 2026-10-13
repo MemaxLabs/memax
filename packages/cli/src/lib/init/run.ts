@@ -50,6 +50,7 @@ import {
   type InitReport,
 } from "./types.js";
 import { upload, waitForJudge, type Uploaded } from "./upload.js";
+import { agentOf } from "../agents/agents.js";
 
 /** Runs memax init; the exit code. */
 export async function runInit(o: InitOptions, d0: InitDeps): Promise<number> {
@@ -551,15 +552,7 @@ function homeKinds(s: ScanResult): string {
 }
 
 function agentName(kind: V2.AgentKind): string {
-  return (
-    (
-      {
-        "claude-code": "Claude Code",
-        codex: "Codex",
-        "gemini-cli": "Gemini CLI",
-      } as Record<string, string>
-    )[kind] ?? kind
-  );
+  return agentOf(kind)?.name ?? kind;
 }
 
 /** Statements each file sent that are now proposals (folded ones included). */

@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Memax, V2 } from "memax-sdk";
+import { agent as registered } from "../agents/agents.js";
 import type { DaemonPaths } from "../daemon/paths.js";
 import { gitRoot } from "../project-context.js";
 import { resolveSpace, SpaceChoiceError } from "../v2-space.js";
@@ -35,12 +36,6 @@ export const START_PACKAGE = "@memaxlabs/start@1.0.0";
 
 /** What marks Memax's cloud entry in a hook file, whatever its version. */
 const MARK = "@memaxlabs/start";
-
-const NAMES: Record<CloudAgent, string> = {
-  "claude-code": "Claude Code",
-  copilot: "Copilot",
-  codex: "Codex",
-};
 
 export function cloudAgentFor(arg: string): CloudAgent | null {
   const key = arg.trim().toLowerCase();
@@ -60,11 +55,14 @@ export interface CloudHook {
 }
 
 export function cloudHook(agent: CloudAgent): CloudHook | null {
+  // Where the agent's cloud sandbox reads hooks, from the agents registry.
+  const at = registered(agent).cloudHook;
+  if (!at) return null;
   switch (agent) {
     case "claude-code":
       return {
-        path: ".claude/settings.json",
-        event: "SessionStart",
+        path: at.file,
+        event: at.event,
         entry: {
           matcher: "startup|resume|compact",
           hooks: [
@@ -78,8 +76,8 @@ export function cloudHook(agent: CloudAgent): CloudHook | null {
       };
     case "copilot":
       return {
-        path: ".github/hooks/memax.json",
-        event: "sessionStart",
+        path: at.file,
+        event: at.event,
         entry: {
           type: "command",
           bash: `[ -n "$MEMAX_START_KEY" ] && npx -y ${START_PACKAGE} --agent copilot || true`,
@@ -313,7 +311,7 @@ export async function runConnectCloud(
   const hook = cloudHook(agent);
   const r: CloudConnectReport = {
     agent,
-    name: NAMES[agent],
+    name: registered(agent).name,
     space: space.slug,
     connection: null,
     key: null,

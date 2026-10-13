@@ -5,6 +5,7 @@
 // reads of personal facts.
 import { randomUUID } from "node:crypto";
 import type { Memax, V2 } from "memax-sdk";
+import { AGENTS as REGISTRY } from "../agents/agents.js";
 import {
   readHomeLink,
   writeHomeLink,
@@ -15,14 +16,14 @@ import { tilde } from "../daemon/home-place.js";
 import type { DaemonPaths } from "../daemon/paths.js";
 import { describe, homeFile, planHomeFiles } from "../home/files.js";
 
-/** The home file each agent has. Gemini CLI shares Antigravity's ~/.gemini/AGENTS.md. */
-export const HOME_KIND: Partial<Record<V2.AgentKind, V2.TargetKind>> = {
-  "claude-code": "claude_user",
-  codex: "codex_user",
-  "gemini-cli": "gemini_user",
-  copilot: "copilot_user",
-  windsurf: "windsurf_user",
-};
+/**
+ * The home file each agent has, from the agents registry. Gemini CLI
+ * shares Antigravity's ~/.gemini/AGENTS.md.
+ */
+export const HOME_KIND: Partial<Record<V2.AgentKind, V2.TargetKind>> =
+  Object.fromEntries(
+    REGISTRY.flatMap((a) => (a.home ? [[a.id, a.home.kind]] : [])),
+  );
 
 export interface HomeFileReport {
   state:

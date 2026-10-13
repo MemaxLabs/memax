@@ -7,12 +7,15 @@
  * `@./file.md` imports (five levels deep, inside the project root). So
  * GEMINI.md becomes `@./AGENTS.md` plus Gemini-only lines.
  */
+import { agent } from "@memaxlabs/agents";
 import { shim } from "./shim.js";
+
+const GEMINI = agent("gemini-cli");
 
 export const geminiMd = shim({
   kind: "gemini_md",
-  tool: "Gemini CLI",
-  agent: "gemini",
+  tool: GEMINI.name,
+  agent: GEMINI.key,
   defaultPath: "GEMINI.md",
   fileNames: ["GEMINI.md"],
   importLine: (relative) =>

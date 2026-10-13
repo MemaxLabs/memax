@@ -12,19 +12,26 @@
  * inline. The file is the person's whenever they have one, so Memax always
  * manages one block in it.
  */
+import { agent, capOf, WINDSURF_GLOBAL_RULES } from "@memaxlabs/agents";
 import { home } from "./home.js";
 
-export const WINDSURF_GLOBAL_RULES =
-  ".codeium/windsurf/memories/global_rules.md";
+export { WINDSURF_GLOBAL_RULES };
+
+const WINDSURF = agent("windsurf");
 
 export const windsurfUser = home({
   kind: "windsurf_user",
-  tool: "Windsurf",
-  agent: "windsurf",
+  tool: WINDSURF.name,
+  agent: WINDSURF.key,
   defaultPath: WINDSURF_GLOBAL_RULES,
   pathHint: WINDSURF_GLOBAL_RULES,
   acceptsPath: (path) => path === WINDSURF_GLOBAL_RULES,
   owner: () => "block",
-  limits: { chars: { value: 6_000, tool: "Windsurf" } },
+  limits: {
+    chars: {
+      value: capOf(WINDSURF.id, { user: "windsurf_global_rules" }).chars!,
+      tool: WINDSURF.name,
+    },
+  },
   budget: 4_000,
 });

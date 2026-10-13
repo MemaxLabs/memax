@@ -8,6 +8,7 @@
 import { existsSync, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import type { V2 } from "memax-sdk";
+import { AGENTS as REGISTRY } from "../agents/agents.js";
 
 export interface AgentEntry {
   kind: V2.AgentKind;
@@ -28,89 +29,23 @@ export interface AgentEntry {
   connector?: boolean;
 }
 
-export const AGENTS: AgentEntry[] = [
-  {
-    kind: "claude-code",
-    setupId: "claude-code",
-    name: "Claude Code",
-    where: "~/.claude",
-    homeDirs: [".claude"],
-    repoDirs: [],
-    commands: ["claude"],
-    start: "propose",
-  },
-  {
-    kind: "codex",
-    setupId: "codex",
-    name: "Codex",
-    where: "~/.codex",
-    homeDirs: [".codex"],
-    repoDirs: [],
-    commands: ["codex"],
-    start: "propose",
-  },
-  {
-    kind: "cursor",
-    setupId: "cursor",
-    name: "Cursor",
-    where: "~/.cursor",
-    homeDirs: [".cursor"],
-    repoDirs: [".cursor"],
-    commands: ["cursor", "cursor-agent"],
-    start: "read",
-  },
-  {
-    kind: "gemini-cli",
-    setupId: "gemini",
-    name: "Gemini CLI",
-    where: "~/.gemini",
-    homeDirs: [".gemini"],
-    repoDirs: [],
-    commands: ["gemini"],
-    start: "read",
-  },
-  {
-    kind: "copilot",
-    setupId: "copilot",
-    name: "Copilot",
-    where: "~/.copilot",
-    homeDirs: [".copilot"],
-    repoDirs: [],
-    commands: ["copilot"],
-    start: "propose",
-  },
-  {
-    kind: "opencode",
-    setupId: "opencode",
-    name: "OpenCode",
-    where: "~/.config/opencode",
-    homeDirs: [join(".config", "opencode")],
-    repoDirs: [".opencode"],
-    commands: ["opencode"],
-    start: "propose",
-  },
-  {
-    kind: "windsurf",
-    setupId: "windsurf",
-    name: "Windsurf",
-    where: "~/.codeium/windsurf",
-    homeDirs: [join(".codeium", "windsurf")],
-    repoDirs: [".windsurf"],
-    commands: ["windsurf"],
-    start: "propose",
-  },
-  {
-    kind: "chatgpt",
-    setupId: null,
-    name: "ChatGPT",
-    where: "connector",
-    homeDirs: [],
-    repoDirs: [],
-    commands: [],
-    start: "propose",
-    connector: true,
-  },
-];
+/**
+ * The agents of the registry (lib/agents/, from @memaxlabs/agents) that
+ * memax init and memax connect know, in its order. `setupId` is its short
+ * key, the id memax setup's MCP writer goes by, for an agent with MCP
+ * settings on this machine.
+ */
+export const AGENTS: AgentEntry[] = REGISTRY.filter((a) => a.cli).map((a) => ({
+  kind: a.id,
+  setupId: a.mcp ? a.key : null,
+  name: a.name,
+  where: a.where,
+  homeDirs: a.detect.home.map((d) => join(...d.split("/"))),
+  repoDirs: [...a.detect.repo],
+  commands: [...a.detect.commands],
+  start: a.start,
+  ...(a.connector ? { connector: true } : {}),
+}));
 
 export interface DetectEnv {
   home: string;

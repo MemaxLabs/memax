@@ -22,6 +22,8 @@ import {
 } from "../../src/lib/daemon/compiler/conditions/glob.js";
 import { memoryLogger } from "../../src/lib/daemon/log.js";
 import { daemonPaths } from "../../src/lib/daemon/paths.js";
+import { requestCheck } from "../../src/lib/hook/check-requests.js";
+import { readWarm } from "../../src/lib/hook/warm.js";
 import { installHookRoutes, tombstoneFixture } from "../hook/fake-hook.js";
 import { cleanupRepos, git, repository, tempDir, write } from "./git-repo.js";
 import { harness, type Harness } from "./harness.js";
@@ -41,6 +43,7 @@ function conditions(
   return {
     space_id: "space-1",
     repository: "MemaxLabs/memax",
+    stale: [],
     items: items.map(([memory, c], i) => ({
       memory,
       conditions: [
@@ -76,6 +79,7 @@ function kinds(
   return {
     space_id: "space-1",
     repository: "MemaxLabs/memax",
+    stale: [],
     items: items.map(([memory, c], i) => ({
       memory,
       conditions: [
@@ -949,6 +953,133 @@ describe("the daemon's checks", () => {
     await until(() => runs === 1, 10_000, "a check run on V2");
     expect(reads).toBe(1);
   });
+});
+
+describe("what the session-start hook hears from the checks", () => {
+  let h: Harness;
+  afterEach(async () => {
+    await h?.cleanup();
+  }, 20_000);
+
+  /** A linked clone with M-0001 relying on docs/adr.md, and the fake's two routes. */
+  async function setup() {
+    h = await harness();
+    const sp = h.fake.addSpace("memax-v2");
+    const { root } = repository({ "docs/adr.md": "# ADR\n", "a.txt": "a\n" });
+    const conds = conditions(["M-0001", { path: "docs/adr.md" }]);
+    conds.space_id = sp.id;
+    const reports: V2.CheckRunInput[] = [];
+    h.fake.extra.push((method, path, _url, body) => {
+      if (method === "GET" && path === `/v2/spaces/${sp.id}/conditions`)
+        return { status: 200, data: conds };
+      if (method === "POST" && path === `/v2/spaces/${sp.id}/check-runs`) {
+        reports.push(body as unknown as V2.CheckRunInput);
+        return { status: 201, data: { run: { id: "run-1" }, flagged: [] } };
+      }
+      return null;
+    });
+    h.link(sp, root);
+    const d = h.daemon({ checks: { firstMs: 0, statMs: 50, minGapMs: 0 } });
+    await d.start();
+    await until(() => reports.length === 1, 10_000, "the first run on main");
+    return { sp, root, conds, reports };
+  }
+  const warm = () => readWarm(h.paths.warm);
+
+  it("keeps what a feature branch breaks on this machine, never sending it", async () => {
+    const { root, reports } = await setup();
+    git(root, "switch", "-q", "-c", "feat/no-adr");
+    git(root, "rm", "-q", "docs/adr.md");
+    git(root, "commit", "-qm", "Drop the ADR");
+    await until(
+      () => (warm().branches?.[root]?.items.length ?? 0) > 0,
+      10_000,
+      "the branch's hints",
+    );
+    expect(warm().branches?.[root]).toMatchObject({
+      branch: "feat/no-adr",
+      commit: git(root, "rev-parse", "HEAD"),
+      items: [
+        {
+          memory: "M-0001",
+          condition: { kind: "path_exists", path: "docs/adr.md" },
+          evidence: { change: "removed", path: "docs/adr.md" },
+        },
+      ],
+    });
+    expect(reports).toHaveLength(1); // nothing about the branch left the machine
+    expect(JSON.stringify(reports)).not.toContain("feat/no-adr");
+
+    // Back on main, where the file still is: the hints go.
+    git(root, "switch", "-q", "main");
+    await until(() => !warm().branches?.[root], 10_000, "the hints to go");
+  }, 20_000);
+
+  it("tells the warm cache what's being verified, each time the conditions are read", async () => {
+    const { sp, conds } = await setup();
+    conds.stale = [
+      {
+        memory: "M-0002",
+        since: "2026-10-11T14:02:00Z",
+        causes: [{ kind: "date", stale_after: "2026-10-01T00:00:00Z" }],
+      },
+    ];
+    h.fake.receipts++; // the flag's receipt moves the feed: the conditions are read again
+    await until(
+      () => warm().spaces[sp.id]?.stale?.[0]?.ref === "M-0002",
+      10_000,
+      "the stale list",
+    );
+    conds.stale = [];
+    h.fake.receipts++;
+    await until(
+      () => warm().spaces[sp.id]?.stale?.length === 0,
+      10_000,
+      "a verified memory to leave the list",
+    );
+  }, 20_000);
+
+  it("checks when a session starts, naming the agent, even with nothing new", async () => {
+    const { root, reports } = await setup();
+    requestCheck(h.paths.checkRequests, {
+      root,
+      agent: "codex",
+      at: new Date().toISOString(),
+    });
+    await until(() => reports.length === 2, 10_000, "the session start's run");
+    expect(reports[1]).toMatchObject({
+      trigger: "session_start",
+      agent: "codex",
+      results: [],
+    });
+    // A request from long ago is dropped unread.
+    requestCheck(h.paths.checkRequests, {
+      root,
+      agent: "codex",
+      at: new Date(Date.now() - 3_600_000).toISOString(),
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(reports).toHaveLength(2);
+  }, 20_000);
+
+  it("keeps a session start's request when a run already waiting takes it in", async () => {
+    const { root, reports } = await setup();
+    // The space moved (a run for its conditions waits, and outranks a
+    // session start) as an agent starts.
+    h.fake.receipts++;
+    requestCheck(h.paths.checkRequests, {
+      root,
+      agent: "claude-code",
+      at: new Date().toISOString(),
+    });
+    await until(() => reports.length >= 2, 10_000, "a run that reports");
+    expect(reports.slice(1)).toContainEqual(
+      expect.objectContaining({
+        trigger: "session_start",
+        agent: "claude-code",
+      }),
+    );
+  }, 20_000);
 });
 
 async function until(

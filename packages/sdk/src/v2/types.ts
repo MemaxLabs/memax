@@ -141,6 +141,8 @@ export type StaleReport = Schemas["StaleReport"];
 export type StaleCause = Schemas["StaleCause"];
 /** A space's conditions, as its machines check them (no words). */
 export type SpaceConditions = Schemas["SpaceConditions"];
+/** A memory marked stale, as a space's machines hear of it: when and why. */
+export type StaleMemory = Schemas["StaleMemory"];
 export type CheckedCondition = Schemas["CheckedCondition"];
 /** A machine's check run of a space's conditions, and one result. */
 export type CheckRunInput = Schemas["CheckRunRequest"];

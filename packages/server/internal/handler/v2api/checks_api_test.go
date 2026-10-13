@@ -28,6 +28,17 @@ type spaceConditions struct {
 			HeldCommit string `json:"held_commit"`
 		} `json:"conditions"`
 	} `json:"items"`
+	Stale []struct {
+		Memory string    `json:"memory"`
+		Since  time.Time `json:"since"`
+		Causes []struct {
+			Kind     string `json:"kind"`
+			Branch   string `json:"branch"`
+			Evidence struct {
+				Change string `json:"change"`
+			} `json:"evidence"`
+		} `json:"causes"`
+	} `json:"stale"`
 }
 
 type checkRunOut struct {
@@ -109,6 +120,9 @@ func TestChecksOverTheAPI(t *testing.T) {
 	if !list.Items[0].Conditions[0].Armed || list.Items[0].Conditions[0].HeldCommit != fmt.Sprintf("%040x", 1) {
 		t.Fatalf("not armed: %+v", list)
 	}
+	if len(list.Stale) != 0 {
+		t.Fatalf("stale before any failure: %+v", list.Stale)
+	}
 
 	key := uuid.NewString()
 	fail := c.runBody(2, 1, "fails")
@@ -116,10 +130,16 @@ func TestChecksOverTheAPI(t *testing.T) {
 	if fmt.Sprint(out.Flagged) != "["+c.mem.Ref+"]" {
 		t.Fatalf("the failure: %+v", out)
 	}
-	// A failure keeps the commit it last held at.
+	// A failure keeps the commit it last held at, and the list says what's
+	// being verified and why, for the machines' session-start hooks.
 	c.do(call{method: "GET", path: "/v2/spaces/" + c.sp.slug + "/conditions", token: c.tok}).ok(http.StatusOK, &list)
 	if got := list.Items[0].Conditions[0]; !got.Armed || got.HeldCommit != fmt.Sprintf("%040x", 1) {
 		t.Fatalf("after the failure: %+v", got)
+	}
+	if len(list.Stale) != 1 || list.Stale[0].Memory != c.mem.Ref || list.Stale[0].Since.IsZero() ||
+		len(list.Stale[0].Causes) != 1 || list.Stale[0].Causes[0].Kind != "check" ||
+		list.Stale[0].Causes[0].Evidence.Change != "removed" || list.Stale[0].Causes[0].Branch != "main" {
+		t.Fatalf("the stale list: %+v", list.Stale)
 	}
 	var again checkRunOut
 	r := c.report(c.tok, key, fail).ok(http.StatusCreated, &again)
@@ -155,6 +175,10 @@ func TestChecksOverTheAPI(t *testing.T) {
 	c.report(c.tok, uuid.NewString(), c.runBody(3, 0, "fails")).ok(http.StatusCreated, &out)
 	if len(out.Flagged) != 0 {
 		t.Errorf("flagged again after Verify: %+v", out)
+	}
+	c.do(call{method: "GET", path: "/v2/spaces/" + c.sp.slug + "/conditions", token: c.tok}).ok(http.StatusOK, &list)
+	if len(list.Stale) != 0 {
+		t.Errorf("still listed as stale after Verify: %+v", list.Stale)
 	}
 }
 

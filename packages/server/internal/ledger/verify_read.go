@@ -196,17 +196,25 @@ func (l *Ledger) GetStaleReport(ctx context.Context, scope Scope, ref string) (*
 		if err != nil {
 			return nil, err
 		}
-		for _, f := range failing {
-			for i := range cs {
-				if cs[i].ID != f.condition {
-					continue
-				}
-				out.Causes = append(out.Causes, StaleCause{Kind: StaleCauseCheck, Condition: &cs[i], Evidence: f.evidence,
-					Branch: f.branch, Commit: deref0(f.commit), CommitAt: f.commitAt, CheckedAt: f.checkedAt, Observer: f.observer})
-			}
-		}
+		out.Causes = append(out.Causes, checkCauses(cs, failing)...)
 	}
 	return out, nil
+}
+
+// checkCauses are a stale memory's failing checks as causes: one for each
+// armed condition that fails on the default branch and that it still has.
+func checkCauses(cs []conditions.Condition, failing []failingCheck) []StaleCause {
+	var out []StaleCause
+	for _, f := range failing {
+		for i := range cs {
+			if cs[i].ID != f.condition {
+				continue
+			}
+			out = append(out, StaleCause{Kind: StaleCauseCheck, Condition: &cs[i], Evidence: f.evidence,
+				Branch: f.branch, Commit: deref0(f.commit), CommitAt: f.commitAt, CheckedAt: f.checkedAt, Observer: f.observer})
+		}
+	}
+	return out
 }
 
 // failingCheck is a failing condition's row, as the stale report reads it.

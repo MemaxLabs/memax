@@ -8,6 +8,7 @@
 // one exception is a waiting gate's question (an agent's words, not a
 // memory), shortened, and dropped as soon as the gate ends.
 import { readFileSync } from "node:fs";
+import type { V2 } from "memax-sdk";
 
 export const WARM_VERSION = 1;
 
@@ -58,6 +59,37 @@ export interface WarmSpace {
    * nothing about them. Absent while the space is on V2.
    */
   on_v1?: true;
+  /**
+   * Its memories marked stale now, the latest flag first, and why (a
+   * date, or a condition and what changed on the default branch): what
+   * the hook says is being verified. Absent until a check read them.
+   */
+  stale?: WarmStale[];
+}
+
+/** A memory marked stale, as the conditions list says it: no words. */
+export interface WarmStale {
+  ref: string;
+  /** When it was marked stale. */
+  since: string;
+  causes: V2.StaleCause[];
+}
+
+/**
+ * What the daemon's last check found at a linked repository's HEAD off
+ * the pushed default branch: conditions that hold on the default branch
+ * and fail here. This machine's alone, never sent anywhere.
+ */
+export interface WarmBranch {
+  branch: string;
+  unpushed?: boolean;
+  commit: string;
+  checked_at: string;
+  items: Array<{
+    memory: string;
+    condition: V2.Condition;
+    evidence?: V2.CheckEvidence;
+  }>;
 }
 
 /**
@@ -76,6 +108,8 @@ export interface WarmFile {
   spaces: Record<string, WarmSpace>;
   /** Absent when this machine's home isn't linked. */
   home?: WarmHome;
+  /** Linked repositories' branch hints, by root; only off the pushed default. */
+  branches?: Record<string, WarmBranch>;
 }
 
 export function emptyWarm(): WarmFile {

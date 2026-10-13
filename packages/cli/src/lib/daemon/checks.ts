@@ -136,14 +136,20 @@ const NOT_CHECKED: Record<NotChecked, string> = {
   on_v1: "the space is on V1 again, and Memax checks only spaces on V2",
 };
 
-export type CheckTrigger = "head_moved" | "schedule" | "conditions" | "verify";
+export type CheckTrigger =
+  | "head_moved"
+  | "session_start"
+  | "schedule"
+  | "conditions"
+  | "verify";
 
 /** Which trigger a run that several asked for says. */
 const RANK: Record<CheckTrigger, number> = {
   schedule: 0,
-  verify: 1,
-  conditions: 2,
-  head_moved: 3,
+  session_start: 1,
+  verify: 2,
+  conditions: 3,
+  head_moved: 4,
 };
 
 /** One condition's result as last reported, without anything a file holds. */
@@ -175,6 +181,29 @@ interface CheckFile {
   results: Record<string, Reported>;
 }
 
+/**
+ * What a run found at HEAD on a branch other than the pushed default (or
+ * on the default with commits not pushed yet): this machine's alone, kept
+ * for the session-start hook and memax check, never reported, and never
+ * a branch name sent anywhere.
+ */
+export interface BranchHints {
+  branch: string;
+  /** The default branch, with commits that aren't pushed yet. */
+  unpushed?: boolean;
+  commit: string;
+  checked_at: string;
+  /**
+   * Armed conditions of memories not marked stale that fail at this HEAD
+   * but not on the default branch as this machine last checked it.
+   */
+  items: Array<{
+    memory: string;
+    condition: V2.Condition;
+    evidence?: V2.CheckEvidence;
+  }>;
+}
+
 /** One condition as `memax check` shows it, with what this machine last found. */
 export interface CheckedItem {
   memory: string;
@@ -197,6 +226,8 @@ export interface CheckView {
   /** Why the latest run checked nothing, in words, when it didn't. */
   not_checked?: string;
   items: CheckedItem[];
+  /** What it found at HEAD off the pushed default branch, never reported. */
+  branch?: BranchHints;
 }
 
 /** What one run did (for logs, `memax status` and tests). */
@@ -222,6 +253,13 @@ export interface RepoCheckerOptions {
   deviceId: string;
   reporter: CheckReporter;
   timing?: Partial<CheckTiming>;
+  /**
+   * The space's memories marked stale and why, each time the conditions
+   * are read (the warm cache's stale list, for the session-start hook).
+   */
+  onStale?(spaceId: string, stale: V2.StaleMemory[]): void;
+  /** This repository's branch hints changed, or went (null). */
+  onBranch?(root: string, hints: BranchHints | null): void;
 }
 
 /** A condition to check, flat. */
@@ -292,6 +330,16 @@ export class RepoChecker {
   private heard = false;
   /** The space is on V1 again, which takes no check reports. */
   private onV1 = false;
+  /**
+   * A session start asked for the next run, which then runs whatever ran
+   * last and reports, naming the agent, whichever trigger it goes out as
+   * (one already waiting may outrank session_start).
+   */
+  private asked = false;
+  private agent: V2.AgentKind | undefined;
+  /** What the last run off the pushed default branch found, and at what. */
+  private branch: BranchHints | null = null;
+  private branchKey = "";
   lastRun: CheckRunSummary | null = null;
 
   constructor(private readonly o: RepoCheckerOptions) {
@@ -321,6 +369,14 @@ export class RepoChecker {
   forget(refs: string[]): void {
     const refsGone = refs.map((r) => r.toUpperCase());
     for (const r of refsGone) this.gone.add(r);
+    const hinted = this.branch;
+    if (hinted?.items.some((i) => this.gone.has(i.memory.toUpperCase())))
+      this.hints({
+        ...hinted,
+        items: hinted.items.filter(
+          (i) => !this.gone.has(i.memory.toUpperCase()),
+        ),
+      });
     if (this.conds?.checks.some((c) => this.gone.has(c.ref))) {
       this.conds = null;
       this.condsDirty = true;
@@ -358,6 +414,17 @@ export class RepoChecker {
     if (on === this.onV1) return;
     this.onV1 = on;
     if (!on) this.conditionsChanged();
+  }
+
+  /**
+   * An agent's session started here (the hook's request): a run soon
+   * whatever ran last, which reports even with nothing new, naming the
+   * agent, so the memory's page says when it was checked and for whom.
+   */
+  sessionStarted(agent?: V2.AgentKind): void {
+    this.asked = true;
+    if (agent) this.agent = agent;
+    this.soon("session_start");
   }
 
   /** The space moved: its conditions may have changed. */
@@ -473,15 +540,19 @@ export class RepoChecker {
       });
     };
 
-    if (this.onV1) return skip("on_v1");
+    // A session start's request is this run's, whatever it says.
+    const asked = this.asked;
+    const agent = asked ? this.agent : undefined;
+    this.asked = false;
+    this.agent = undefined;
+    if (this.onV1) return this.hints(null, skip("on_v1"));
     // Where HEAD is, from files; then the tips, in one process.
     const d = gitDirs(root);
-    if (!d) return skip("not_git");
+    if (!d) return this.hints(null, skip("not_git"));
     const branch = headBranch(d);
-    if (!branch) return skip("detached");
+    if (!branch) return this.hints(null, skip("detached"));
     const def = defaultBranch(d);
-    if (!def) return skip("no_default_branch");
-    if (branch !== def) return skip("other_branch");
+    if (!def) return this.hints(null, skip("no_default_branch"));
     // The tips as last read, unless the refs moved since.
     const stamp = refStamp(d);
     if (this.tips?.stamp !== stamp) {
@@ -489,12 +560,16 @@ export class RepoChecker {
       this.tips = read ? { stamp, ...read } : null;
     }
     const tips = this.tips;
-    if (!tips?.local) return skip("not_git");
-    if (!tips.origin || tips.origin.commit !== tips.local.commit)
-      return skip("unpushed");
+    if (!tips?.local) return this.hints(null, skip("not_git"));
     const commit = tips.local.commit;
+    // Only the default branch as pushed reports; anywhere else the run's
+    // results stay on this machine, as hints.
+    const pushed = !!tips.origin && tips.origin.commit === commit;
+    const local: NotChecked | null =
+      branch !== def ? "other_branch" : pushed ? null : "unpushed";
 
-    // The conditions (fetched when the space moved, or every six hours).
+    // The conditions (fetched when the space moved, or every six hours),
+    // and with them what's marked stale, for the hook.
     if (
       this.condsDirty ||
       !this.conds ||
@@ -503,17 +578,62 @@ export class RepoChecker {
       this.conds = prepare(await this.o.api.conditions(this.o.link.space_id));
       this.condsAt = Date.now();
       this.condsDirty = false;
+      this.o.onStale?.(
+        this.o.link.space_id,
+        (this.conds.conds.stale ?? []).filter(
+          (x) => !this.gone.has(x.memory.toUpperCase()),
+        ),
+      );
     }
     const { conds, hash: condsHash, everyKind } = this.conds;
     // A memory forgotten since the conditions were read isn't checked.
     const checks = this.conds.checks.filter((c) => !this.gone.has(c.ref));
-    if (!conds.repository) return skip("no_repository");
+    if (!conds.repository) return this.hints(null, skip("no_repository"));
     const url = originUrl(d);
     if (!url || repoKeyOf(url) !== repoKeyOf(conds.repository))
-      return skip("fork");
-    this.say(null);
+      return this.hints(null, skip("fork"));
 
     const state = (this.state ??= this.readState());
+    if (local) {
+      // Off the pushed default branch: the same reading, kept here.
+      const key = `${branch}\0${commit}\0${condsHash}`;
+      if (key !== this.branchKey || trigger === "verify" || asked) {
+        const now =
+          checks.length > 0
+            ? await this.evaluateAt(root, commit, checks, state, cost)
+            : {};
+        const stale = new Set(
+          (conds.stale ?? []).map((x) => x.memory.toUpperCase()),
+        );
+        const items = checks
+          .filter(
+            (c) =>
+              c.armed &&
+              !stale.has(c.ref) &&
+              now[c.key]?.outcome === "fails" &&
+              state.results[c.key]?.outcome !== "fails",
+          )
+          .map((c) => {
+            const evidence = evidenceOf(now[c.key]);
+            return {
+              memory: c.ref,
+              condition: c.cond as V2.Condition,
+              ...(evidence ? { evidence } : {}),
+            };
+          });
+        this.branchKey = key;
+        this.hints({
+          branch,
+          ...(local === "unpushed" ? { unpushed: true } : {}),
+          commit,
+          checked_at: new Date().toISOString(),
+          items,
+        });
+      }
+      return skip(local, { commit, results: checks.length });
+    }
+    this.say(null);
+    this.hints(null);
     const full =
       !state.full_at || Date.now() - Date.parse(state.full_at) > this.t.fullMs;
     if (
@@ -521,7 +641,8 @@ export class RepoChecker {
       state.conditions === condsHash &&
       !full &&
       !this.heard &&
-      trigger !== "verify"
+      trigger !== "verify" &&
+      !asked
     )
       return skip("unchanged", { commit });
 
@@ -551,6 +672,112 @@ export class RepoChecker {
       return skip("no_conditions", { commit });
     }
 
+    const now = await this.evaluateAt(root, commit, checks, state, cost);
+
+    // A memory forgotten while this run read the tree: nothing of it is
+    // reported or kept.
+    for (const c of checks) if (this.gone.has(c.ref)) delete now[c.key];
+    // Only what changed since the last report, or everything once a day.
+    const send = checks.filter(
+      (c) =>
+        now[c.key] && (full || !sameResult(state.results[c.key], now[c.key])),
+    );
+    let flagged: string[] | undefined;
+    // A session start's run reports even with nothing new: it says this
+    // machine checked when that agent started.
+    const confirm = this.heard || asked;
+    if (send.length > 0 || confirm) {
+      const input: V2.CheckRunInput = {
+        repository: conds.repository,
+        branch,
+        commit,
+        commit_at: tips.local.committedAt,
+        checked_at: new Date().toISOString(),
+        // What the memory's page says ("when Codex started"), even when a
+        // run already waiting took the request in.
+        trigger: asked ? "session_start" : trigger,
+        ...(agent ? { agent } : {}),
+        device: this.o.deviceId,
+        complete:
+          everyKind && checks.every((c) => now[c.key]?.outcome !== "unknown"),
+        results: send.map((c) => resultOf(c, now[c.key])),
+      };
+      flagged = await this.o.reporter.report(this.o.link.space_id, input);
+      this.heard = false;
+    }
+    // Written when something moved: the commit, the conditions or a result.
+    if (
+      send.length > 0 ||
+      full ||
+      state.commit !== commit ||
+      state.conditions !== condsHash
+    )
+      this.writeState({
+        ...state,
+        commit,
+        conditions: condsHash,
+        checked_at: new Date().toISOString(),
+        full_at: full ? new Date().toISOString() : state.full_at,
+        results: now,
+      });
+    const summary: CheckRunSummary = {
+      ran: true,
+      commit,
+      results: checks.length,
+      sent: send.length,
+      ...(flagged ? { flagged } : {}),
+      cost,
+      ms: Date.now() - started,
+    };
+    this.o.log.info("checked a repository", {
+      root,
+      commit: commit.slice(0, 7),
+      trigger,
+      results: checks.length,
+      sent: send.length,
+      ...(flagged?.length ? { flagged: flagged.join(" ") } : {}),
+      git: cost.processes,
+      ms: summary.ms,
+    });
+    return (this.lastRun = summary);
+  }
+
+  private readState(): CheckFile {
+    const empty: CheckFile = {
+      version: 1,
+      root: this.o.link.root,
+      space_id: this.o.link.space_id,
+      commit: null,
+      conditions: null,
+      checked_at: null,
+      full_at: null,
+      results: {},
+    };
+    const f = readJson<Partial<CheckFile>>(this.file, {});
+    if (
+      f.version !== 1 ||
+      f.space_id !== this.o.link.space_id ||
+      f.root !== this.o.link.root
+    )
+      return empty;
+    return { ...empty, ...f, results: f.results ?? {} };
+  }
+
+  /**
+   * Every check at a commit: one listing of the globs' folders and the
+   * manifests a bare name means, then one cat-file for every path's
+   * object and the contents of the files whose blobs changed since the
+   * last run (a result read off the same blobs stands), then a rename
+   * lookup for files gone since they last held. The default branch's
+   * results are `state`'s; off it, they're read but never kept.
+   */
+  private async evaluateAt(
+    root: string,
+    commit: string,
+    checks: Check[],
+    state: CheckFile,
+    cost: GitCost,
+  ): Promise<Record<string, Reported>> {
     // What the conditions need of the tree at the commit: one listing of
     // the globs' folders and the manifests a bare name means, then one
     // cat-file for every path's object and the contents of the files whose
@@ -733,88 +960,21 @@ export class RepoChecker {
         now[c.key] = { ...r, change: "renamed", renamed_to: to };
     }
 
-    // A memory forgotten while this run read the tree: nothing of it is
-    // reported or kept.
-    for (const c of checks) if (this.gone.has(c.ref)) delete now[c.key];
-    // Only what changed since the last report, or everything once a day.
-    const send = checks.filter(
-      (c) =>
-        now[c.key] && (full || !sameResult(state.results[c.key], now[c.key])),
-    );
-    let flagged: string[] | undefined;
-    const confirm = this.heard;
-    if (send.length > 0 || confirm) {
-      const input: V2.CheckRunInput = {
-        repository: conds.repository,
-        branch,
-        commit,
-        commit_at: tips.local.committedAt,
-        checked_at: new Date().toISOString(),
-        trigger,
-        device: this.o.deviceId,
-        complete:
-          everyKind && checks.every((c) => now[c.key]?.outcome !== "unknown"),
-        results: send.map((c) => resultOf(c, now[c.key])),
-      };
-      flagged = await this.o.reporter.report(this.o.link.space_id, input);
-      if (confirm) this.heard = false;
-    }
-    // Written when something moved: the commit, the conditions or a result.
-    if (
-      send.length > 0 ||
-      full ||
-      state.commit !== commit ||
-      state.conditions !== condsHash
-    )
-      this.writeState({
-        ...state,
-        commit,
-        conditions: condsHash,
-        checked_at: new Date().toISOString(),
-        full_at: full ? new Date().toISOString() : state.full_at,
-        results: now,
-      });
-    const summary: CheckRunSummary = {
-      ran: true,
-      commit,
-      results: checks.length,
-      sent: send.length,
-      ...(flagged ? { flagged } : {}),
-      cost,
-      ms: Date.now() - started,
-    };
-    this.o.log.info("checked a repository", {
-      root,
-      commit: commit.slice(0, 7),
-      trigger,
-      results: checks.length,
-      sent: send.length,
-      ...(flagged?.length ? { flagged: flagged.join(" ") } : {}),
-      git: cost.processes,
-      ms: summary.ms,
-    });
-    return (this.lastRun = summary);
+    return now;
   }
 
-  private readState(): CheckFile {
-    const empty: CheckFile = {
-      version: 1,
-      root: this.o.link.root,
-      space_id: this.o.link.space_id,
-      commit: null,
-      conditions: null,
-      checked_at: null,
-      full_at: null,
-      results: {},
-    };
-    const f = readJson<Partial<CheckFile>>(this.file, {});
-    if (
-      f.version !== 1 ||
-      f.space_id !== this.o.link.space_id ||
-      f.root !== this.o.link.root
-    )
-      return empty;
-    return { ...empty, ...f, results: f.results ?? {} };
+  /**
+   * Keeps the branch hints a run found (or none, back on the pushed
+   * default branch, or where nothing is checked), telling onBranch when
+   * they changed; returns `summary` for the run's return.
+   */
+  private hints<T>(h: BranchHints | null, summary?: T): T {
+    const was = this.branch;
+    this.branch = h;
+    if (JSON.stringify(was) !== JSON.stringify(h))
+      this.o.onBranch?.(this.o.link.root, h);
+    if (!h) this.branchKey = "";
+    return summary as T;
   }
 
   /**
@@ -838,13 +998,8 @@ export class RepoChecker {
         };
         if (r && r.hash === c.hash) {
           item.outcome = r.outcome;
-          if (r.change)
-            item.evidence = {
-              change: r.change as V2.CheckEvidence["change"],
-              ...(r.path ? { path: r.path } : {}),
-              ...(r.renamed_to ? { renamed_to: r.renamed_to } : {}),
-              ...(r.constraint ? { constraint: r.constraint } : {}),
-            };
+          const evidence = evidenceOf(r);
+          if (evidence) item.evidence = evidence;
         }
         items.push(item);
       }
@@ -859,6 +1014,7 @@ export class RepoChecker {
         ? { not_checked: NOT_CHECKED[skipped as NotChecked] }
         : {}),
       items,
+      ...(this.branch ? { branch: this.branch } : {}),
     };
   }
 
@@ -867,6 +1023,17 @@ export class RepoChecker {
     mkdirSync(this.o.paths.checks, { recursive: true, mode: 0o700 });
     writeJsonAtomic(this.file, f);
   }
+}
+
+/** What a result says changed, as the API types it. */
+function evidenceOf(r: Reported | undefined): V2.CheckEvidence | undefined {
+  if (!r?.change) return undefined;
+  return {
+    change: r.change as V2.CheckEvidence["change"],
+    ...(r.path ? { path: r.path } : {}),
+    ...(r.renamed_to ? { renamed_to: r.renamed_to } : {}),
+    ...(r.constraint ? { constraint: r.constraint } : {}),
+  };
 }
 
 /**

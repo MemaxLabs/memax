@@ -30,6 +30,7 @@ async function setup() {
   const conds: V2.SpaceConditions = {
     space_id: sp.id,
     repository: "MemaxLabs/memax",
+    stale: [],
     items: [
       {
         memory: "M-0001",

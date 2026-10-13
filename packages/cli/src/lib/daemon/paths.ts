@@ -38,6 +38,8 @@ export interface DaemonPaths {
    * file's contents), and the reports waiting to be sent.
    */
   checks: string;
+  /** Session starts' check requests, queued by the hook (lib/hook/check-requests.ts). */
+  checkRequests: string;
 }
 
 // sun_path is 104 bytes on macOS and 108 on Linux.
@@ -59,6 +61,7 @@ export function daemonPaths(
     loads: join(dir, "loads"),
     seen: join(dir, "seen"),
     checks: join(dir, "checks"),
+    checkRequests: join(dir, "checks", "requests"),
   };
 }
 

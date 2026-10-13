@@ -10,7 +10,7 @@ Memax keeps what a person and their team have decided, across every agent they u
 ## What you already have
 
 - **The compiled files.** `AGENTS.md` (and the `CLAUDE.md` that imports it) is compiled from the kept memories and loaded at session start. Each line cites its memory, like `[M-0219]`. Don't re-read it from a tool: it's already in your context.
-- **The `<memax-context>` block.** When the Memax CLI is installed, a session-start hook prints a short block with only what changed since your last session in this repository: new or changed lines, memories a person forgot, decisions waiting for a person, and a compile that hasn't reached this machine yet. When nothing changed, there is no block.
+- **The `<memax-context>` block.** When the Memax CLI is installed, a session-start hook prints a short block with only what changed since your last session in this repository: new or changed lines, memories a person forgot, decisions waiting for a person, memories being verified, and a compile that hasn't reached this machine yet. When nothing changed, there is no block.
 
 ## Before you start a task
 
@@ -30,6 +30,11 @@ Memax keeps what a person and their team have decided, across every agent they u
 
 - When a choice belongs to the person (a dependency, an architecture direction, anything a kept decision doesn't cover), call `memax_request_decision` with the question and 2 to 4 options, then continue with work that doesn't depend on it.
 - A decision listed as waiting in `<memax-context>` isn't yours to make. Its answer arrives as a kept decision that later recalls return.
+
+## Being verified
+
+- A line marked `(Being verified)` in the compiled files, or a memory listed as being verified in `<memax-context>`, may no longer be true: something it relies on changed, such as a file it names moving or a dependency going. Check the code before you rely on it, and tell the person. They answer it in the app or with `memax verify <M-id>`; don't settle it yourself.
+- Lines under "On this branch" are what this machine's check found on the branch you're on. The default branch still holds them, so they aren't stale for the team, but your change may break what they say. Mention it when your work depends on one.
 
 ## Forgotten memories
 

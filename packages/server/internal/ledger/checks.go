@@ -1085,7 +1085,23 @@ type SpaceConditions struct {
 	SpaceID    uuid.UUID          `json:"space_id"`
 	Repository string             `json:"repository"`
 	Items      []MemoryConditions `json:"items"`
+	// Stale is the space's kept memories marked stale now, the latest flag
+	// first (at most MaxStaleListed), with why and no words: what a
+	// machine's session-start hook says is being verified.
+	Stale []StaleMemory `json:"stale"`
 }
+
+// StaleMemory is a memory marked stale, as a space's machines hear of it.
+type StaleMemory struct {
+	Memory string `json:"memory"`
+	// Since is its flag's receipt time (when the memory last changed, if
+	// that receipt is gone).
+	Since  time.Time    `json:"since"`
+	Causes []StaleCause `json:"causes"`
+}
+
+// MaxStaleListed bounds the stale memories a conditions list carries.
+const MaxStaleListed = 100
 
 // ListConditions reads a space's conditions for its machines, in one
 // round trip (ReadBatch). pr_state isn't a machine's to check, so it is
@@ -1100,7 +1116,7 @@ func (l *Ledger) ListConditions(ctx context.Context, scope Scope, spaceID uuid.U
 		return nil, ErrNotFound
 	}
 	now := l.now()
-	out := &SpaceConditions{SpaceID: spaceID, Items: []MemoryConditions{}}
+	out := &SpaceConditions{SpaceID: spaceID, Items: []MemoryConditions{}, Stale: []StaleMemory{}}
 	type kept struct {
 		id    uuid.UUID
 		ref   string
@@ -1153,11 +1169,78 @@ func (l *Ledger) ListConditions(ctx context.Context, scope Scope, spaceID uuid.U
 		}
 		return r.Err()
 	})
+	// The memories marked stale now, and the failing checks that say why.
+	type staleRow struct {
+		id         uuid.UUID
+		ref        string
+		staleAfter *time.Time
+		since      time.Time
+	}
+	var stale []staleRow
+	failing := map[uuid.UUID][]failingCheck{}
+	b.Queue(`
+		SELECT m.id, m.seq, m.stale_after,
+		       COALESCE((SELECT max(r.occurred_at) FROM v2.receipts r
+		                  WHERE r.stream_id = m.id AND r.space_id = m.space_id AND `+staleFlagCond+`), m.updated_at) AS since
+		  FROM v2.memories m
+		 WHERE m.space_id = $1 AND m.lifecycle = 'kept' AND 'stale' = ANY (m.flags)
+		 ORDER BY since DESC, m.seq
+		 LIMIT $2`, spaceID, MaxStaleListed).Query(func(r pgx.Rows) error {
+		for r.Next() {
+			var s staleRow
+			var seq int64
+			if err := r.Scan(&s.id, &seq, &s.staleAfter, &s.since); err != nil {
+				return err
+			}
+			s.ref = FormatRef(PrefixMemory, seq)
+			stale = append(stale, s)
+		}
+		return r.Err()
+	})
+	b.Queue(`
+		SELECT c.memory_id, c.condition_id, c.evidence, c.failed_commit, c.failed_commit_at, r.branch, r.checked_at, r.observer
+		  FROM v2.condition_checks c
+		  JOIN v2.memories m ON m.id = c.memory_id AND m.space_id = c.space_id
+		  LEFT JOIN v2.check_runs r ON r.id = c.first_failed_run_id AND r.space_id = c.space_id
+		 WHERE c.space_id = $1 AND c.context = 'default' AND c.outcome = 'fails' AND c.armed_at IS NOT NULL
+		   AND m.lifecycle = 'kept' AND 'stale' = ANY (m.flags)
+		 ORDER BY c.memory_id, c.condition_id`, spaceID).Query(func(r pgx.Rows) error {
+		for r.Next() {
+			var memory uuid.UUID
+			var f failingCheck
+			var evidence []byte
+			var branch, observer *string
+			if err := r.Scan(&memory, &f.condition, &evidence, &f.commit, &f.commitAt, &branch, &f.checkedAt, &observer); err != nil {
+				return err
+			}
+			if len(evidence) > 0 {
+				f.evidence = &CheckEvidence{}
+				if err := json.Unmarshal(evidence, f.evidence); err != nil {
+					return err
+				}
+			}
+			f.branch, f.observer = deref0(branch), deref0(observer)
+			failing[memory] = append(failing[memory], f)
+		}
+		return r.Err()
+	})
 	if err := l.ReadBatch(ctx, scope.Narrow(spaceID), b); err != nil {
 		return nil, fmt.Errorf("ledger: read conditions: %w", err)
 	}
 	if !found {
 		return nil, ErrNotFound
+	}
+	conds := map[uuid.UUID][]conditions.Condition{}
+	for _, m := range memories {
+		conds[m.id] = m.conds
+	}
+	for _, s := range stale {
+		causes := []StaleCause{}
+		if s.staleAfter != nil && !s.staleAfter.After(now) {
+			causes = append(causes, StaleCause{Kind: StaleCauseDate, StaleAfter: s.staleAfter})
+		}
+		causes = append(causes, checkCauses(conds[s.id], failing[s.id])...)
+		out.Stale = append(out.Stale, StaleMemory{Memory: s.ref, Since: s.since, Causes: causes})
 	}
 	for _, m := range memories {
 		item := MemoryConditions{Memory: m.ref, Conditions: []CheckedCondition{}}

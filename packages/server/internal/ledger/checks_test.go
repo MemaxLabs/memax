@@ -598,3 +598,52 @@ func TestFlagsBesideForget(t *testing.T) {
 		})
 	}
 }
+
+// The conditions list says what's being verified, for the machines'
+// session-start hooks: each kept memory marked stale, the latest flag
+// first, with why (a check's typed cause; nothing for a flag Memax can't
+// explain), and no words; a verified one leaves it.
+func TestConditionsListWhatsBeingVerified(t *testing.T) {
+	t.Parallel()
+	r := newCheckRig(t)
+	ctx := context.Background()
+	a, aAt := commit(1, 3)
+	b, bAt := commit(2, 1)
+	r.report(t, a, aAt, r.holds(r.mem.Ref))
+	r.report(t, b, bAt, r.removed(r.mem.Ref))
+	other := r.f.remember(r.owner, r.sp, "Releases go out on Thursdays.")
+	if res := r.f.apply(&ledger.FlagStale{Meta: meta(ledger.Actor{Kind: policy.ActorMemax}, r.scope, policy.ViaSystem), SpaceID: r.sp,
+		Source: ledger.ReceiptSource{Kind: ledger.StaleSourceCommit, Ref: strings.Repeat("a", 40)},
+		Flags:  []ledger.StaleFlag{{Memory: other.ID, Reason: "Its source changed. Verify it."}}}); res.Outcome != ledger.OutcomeApplied {
+		t.Fatalf("flag: %+v", res)
+	}
+
+	list, err := r.f.l.ListConditions(ctx, r.scope, r.sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Stale) != 2 || list.Stale[0].Memory != other.Ref || list.Stale[1].Memory != r.mem.Ref ||
+		!list.Stale[0].Since.After(list.Stale[1].Since) && !list.Stale[0].Since.Equal(list.Stale[1].Since) {
+		t.Fatalf("stale list: %+v", list.Stale)
+	}
+	if len(list.Stale[0].Causes) != 0 {
+		t.Errorf("a flag without a check has causes: %+v", list.Stale[0].Causes)
+	}
+	c := list.Stale[1].Causes
+	if len(c) != 1 || c[0].Kind != ledger.StaleCauseCheck || c[0].Condition.Path != askConfig ||
+		c[0].Evidence.Change != ledger.ChangeRemoved || c[0].Commit != b || c[0].Branch != "main" {
+		t.Fatalf("the check's cause: %+v", c)
+	}
+
+	if res := r.f.apply(&ledger.Verify{Meta: meta(person(r.owner), r.scope, policy.ViaWeb), Memory: r.mem.Ref,
+		ExpectedVersion: 1, Answer: ledger.VerifyStillTrue}); res.Outcome != ledger.OutcomeApplied {
+		t.Fatalf("verify: %+v", res)
+	}
+	list, err = r.f.l.ListConditions(ctx, r.scope, r.sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Stale) != 1 || list.Stale[0].Memory != other.Ref {
+		t.Errorf("after Verify: %+v", list.Stale)
+	}
+}

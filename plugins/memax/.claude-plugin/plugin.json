@@ -1,7 +1,7 @@
 {
   "name": "memax",
   "displayName": "Memax",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Your reviewed project context in every session: the Memax MCP server (recall, search and propose), a session-start hook that says what changed since your last session, and a skill for working with Review.",
   "author": {
     "name": "MemaxLabs",

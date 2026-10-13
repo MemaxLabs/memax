@@ -216,7 +216,12 @@ describe("the checks' budget", () => {
               },
       );
     }
-    conditions = { space_id: "space-1", repository: "MemaxLabs/memax", items };
+    conditions = {
+      space_id: "space-1",
+      repository: "MemaxLabs/memax",
+      items,
+      stale: [],
+    };
     // Generating 100,000 files through fast-import takes seconds; a loaded
     // machine, several times that.
   }, 180_000);

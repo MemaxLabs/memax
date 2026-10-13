@@ -3,8 +3,10 @@
 // each for its home files (a feed of this machine's targets alone); the
 // control socket, the pid file and the state file.
 import { watch, type FSWatcher } from "node:fs";
-import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
+import type { V2 } from "memax-sdk";
+import { takeCheckRequests } from "../hook/check-requests.js";
 import { failureOf, type DaemonApi, type TargetPoll } from "./api.js";
 import {
   CheckReporter,
@@ -131,6 +133,8 @@ export class Daemon {
   private stamp = "";
   private homeStamp = "";
   private dirWatch: FSWatcher | null = null;
+  private requestsWatch: FSWatcher | null = null;
+  private requestsTimer: NodeJS.Timeout | null = null;
   private control: ControlServer | null = null;
   private running = false;
   private stopping: Promise<void> | null = null;
@@ -176,6 +180,7 @@ export class Daemon {
       if (s.forgotten.length) this.forgotten(id, forgottenRefs(s.forgotten));
     this.loads.start();
     this.reports.start();
+    this.watchCheckRequests();
     try {
       this.dirWatch = watch(
         this.o.paths.dir,
@@ -240,6 +245,7 @@ export class Daemon {
     for (const link of links.values())
       if (!this.repos.has(link.root)) this.addRepo(link);
     this.warm.retain(new Set(this.spaces.keys()));
+    this.warm.retainRoots(new Set(this.repos.keys()));
   }
 
   private addRepo(link: LinkedRepo): void {
@@ -266,6 +272,9 @@ export class Daemon {
       deviceId: this.o.deviceId,
       reporter: this.reports,
       timing: this.o.checks,
+      onStale: (spaceId, stale) =>
+        this.warm.setStale(spaceId, link.space_slug, stale),
+      onBranch: (root, hints) => this.warm.setBranch(root, hints),
     });
     this.repos.set(link.root, { link, delivery, watcher, checker });
     let space = this.spaces.get(link.space_id);
@@ -549,6 +558,42 @@ export class Daemon {
     );
   }
 
+  /**
+   * Session starts' check requests (lib/hook/check-requests.ts): each one
+   * for a repository linked here runs its checks soon, naming the agent.
+   * Watched, and read every minute in case a watch event is lost.
+   */
+  private watchCheckRequests(): void {
+    const dir = this.o.paths.checkRequests;
+    const take = () => {
+      const reqs = takeCheckRequests(dir);
+      if (reqs.length === 0) return;
+      this.reload();
+      for (const req of reqs) {
+        const repo = this.repos.get(req.root);
+        if (!repo) continue;
+        this.o.log.info("a session start asked for a check", {
+          root: req.root,
+          agent: req.agent,
+        });
+        repo.checker.sessionStarted(req.agent as V2.AgentKind);
+      }
+    };
+    try {
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      this.requestsWatch = watch(dir, { persistent: false }, () => take());
+      this.requestsWatch.on("error", () => {
+        this.requestsWatch?.close();
+        this.requestsWatch = null; // the minute's read still finds them
+      });
+    } catch {
+      this.requestsWatch = null;
+    }
+    this.requestsTimer = setInterval(take, 60_000);
+    this.requestsTimer.unref?.();
+    take();
+  }
+
   /** Says once that a space is on V1 again, and once that it is back. */
   private switched(
     s: { onV1?: boolean },
@@ -710,6 +755,8 @@ export class Daemon {
   private async shutdown(): Promise<void> {
     this.running = false;
     this.dirWatch?.close();
+    this.requestsWatch?.close();
+    if (this.requestsTimer) clearInterval(this.requestsTimer);
     await Promise.all([...this.spaces.values()].map((s) => s.feed.stop()));
     await this.home?.feed.stop();
     await this.loads.stop();

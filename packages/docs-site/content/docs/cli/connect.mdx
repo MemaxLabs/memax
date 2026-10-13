@@ -94,8 +94,12 @@ Run it again and each line says `=`: already set up, nothing changed.
    is [linked](/concepts/personal-layer), it connects the agent to your
    Personal space too, and adds the agent's own file (Claude Code's rules
    file, a block in Codex's `AGENTS.md`), or moves Codex's block to
-   `AGENTS.override.md` once Codex reads that. A machine you unlinked
-   stays unlinked. Outside a repository, the Personal space is the space.
+   `AGENTS.override.md` once Codex reads that. For OpenCode, which has no
+   file of its own, it adds `~/.memax/personal/AGENTS.md` to the
+   `instructions` in OpenCode's settings, unless OpenCode reads your
+   Personal space from `~/.claude/CLAUDE.md` already. A machine you
+   unlinked stays unlinked. Outside a repository, the Personal space is
+   the space.
 
 <Callout type="info">
   With the [Memax plugin](/integrations/claude-code-plugin) on in Claude Code,

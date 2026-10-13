@@ -42,7 +42,8 @@ export type TargetEntry =
  * (personal-layer design §3.2): Claude Code, Codex, and Gemini's file,
  * which Antigravity reads (and Gemini CLI once it reads AGENTS.md). A
  * machine may resolve another path (CLAUDE_CONFIG_DIR, CODEX_HOME,
- * GEMINI_CLI_HOME, COPILOT_HOME).
+ * GEMINI_CLI_HOME, COPILOT_HOME). OpenCode has no file of its own: memax
+ * connect opencode names the canonical copy in its instructions.
  */
 export const HOME_FILE_OF_AGENT: Readonly<Record<string, string>> = {
   "claude-code": "~/.claude/rules/memax-personal.md",
@@ -50,6 +51,7 @@ export const HOME_FILE_OF_AGENT: Readonly<Record<string, string>> = {
   gemini: "~/.gemini/AGENTS.md",
   copilot: "~/.copilot/copilot-instructions.md",
   windsurf: "~/.codeium/windsurf/memories/global_rules.md",
+  opencode: "~/.memax/personal/AGENTS.md",
 };
 
 /** The agent a home kind is written for; the canonical copy (agents_md) is for people and agents with no file. */

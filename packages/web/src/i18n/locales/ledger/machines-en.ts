@@ -104,6 +104,8 @@ export const ledgerMachinesEn = {
         "Memax's block in {file} on {machine}, which Antigravity reads in every project, and Gemini CLI once it reads AGENTS.md. Your own lines in that file stay on your machine; Memax doesn't read them.",
       agents_md:
         "Your Personal space in one file on {machine}, for you to read and for agents that have no file of their own.",
+      agents_md_opencode:
+        "Your Personal space in one file on {machine}, for you to read and for agents that have no file of their own. OpenCode reads it in every project there: its settings name this file.",
     },
     fileHead: "{machine} · {file}",
     block:

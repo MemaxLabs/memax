@@ -176,7 +176,11 @@ function homeLine(r: ConnectReport): Line | null {
         `moved to ${h.path} (${r.name} reads it now), ${h.note ?? ""}${compiled}`,
       ];
     case "present":
-      return [same, "Home", `${h.path}, your Personal space`];
+      return [
+        same,
+        "Home",
+        h.note ? `${h.path}: ${h.note}` : `${h.path}, your Personal space`,
+      ];
     case "unlinked":
       return [
         wait,
@@ -192,12 +196,18 @@ function homeLine(r: ConnectReport): Line | null {
             "Home",
             "Gemini CLI reads your Personal space from ~/.gemini/AGENTS.md once it reads AGENTS.md: add --agents-md",
           ]
-        : [skip, "Home", `${r.name} isn't set up in this home folder`];
+        : [
+            skip,
+            "Home",
+            `${r.name} isn't set up in this home folder${h.path ? ` (${h.path})` : ""}`,
+          ];
     default:
       return [
         skip,
         "Home",
-        "memax link --home writes your Personal space into its own file here",
+        r.agent === "opencode"
+          ? "memax link --home, then this again, adds your Personal space to OpenCode's instructions"
+          : "memax link --home writes your Personal space into its own file here",
       ];
   }
 }

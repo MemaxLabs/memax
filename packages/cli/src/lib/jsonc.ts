@@ -7,6 +7,7 @@
 // the closing brace, so a comment after the previous one stays with it.
 import {
   findNodeAtLocation,
+  getNodeValue,
   parse,
   parseTree,
   type JSONPath,
@@ -164,4 +165,126 @@ function remove(text: string, tree: Node, path: JSONPath): string {
     );
   }
   return splice(out, start, stop - start, "");
+}
+
+/** Where the next `,` is after `from`, past spaces, line ends and comments; -1 when there's none. */
+function commaPast(text: string, from: number, to: number): number {
+  let i = from;
+  while (i < to) {
+    if (/\s/.test(text[i])) i += 1;
+    else if (text.startsWith("//", i)) {
+      const nl = text.indexOf("\n", i);
+      i = nl < 0 ? to : nl + 1;
+    } else if (text.startsWith("/*", i)) {
+      const close = text.indexOf("*/", i + 2);
+      i = close < 0 ? to : close + 2;
+    } else return text[i] === "," ? i : -1;
+  }
+  return -1;
+}
+
+/**
+ * `text` with `value` added to the end of the array at `path`, or the
+ * array made when it isn't there. The elements already there, their
+ * comments and the file's other bytes stay as they are: on its own line
+ * after the last element when the array spans lines, else after it on the
+ * same one. Throws when the path holds something that isn't an array.
+ */
+export function appendJsonc(
+  text: string,
+  path: JSONPath,
+  value: unknown,
+): string {
+  const base = text.trim() === "" ? "{}\n" : text;
+  if (!parseJsoncObject(base)) throw new Error("not a JSON object");
+  const tree = parseTree(base, [], OPTIONS) as Node;
+  const node = findNodeAtLocation(tree, path);
+  if (!node) return setJsonc(text, path, [value]);
+  if (node.type !== "array") throw new Error(`${path.join(".")} isn't a list`);
+  const eol = base.includes("\r\n") ? "\r\n" : "\n";
+  const item = JSON.stringify(value);
+  const close = node.offset + node.length - 1;
+  const items = node.children ?? [];
+  const end = (s: string) => (s.endsWith("\n") ? s : `${s}${eol}`);
+  if (items.length === 0) return end(splice(base, node.offset + 1, 0, item));
+  const last = items[items.length - 1];
+  const after = last.offset + last.length;
+  const trailing = commaPast(base, after, close);
+  const multiline = base.slice(node.offset, close).includes("\n");
+  const at = trailing >= 0 ? trailing + 1 : after;
+  const lead = trailing >= 0 ? "" : ",";
+  return end(
+    splice(
+      base,
+      at,
+      0,
+      multiline
+        ? `${lead}${eol}${lineIndent(base, last.offset)}${item}`
+        : `${lead} ${item}`,
+    ),
+  );
+}
+
+/**
+ * `text` with every element of the array at `path` that `match` picks
+ * taken out, each with one comma (its own, or the one before it when it
+ * was the last), and its line when nothing else is on it. Comments stay.
+ * Unchanged when there's no such array or no such element.
+ */
+export function removeFromJsonc(
+  text: string,
+  path: JSONPath,
+  match: (value: unknown) => boolean,
+): string {
+  let out = text;
+  for (;;) {
+    if (!parseJsoncObject(out)) return out;
+    const tree = parseTree(out, [], OPTIONS) as Node;
+    const node = findNodeAtLocation(tree, path);
+    if (node?.type !== "array") return out;
+    const items = node.children ?? [];
+    const i = items.findIndex((n) => match(getNodeValue(n)));
+    if (i < 0) return out;
+    out = cut(out, items, i, node.offset + node.length - 1);
+  }
+}
+
+/** Takes element `i` out of `items` (an array's), with one comma. */
+function cut(text: string, items: Node[], i: number, close: number): string {
+  const el = items[i];
+  const elEnd = el.offset + el.length;
+  const own = commaPast(text, elEnd, close);
+  if (own < 0 && i > 0) {
+    // The last one: the comma before it goes, and with nothing but space
+    // between, everything from that comma on (`["a", "b"]` → `["a"]`).
+    const prev = items[i - 1];
+    const theirs = commaPast(text, prev.offset + prev.length, el.offset);
+    if (theirs >= 0 && text.slice(theirs + 1, el.offset).trim() === "")
+      return splice(text, theirs, elEnd - theirs, "");
+    if (theirs >= 0) {
+      const out = splice(text, theirs, 1, "");
+      return dropSpan(out, el.offset - 1, elEnd - 1);
+    }
+  }
+  return dropSpan(text, el.offset, own >= 0 ? own + 1 : elEnd);
+}
+
+/** `text` without [start, stop), and the line when nothing else is on it. */
+function dropSpan(text: string, start: number, stop: number): string {
+  const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+  const lineEnd = text.indexOf("\n", stop);
+  const before = text.slice(lineStart, start);
+  const rest = text.slice(stop, lineEnd < 0 ? text.length : lineEnd);
+  if (before.trim() === "" && rest.trim() === "") {
+    return splice(
+      text,
+      lineStart,
+      (lineEnd < 0 ? text.length : lineEnd + 1) - lineStart,
+      "",
+    );
+  }
+  // On a line with others: one space after it goes too (`["a", "b"]`).
+  const end =
+    text[stop] === " " && /[[ ]$/.test(text.slice(0, start)) ? stop + 1 : stop;
+  return splice(text, start, end - start, "");
 }

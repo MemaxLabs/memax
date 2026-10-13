@@ -3,6 +3,7 @@
 // design §6.1, §6.6).
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
+import { join } from "node:path";
 import chalk from "chalk";
 import type { Memax, V2 } from "memax-sdk";
 import { controlRequest, type HomeOffReason } from "../lib/daemon/control.js";
@@ -12,7 +13,8 @@ import {
   writeHomeLink,
   type HomeLink,
 } from "../lib/daemon/home-link.js";
-import { tilde } from "../lib/daemon/home-place.js";
+import { HOME_CANONICAL, tilde } from "../lib/daemon/home-place.js";
+import { openCodeWithout, removeInstruction } from "../lib/connect/opencode.js";
 import { daemonUnsupported, type DaemonPaths } from "../lib/daemon/paths.js";
 import type { OneShotDelivery } from "../lib/daemon/oneshot.js";
 import type { HomeSnapshot } from "../lib/daemon/snapshot.js";
@@ -201,6 +203,15 @@ export async function linkHome(
     },
   );
   await tidyUp(link, space.slug, o, d);
+  if (openCodeWithout({ home: d.home, env: d.env }, link)) {
+    d.out("");
+    d.out(
+      chalk.gray(
+        `  OpenCode reads your Personal space once its instructions name ~/${HOME_CANONICAL}: memax connect opencode adds it.`,
+      ),
+    );
+    d.out("");
+  }
   return code;
 }
 
@@ -292,6 +303,34 @@ async function homeOffHere(
 }
 
 /**
+ * Takes the entry memax connect opencode wrote out of OpenCode's
+ * instructions, once the link it names is gone; says which files changed.
+ */
+function openCodeOff(
+  link: HomeLink,
+  d: Pick<UnlinkHomeDeps, "env" | "out">,
+): void {
+  const env = d.env ?? {};
+  let changed: string[] = [];
+  try {
+    changed = removeInstruction(
+      { home: link.home, env },
+      join(link.home, HOME_CANONICAL),
+    );
+  } catch (err) {
+    d.out(
+      chalk.yellow(
+        `  Couldn't take ~/${HOME_CANONICAL} out of OpenCode's instructions: ${(err as Error).message}`,
+      ),
+    );
+  }
+  for (const p of changed)
+    d.out(
+      `    ${chalk.green(MARK.done)} ${tilde(link.home, p)}  ${chalk.gray(`~/${HOME_CANONICAL} taken out of OpenCode's instructions`)}`,
+    );
+}
+
+/**
  * memax logout signs this machine out, which takes the layer off it
  * (decision 3), as a refused refresh does in the daemon. home.json stays,
  * so memax login puts it back.
@@ -318,7 +357,7 @@ export async function homeSignedOut(
  */
 export async function homeSwitchedPerson(
   next: string | null,
-  d: Pick<UnlinkHomeDeps, "paths" | "oneShot" | "out">,
+  d: Pick<UnlinkHomeDeps, "paths" | "oneShot" | "out" | "env">,
 ): Promise<boolean> {
   const link = readHomeLink(d.paths);
   if (!link?.person_id || !next || next === link.person_id) return false;
@@ -327,6 +366,7 @@ export async function homeSwitchedPerson(
   d.out(
     "  Took the previous account's Personal space off this machine's home.",
   );
+  openCodeOff(link, d);
   return true;
 }
 
@@ -335,6 +375,8 @@ export interface UnlinkHomeDeps {
   paths: DaemonPaths;
   out: (line: string) => void;
   oneShot?: () => Promise<OneShotDelivery | null>;
+  /** The person's shell, where XDG_CONFIG_HOME is set (OpenCode's folder). */
+  env?: Record<string, string | undefined>;
 }
 
 /**
@@ -372,6 +414,7 @@ export async function unlinkHome(d: UnlinkHomeDeps): Promise<number> {
     `  ${chalk.green(MARK.done)} Unlinked this machine's home from ${chalk.bold(link.space_slug)}.`,
   );
   for (const line of offLines(link.home, snap, link)) d.out(line);
+  openCodeOff(link, d);
   if (note) d.out(chalk.yellow(`  ${note}`));
   d.out("");
   return 0;

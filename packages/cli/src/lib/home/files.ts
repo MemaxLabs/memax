@@ -16,7 +16,9 @@
 // - Windsurf: one block in ~/.codeium/windsurf/memories/global_rules.md,
 //   whose 6,000 characters the person's rules share (the daemon writes
 //   nothing past them); only when asked for (UNCONFIRMED_HOME_KINDS).
-// - The canonical copy `~/.memax/personal/AGENTS.md`, Memax's.
+// - The canonical copy `~/.memax/personal/AGENTS.md`, Memax's, which
+//   OpenCode reads once memax connect opencode names it in its
+//   instructions (lib/connect/opencode.ts).
 //
 // An agent offers a file only when its folder is here. Each file is
 // refused when it resolves outside home, through a symlink, or inside a
@@ -283,7 +285,7 @@ export function planHomeFiles(
       ),
     );
   }
-  if (out.length > 0) {
+  if (out.length > 0 || ask.includes("agents_md")) {
     out.push(plan(e, "agents_md", "Memax", join(e.home, HOME_CANONICAL), []));
   }
   return copilotBesideClaude(out);

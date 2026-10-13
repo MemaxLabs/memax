@@ -314,6 +314,7 @@ export function registerLinkCommands(program: Command): void {
             paths,
             out: (l) => console.log(l),
             oneShot: () => openOneShot({ memax, paths }),
+            env: process.env,
           });
         } catch (err) {
           console.error(chalk.red(`  ${apiFailureMessage(err)}`));

@@ -6,9 +6,10 @@
  * numbers below filled in, so a number is written once.
  *
  * Billing isn't built yet (epic 3.4's Stripe work waits on a founder): no
- * plan is sold and no limit here is enforced (policy.Decide counts Ask
- * and Dream's cadence, but the alpha is free). A feature that isn't built
- * yet is `coming`, and the page says so beside it: nothing unbuilt reads
+ * plan is sold. The server enforces plan rows through policy.Decide when
+ * V2_PLAN_LIMITS is enabled; it is off by default during the alpha. A
+ * feature that isn't built yet is `coming`, and the page says so beside
+ * it: nothing unbuilt reads
  * as available.
  */
 

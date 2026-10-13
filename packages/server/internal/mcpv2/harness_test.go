@@ -178,7 +178,9 @@ func buildEnvOn(t *testing.T, st store.Store, pool *pgxpool.Pool, withV2 bool, o
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", agentH)
 	mux.Handle("/mcp/chatgpt", chatH)
-	chain := handler.RequireAuth([]byte(testSecret), authH.ResolveAPIKey, authH.ResolveOAuthGrant)(
+	// As production builds it (serverapp): a grant with its hubs and scope.
+	chain := handler.RequireAuth([]byte(testSecret), authH.ResolveAPIKey, authH.ResolveOAuthGrant,
+		handler.WithCredentialPrefetch(authH))(
 		handler.HubContext(st)(handler.AuthorizeHTTP(mux)))
 	e.srv = httptest.NewServer(e.counters.Wrap(chain))
 	t.Cleanup(e.srv.Close)

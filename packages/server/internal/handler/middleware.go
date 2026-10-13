@@ -73,7 +73,40 @@ type AuthOption func(*authOptions)
 
 type authOptions struct {
 	startKeys StartKeyResolver
+	prefetch  CredentialPrefetcher
 }
+
+// Prefetched is what RequireAuth read with a credential, in the
+// credential's own round trip, for HubContext to use instead of reading it
+// again: the person's hub list (store.QueueRequestHubs) and, for a request
+// that builds a V2 principal, their V2 scope.
+type Prefetched struct {
+	UserID string
+	Hubs   []model.HubWithRole
+	// Listed says the hub list was read; HubContext reads it when not.
+	Listed bool
+	// Scope is the person's V2 scope, when it was asked for and read.
+	Scope *ledger.Scope
+}
+
+// CredentialPrefetcher resolves an API key or an OAuth grant together with
+// what HubContext reads next, in one round trip to Postgres where it would
+// be two one after the other (AuthHandler). scope asks for the person's V2
+// scope as well (a /v2 or /mcp request).
+type CredentialPrefetcher interface {
+	PrefetchAPIKey(ctx context.Context, key string, scope bool) (APIKeyResult, *Prefetched)
+	PrefetchGrant(ctx context.Context, userID, grantID string, scope bool) (APIKeyResult, *Prefetched)
+}
+
+// WithCredentialPrefetch resolves API keys (but start keys on the cloud
+// start's route, WithStartKeys) and OAuth grants through p, so a request
+// made with one reaches its handler after one round trip, as a person's
+// session does.
+func WithCredentialPrefetch(p CredentialPrefetcher) AuthOption {
+	return func(o *authOptions) { o.prefetch = p }
+}
+
+const prefetchedKey contextKey = "prefetched"
 
 // WithStartKeys resolves API keys on the cloud start's route (POST
 // /v2/spaces/{space}/session-starts) with r, which reads the key and its
@@ -144,6 +177,7 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 			var grant GrantContext
 			var audienceMismatch bool // an audience-bound token sent to another resource
 			var scope *ledger.Scope   // the person's V2 scope, when read with the key
+			var pf *Prefetched        // the hub list (and scope) read with the credential
 			if strings.HasPrefix(token, "mxk_") && keyResolver != nil {
 				// API key auth — resolves user, hub scope, and agent identity
 				var result APIKeyResult
@@ -153,6 +187,8 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 					if result.UserID != "" {
 						scope = &s
 					}
+				} else if o.prefetch != nil {
+					result, pf = o.prefetch.PrefetchAPIKey(r.Context(), token, readsV2Scope(r))
 				} else {
 					result = keyResolver(token)
 				}
@@ -193,7 +229,12 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 				if claims != nil {
 					impersonatorID = claims.ImpersonatorID
 					if claims.GrantID != "" && grantResolver != nil {
-						result := grantResolver(claims.Sub, claims.GrantID)
+						var result APIKeyResult
+						if o.prefetch != nil {
+							result, pf = o.prefetch.PrefetchGrant(r.Context(), claims.Sub, claims.GrantID, readsV2Scope(r))
+						} else {
+							result = grantResolver(claims.Sub, claims.GrantID)
+						}
 						userID = result.UserID
 						agentName = result.AgentName
 						if userID != "" {
@@ -266,6 +307,12 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 
 			ctx := context.WithValue(r.Context(), userIDKey, userID)
 			ctx = context.WithValue(ctx, grantContextKey, grant)
+			if pf != nil && pf.UserID == userID {
+				ctx = context.WithValue(ctx, prefetchedKey, pf)
+				if scope == nil && pf.Scope != nil {
+					scope = pf.Scope
+				}
+			}
 			if scope != nil {
 				ctx = context.WithValue(ctx, resolvedScopeKey, *scope)
 			}
@@ -533,10 +580,18 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 			var scope ledger.Scope
 			var scopeErr error
 			person, personErr := uuid.Parse(userID)
-			if ls, ok := s.(hubsWithBatch); ok && personErr == nil && readsV2Scope(r) {
-				allHubs, listErr = ls.ListUserHubsWith(r.Context(), userID, func(b *pgx.Batch) {
-					ledger.QueueUserScope(b, person, &scope, &scopeErr)
-				})
+			if pf, ok := r.Context().Value(prefetchedKey).(*Prefetched); ok && pf.UserID == userID && pf.Listed {
+				// Read with the credential, in its round trip (RequireAuth),
+				// and the scope with it when the request needs one.
+				allHubs = pf.Hubs
+			} else if ls, ok := s.(hubsWithBatch); ok {
+				// The request's list has no memory counts (memax_hubs reads
+				// its own), and the scope rides with it for /v2 and /mcp.
+				var extra func(*pgx.Batch)
+				if personErr == nil && readsV2Scope(r) {
+					extra = func(b *pgx.Batch) { ledger.QueueUserScope(b, person, &scope, &scopeErr) }
+				}
+				allHubs, listErr = ls.ListUserHubsWith(r.Context(), userID, extra)
 			} else {
 				allHubs, listErr = s.ListUserHubs(userID)
 			}

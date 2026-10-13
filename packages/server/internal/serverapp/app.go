@@ -1083,8 +1083,11 @@ func configureAuth(pool *pgxpool.Pool, s store.Store) (*handler.AuthHandler, fun
 
 	var authOpts []handler.AuthOption
 	if authH != nil {
-		// A cloud start's key and its person's spaces in one round trip.
-		authOpts = append(authOpts, handler.WithStartKeys(authH.ResolveStartKey))
+		// A cloud start's key and its person's spaces in one round trip;
+		// any other key or OAuth grant with its person's hubs and V2 scope,
+		// in one round trip too (HubContext reads none of them again).
+		authOpts = append(authOpts, handler.WithStartKeys(authH.ResolveStartKey),
+			handler.WithCredentialPrefetch(authH))
 	}
 	requireAuth := handler.RequireAuth(jwtSecret, keyResolver, grantResolver, authOpts...)
 	if authH == nil {

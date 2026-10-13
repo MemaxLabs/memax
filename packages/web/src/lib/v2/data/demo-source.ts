@@ -1,3 +1,4 @@
+import { createDemoSearch } from "./search-demo";
 import {
   DEMO_NEXT_REF,
   DEMO_NOW,
@@ -242,6 +243,7 @@ export function createDemoSource({
     settings: createDemoSettings({ dream, commandDelayMs }),
     account: createDemoAccount({ commandDelayMs }),
     spaces: async () => spaces(),
+    search: createDemoSearch({ delayMs: commandDelayMs }),
     overview: async (space) => {
       const found = overview(space.slug);
       if (!found) throw new Error(`No demo space "${space.slug}"`);

@@ -1,0 +1,255 @@
+/* Search, after Search.dc.html: the field and Ask instead across the
+ * page, then a 208px column of facets beside the matches by kind. */
+
+.top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.field {
+  width: 100%;
+}
+
+/* "Ask instead: <the words>" on a card, its keycap at the end. */
+.ask {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ask:hover {
+  background: var(--hover);
+}
+
+.ask:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.askIcon {
+  display: flex;
+  flex: none;
+  color: var(--ink-3);
+}
+
+.askLabel {
+  flex: none;
+  color: var(--ink-2);
+}
+
+.askQuestion {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.askKbd {
+  flex: none;
+  margin-left: auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.aside {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  padding: 0;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.check input {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.check input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.checkLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  margin-left: auto;
+}
+
+.stamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* A stamp in "Written by" turns what that author wrote off and on. */
+.stampToggle {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.stampToggle[aria-pressed="false"] {
+  opacity: 0.4;
+}
+
+.stampToggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.meta {
+  margin: 0;
+}
+
+.panelMeta {
+  font-weight: 500;
+}
+
+.moreRow {
+  padding: 6px 12px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A decision: its date, its words in the serif, open or in force. */
+.decision,
+.note {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: baseline;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  text-decoration: none;
+  outline: none;
+}
+
+.note {
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+}
+
+.decision:last-child,
+.note:last-child {
+  border-bottom: 0;
+}
+
+a.decision:hover {
+  background: var(--hover);
+}
+
+.decision:focus-visible,
+.note:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.date {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.decisionText {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 24px;
+}
+
+/* A raw note is never kept context: its words read quieter. */
+.noteText {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--ink-2);
+}
+
+@media (max-width: 1023px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .aside {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 16px 32px;
+  }
+}
+
+@media (max-width: 639px) {
+  .decision,
+  .note {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .date {
+    grid-column: 1 / -1;
+  }
+}

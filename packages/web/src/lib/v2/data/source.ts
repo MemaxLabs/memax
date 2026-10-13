@@ -9,6 +9,7 @@ import type { ImportsSource } from "./imports";
 import type { MachinesSource } from "./machines";
 import type { MemoriesSource } from "./memories";
 import type { ReviewSource } from "./review";
+import type { SearchSource } from "./search";
 import type { SettingsSource } from "./settings";
 import type { SwitchSource } from "./switch";
 import type { TargetsSource } from "./targets";
@@ -57,6 +58,8 @@ export interface LedgerDataSource extends ActivityData, AgentsData, UndoSource {
   readonly viewer: Viewer | null;
   /** The viewer's spaces, in switcher order (⌘1…⌘9). */
   spaces(signal?: AbortSignal): Promise<SpaceSummary[]>;
+  /** Search across the viewer's spaces (search.ts). */
+  readonly search: SearchSource;
   overview(space: SpaceSummary, signal?: AbortSignal): Promise<SpaceOverview>;
   /** A cited answer from the space, streamed. */
   ask(input: {

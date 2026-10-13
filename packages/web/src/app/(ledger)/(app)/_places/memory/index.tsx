@@ -8,7 +8,7 @@ import { formatAgo, formatShortDate } from "@/lib/v2/copy";
 import { clashTitle } from "@/lib/v2/records-copy";
 import type { MemoryRecord } from "@/lib/v2/data/memories";
 import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
-import { placeHref } from "@/lib/v2/places";
+import { placeHref, searchHref } from "@/lib/v2/places";
 import { EditClash } from "../../_components/edit-clash";
 import { HeaderSkeleton, PlaceSkeleton } from "../../_components/skeleton";
 import { StatementEditor } from "../../_components/statement-editor";
@@ -39,7 +39,6 @@ export function MemoryPlace({ memoryRef }: { memoryRef: string }) {
   const view = useRecordsView();
   const { l, space } = view;
   const record = useMemoryRecord(space, memoryRef);
-  const { openCommand } = useOverlays();
 
   if (record.data === undefined) {
     if (record.isError) {
@@ -70,7 +69,7 @@ export function MemoryPlace({ memoryRef }: { memoryRef: string }) {
               variant="secondary"
               size="sm"
               icon="search"
-              onClick={() => openCommand("ask")}
+              href={searchHref(space.slug)}
             >
               {nf.search}
             </Button>

@@ -19,6 +19,7 @@ import { ledgerSettingsEn } from "./settings-en";
 import { ledgerTodayEn } from "./today-en";
 import { ledgerVerifyEn } from "./verify-en";
 import { ledgerMachinesEn } from "./machines-en";
+import { ledgerSearchEn } from "./search-en";
 
 export const ledgerEn = {
   meta: {
@@ -53,6 +54,7 @@ export const ledgerEn = {
   memory: ledgerMemoryEn,
   verify: ledgerVerifyEn,
   machines: ledgerMachinesEn,
+  search: ledgerSearchEn,
   brief: ledgerBriefEn,
   today: ledgerTodayEn,
   dream: ledgerDreamEn,

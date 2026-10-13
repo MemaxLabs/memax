@@ -15,14 +15,18 @@ import { useSpaceView } from "../_lib/space-context";
 import { PlaceColumn, usePlace } from "./place";
 import styles from "./place.module.css";
 
-/** Every place a space has but Today, whose page is the switch itself. */
-export type PlaceOnV1 = Exclude<PlaceRoute, "today">;
+/**
+ * Every place a space has but Today, whose page is the switch itself, and
+ * Search, which reads every space on V2 whichever space it's opened from.
+ */
+export type PlaceOnV1 = Exclude<PlaceRoute, "today" | "search">;
 
 /**
  * A space's places (the [space] layout's body). A space still on V1 has
  * no V2 record, so each of its places but Today shows SpaceOnV1 instead
  * of a page that would read an empty record and call it empty; Today is
- * the switch to V2 (today/switch-to-v2.tsx). A place the space doesn't
+ * the switch to V2 (today/switch-to-v2.tsx), and Search reads the spaces
+ * that are on V2. A place the space doesn't
  * have (Decisions outside a team) still answers 404.
  */
 export function SpacePlaces({ children }: { children: ReactNode }) {
@@ -32,6 +36,7 @@ export function SpacePlaces({ children }: { children: ReactNode }) {
     space.onV2 === false &&
     route !== undefined &&
     route !== "today" &&
+    route !== "search" &&
     spaceHasPlace(space.kind, route)
   ) {
     return <SpaceOnV1 route={route} />;

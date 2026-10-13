@@ -19,12 +19,14 @@ import { createSdkMachines, machinesOrNull } from "./machines-sdk";
 import type { LedgerDataSource } from "./source";
 import { createSdkTargets, targetsOrNull } from "./targets-sdk";
 import { createSdkToday } from "./today-sdk";
+import { createSdkSearch } from "./search-sdk";
 import type { KeepResult, SpaceOverview, Viewer } from "./types";
 
 /**
  * The SDK source: memax.v2 for signed-in people.
  *
- * What /v2 serves today: the spaces list, Review's queue and the
+ * What /v2 serves today: the spaces list, search across spaces,
+ * Review's queue and the
  * decision gates waiting on an answer (together the rail's ochre count),
  * memories, receipts, agents, the Brief and its compile targets (which
  * feed the status line), Remember's near-duplicate check and Ask.
@@ -90,6 +92,7 @@ export function createSdkSource({
         waiting: null,
       }));
     },
+    search: createSdkSearch(client, viewerId),
     async overview(space, signal): Promise<SpaceOverview> {
       const [review, memories, receipts, agents, targets, asked, machines] =
         await Promise.all([

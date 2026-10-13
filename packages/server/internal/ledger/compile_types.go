@@ -83,22 +83,31 @@ const (
 	// TargetCopilotUser is one block in Copilot's user instructions,
 	// ~/.copilot/copilot-instructions.md (COPILOT_HOME moves it).
 	TargetCopilotUser TargetKind = "copilot_user"
+	// TargetWindsurfUser is one block in Windsurf's global rules,
+	// ~/.codeium/windsurf/memories/global_rules.md, whose 6,000-character
+	// limit the person's own rules share.
+	TargetWindsurfUser TargetKind = "windsurf_user"
 )
 
 // TargetKinds lists every kind.
 var TargetKinds = []TargetKind{TargetAgentsMD, TargetClaudeMD, TargetCursorMDC, TargetChatGPT,
 	TargetGeminiMD, TargetCopilot, TargetWindsurf, TargetClaudeRules, TargetClaudeUser, TargetCodexUser, TargetGeminiUser,
-	TargetCopilotUser}
+	TargetCopilotUser, TargetWindsurfUser}
 
 // HomeTargetKinds are the kinds that write only into a home folder: the
 // compiler's HOME_TARGET_KINDS. A machine's home targets are these and the
 // personal canonical copy (agents_md at HomeCanonicalPath).
-var HomeTargetKinds = []TargetKind{TargetClaudeUser, TargetCodexUser, TargetGeminiUser, TargetCopilotUser}
+var HomeTargetKinds = []TargetKind{TargetClaudeUser, TargetCodexUser, TargetGeminiUser, TargetCopilotUser,
+	TargetWindsurfUser}
 
 // HomeCanonicalPath is the personal canonical copy on a linked machine,
 // relative to its home folder: what OpenCode, the Cursor hook and people
 // read.
 const HomeCanonicalPath = ".memax/personal/AGENTS.md"
+
+// WindsurfGlobalRules is Windsurf's one global rules file, relative to the
+// home folder.
+const WindsurfGlobalRules = ".codeium/windsurf/memories/global_rules.md"
 
 // TargetRoot is what a target's path is relative to.
 type TargetRoot string
@@ -149,7 +158,7 @@ func (k TargetKind) role() string {
 		return "shim"
 	case TargetChatGPT:
 		return "copy"
-	case TargetClaudeUser, TargetCodexUser, TargetGeminiUser, TargetCopilotUser:
+	case TargetClaudeUser, TargetCodexUser, TargetGeminiUser, TargetCopilotUser, TargetWindsurfUser:
 		return "home"
 	}
 	return "scoped"
@@ -182,6 +191,8 @@ func (k TargetKind) DefaultPath() string {
 		return ".gemini/AGENTS.md"
 	case TargetCopilotUser:
 		return ".copilot/copilot-instructions.md"
+	case TargetWindsurfUser:
+		return WindsurfGlobalRules
 	}
 	return ""
 }
@@ -270,6 +281,10 @@ const (
 	// A home file loads in every session of every agent on every machine,
 	// so it is short: 6 KiB, about 1,500 tokens, by default (decision 4).
 	DefaultHomeSizeBudget = 6144
+	// DefaultWindsurfSizeBudget is Windsurf's: its global rules are limited
+	// to 6,000 characters with the person's own rules, so the block leaves
+	// them room (decision 4 of the personal-layer design).
+	DefaultWindsurfSizeBudget = 4000
 	// MaxHomeSizeBudget bounds a home file whose tool sets no cap of its own
 	// (Codex's global AGENTS.md has none): 16 KiB, about 4,000 tokens in
 	// every session, roughly Claude Code's 200-line guidance for a memory

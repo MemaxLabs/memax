@@ -3524,16 +3524,17 @@ export interface components {
          *     `.memax/personal/AGENTS.md`); claude_md and gemini_md are shims that
          *     import it; cursor_mdc, copilot, windsurf and claude_rules hold
          *     path-scoped facts only; chatgpt is copied out. claude_user,
-         *     codex_user, gemini_user and copilot_user are home files: a personal
-         *     space in Claude Code's user rules (`.claude/rules/memax-personal.md`,
-         *     or a block in `.claude/CLAUDE.md`), in a block of Codex's
-         *     `.codex/AGENTS.md`, in a block of `.gemini/AGENTS.md`, which
-         *     Antigravity reads (and Gemini CLI, once its `context.fileName` lists
-         *     AGENTS.md), and in a block of Copilot's
-         *     `.copilot/copilot-instructions.md`.
+         *     codex_user, gemini_user, copilot_user and windsurf_user are home
+         *     files: a personal space in Claude Code's user rules
+         *     (`.claude/rules/memax-personal.md`, or a block in
+         *     `.claude/CLAUDE.md`), in a block of Codex's `.codex/AGENTS.md`, in a
+         *     block of `.gemini/AGENTS.md`, which Antigravity reads (and Gemini
+         *     CLI, once its `context.fileName` lists AGENTS.md), in a block of
+         *     Copilot's `.copilot/copilot-instructions.md`, and in a block of
+         *     Windsurf's `.codeium/windsurf/memories/global_rules.md`.
          * @enum {string}
          */
-        TargetKind: "agents_md" | "claude_md" | "cursor_mdc" | "chatgpt" | "gemini_md" | "copilot" | "windsurf" | "claude_rules" | "claude_user" | "codex_user" | "gemini_user" | "copilot_user";
+        TargetKind: "agents_md" | "claude_md" | "cursor_mdc" | "chatgpt" | "gemini_md" | "copilot" | "windsurf" | "claude_rules" | "claude_user" | "codex_user" | "gemini_user" | "copilot_user" | "windsurf_user";
         /**
          * @description What a target's path is relative to: `repo`, a repository linked on
          *     some machine, or `home`, one linked machine's home folder (a
@@ -4572,7 +4573,7 @@ export interface components {
         };
         /** @description A file you approve on the machine. */
         MachineFileInput: {
-            /** @description claude_user, codex_user, gemini_user, copilot_user, or agents_md (the canonical copy). */
+            /** @description claude_user, codex_user, gemini_user, copilot_user, windsurf_user, or agents_md (the canonical copy). */
             kind: components["schemas"]["TargetKind"];
             /** @description Relative to the home folder; defaults to the kind's own. */
             path?: components["schemas"]["HomePath"];

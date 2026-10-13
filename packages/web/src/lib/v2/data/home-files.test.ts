@@ -123,6 +123,13 @@ describe("Gemini's home file", () => {
       }),
     ).toBe(true);
     expect(homeAgent("copilot_user")).toBe("copilot");
+    expect(
+      isBlock({
+        kind: "windsurf_user",
+        path: ".codeium/windsurf/memories/global_rules.md",
+      }),
+    ).toBe(true);
+    expect(homeAgent("windsurf_user")).toBe("windsurf");
   });
 });
 

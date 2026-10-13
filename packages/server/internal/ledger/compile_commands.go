@@ -345,7 +345,7 @@ func (c *ConfigureTarget) validate() error {
 		return invalid("space_id", "say which space the target belongs to")
 	}
 	if !c.Kind.Valid() {
-		return invalid("kind", "use agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules, claude_user, codex_user, gemini_user or copilot_user")
+		return invalid("kind", "use agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules, claude_user, codex_user, gemini_user, copilot_user or windsurf_user")
 	}
 	switch {
 	case c.Root == RootHome && c.Machine == uuid.Nil:
@@ -390,7 +390,11 @@ func defaultSettingsAt(k TargetKind, root TargetRoot, path string) TargetSetting
 	if root != RootHome {
 		return defaultSettings(k)
 	}
-	return TargetSettings{Include: IncludeKeptAndOpen, Stale: StaleMark, SizeBudget: DefaultHomeSizeBudget,
+	budget := DefaultHomeSizeBudget
+	if k == TargetWindsurfUser {
+		budget = DefaultWindsurfSizeBudget
+	}
+	return TargetSettings{Include: IncludeKeptAndOpen, Stale: StaleMark, SizeBudget: budget,
 		UserOwned: homeOwned(k, path), ReadBy: defaultReadBy(k)}
 }
 
@@ -531,6 +535,8 @@ func checkHomePath(k TargetKind, path string) error {
 		// ~/.github would be a repository's file name, never Copilot's own.
 		ok = folder != ".memax" && folder != ".github" && strings.HasSuffix(path, "/copilot-instructions.md")
 		hint = "end it in copilot-instructions.md, in Copilot's folder such as .copilot"
+	case TargetWindsurfUser:
+		ok, hint = path == WindsurfGlobalRules, "Windsurf's global rules are "+WindsurfGlobalRules
 	default:
 		hint = "this kind isn't written into a home folder"
 	}
@@ -546,11 +552,11 @@ func ValidHomePath(k TargetKind, path string) bool { return checkHomePath(k, pat
 
 // homeOwned is whether a home file is the person's (Memax manages one
 // block in it) rather than Memax's own: Codex's and Gemini's AGENTS.md,
-// Copilot's instructions and a ~/.claude/CLAUDE.md are theirs; the rules
-// file and the canonical copy are Memax's. The compiler decides the same from the path.
+// Copilot's instructions, Windsurf's global rules and a ~/.claude/CLAUDE.md
+// are theirs; the rules file and the canonical copy are Memax's. The compiler decides the same from the path.
 func homeOwned(k TargetKind, path string) bool {
 	switch k {
-	case TargetCodexUser, TargetGeminiUser, TargetCopilotUser:
+	case TargetCodexUser, TargetGeminiUser, TargetCopilotUser, TargetWindsurfUser:
 		return true
 	case TargetClaudeUser:
 		return strings.HasSuffix(path, "/CLAUDE.md")
@@ -581,6 +587,8 @@ func defaultReadBy(k TargetKind) []string {
 	case TargetCopilotUser:
 		// Copilot CLI, and VS Code's Copilot (agent kind copilot).
 		return []string{"copilot"}
+	case TargetWindsurfUser:
+		return []string{"windsurf"}
 	}
 	return nil
 }

@@ -56,7 +56,9 @@ export function homeLede(
           ? lede.gemini_user
           : target.kind === "copilot_user"
             ? lede.copilot_user
-            : lede.agents_md;
+            : target.kind === "windsurf_user"
+              ? lede.windsurf_user
+              : lede.agents_md;
   return interpolate(template, { machine, file: target.label });
 }
 

@@ -15,6 +15,10 @@ import { UnsafePathError, validRepoPath } from "./safe-path.js";
 /** The personal canonical copy, as the server names it (HomeCanonicalPath). */
 export const HOME_CANONICAL = ".memax/personal/AGENTS.md";
 
+/** Windsurf's one global rules file (the server's WindsurfGlobalRules). */
+export const WINDSURF_GLOBAL_RULES =
+  ".codeium/windsurf/memories/global_rules.md";
+
 /** The server's checkHomePath: a home file of a kind, in a dot folder. */
 export function validHomePath(kind: V2.TargetKind, path: string): boolean {
   if (!validRepoPath(path)) return false;
@@ -46,6 +50,8 @@ export function validHomePath(kind: V2.TargetKind, path: string): boolean {
         folder !== ".github" &&
         path.endsWith("/copilot-instructions.md")
       );
+    case "windsurf_user":
+      return path === WINDSURF_GLOBAL_RULES;
   }
   return false;
 }
@@ -53,7 +59,7 @@ export function validHomePath(kind: V2.TargetKind, path: string): boolean {
 /**
  * Whether a home file is the person's, with one Memax block in it (the
  * server's homeOwned): Codex's and Gemini's AGENTS.md, Copilot's
- * copilot-instructions.md, and the
+ * copilot-instructions.md, Windsurf's global rules, and the
  * ~/.claude/CLAUDE.md fallback. Claude Code's rules file and the canonical
  * copy are Memax's own.
  */
@@ -62,6 +68,7 @@ export function homeBlockFile(kind: V2.TargetKind, path: string): boolean {
     kind === "codex_user" ||
     kind === "gemini_user" ||
     kind === "copilot_user" ||
+    kind === "windsurf_user" ||
     (kind === "claude_user" && path.endsWith("/CLAUDE.md"))
   );
 }
@@ -71,6 +78,7 @@ const AGENT: Partial<Record<V2.TargetKind, string>> = {
   codex_user: "Codex",
   gemini_user: "Gemini",
   copilot_user: "Copilot",
+  windsurf_user: "Windsurf",
 };
 
 /**
@@ -80,6 +88,7 @@ const AGENT: Partial<Record<V2.TargetKind, string>> = {
  */
 export function agentFolder(kind: V2.TargetKind, path: string): string | null {
   for (const suffix of [
+    "/memories/global_rules.md",
     "/copilot-instructions.md",
     "/rules/memax-personal.md",
     "/CLAUDE.md",

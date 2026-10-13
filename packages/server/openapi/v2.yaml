@@ -6227,8 +6227,16 @@ components:
         creates or switches a space), personal_exists (each person has one
         personal space, made with their account), space_kind (only project
         spaces are created here; team spaces come with Team), space_limit
-        (the most project spaces one person owns during the alpha),
+        (the person owns as many project spaces as their plan has, or the
+        most one person owns on any plan; `limit` says which),
         switch_by_owner (only the owner switches a space).
+        Plan limits, only when enforced, each with `limit`: space_limit and
+        ask_limit as above, agent_kind_limit (the person has connected as
+        many kinds of agent as their plan has; another machine or key for a
+        kind they have isn't a new one), seat_needed (refused, or sent to
+        Review: on a plan that doesn't bill seats, Free and Pro, only the
+        owner keeps, and a member acts as a viewer does), dream_cadence (Dream
+        has run now as often as the space's plan allows this week or day).
         Refused device codes: device_by_person (only a person signs a device
         in), device_needs_web (confirming or declining a code needs a person
         on the web app). Refused sessions: session_by_person (only a person
@@ -6306,6 +6314,9 @@ components:
         - space_kind
         - space_limit
         - switch_by_owner
+        - agent_kind_limit
+        - seat_needed
+        - dream_cadence
         - dream_by_dream
         - dream_run_by_owner
         - device_by_person
@@ -7009,6 +7020,34 @@ components:
             one (then the same change asks for it).
           type: string
           enum: [passkey]
+        limit:
+          $ref: '#/components/schemas/PlanLimit'
+
+    PlanLimit:
+      description: |
+        The plan limit a decision met (D9), for the plan-limit dialog: the
+        plan the limit is the person's or the space's, how much it allows
+        and how much is used (absent for seats), and the plan that lifts it
+        (absent when none does). Only when plan limits are enforced.
+      type: object
+      additionalProperties: false
+      required: [plan]
+      properties:
+        plan:
+          $ref: '#/components/schemas/PlanTier'
+        allowed:
+          type: integer
+          minimum: 1
+        used:
+          type: integer
+          minimum: 1
+        upgrade:
+          $ref: '#/components/schemas/PlanTier'
+
+    PlanTier:
+      description: A V2 plan (D9).
+      type: string
+      enum: [free, pro, team, enterprise]
 
     CommandResult:
       type: object
@@ -7511,6 +7550,13 @@ components:
           description: The space's reads in the last 7 days.
           type: integer
           minimum: 0
+        retention_days:
+          description: |
+            How far back the space's plan lists reads, in days (D9: Free 30,
+            Pro 90, Team a year), when plan limits are enforced; absent, they
+            go as far back as they are kept. Older ones are kept, not listed.
+          type: integer
+          minimum: 1
 
     CompileLoadRequest:
       type: object
@@ -8869,6 +8915,13 @@ components:
           type: boolean
         next_cursor:
           $ref: '#/components/schemas/Cursor'
+        retention_days:
+          description: |
+            How far back the space's plan lists compile runs, in days (D9: Free 30,
+            Pro 90, Team a year), when plan limits are enforced; absent, they
+            go as far back as they are kept. Older ones are kept, not listed.
+          type: integer
+          minimum: 1
 
     DriftChange:
       description: |

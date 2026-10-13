@@ -59,6 +59,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2switch"
 )
@@ -247,6 +248,16 @@ func New(ctx context.Context) (*App, error) {
 	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
 	dreamCfg := v2dream.ConfigFromEnv(os.LookupEnv)
 	v2Opts := []ledger.Option{ledger.WithJobs(insertClient), ledger.WithDreamUndoWindow(dreamCfg.UndoWindow)}
+	// The V2 plans (D9): Dream's cadence and run-now cap follow each space's
+	// plan once V2_PLAN_LIMITS enforces them.
+	enforce, err := v2plans.EnforceFromEnv(os.LookupEnv)
+	if err != nil {
+		slog.Error("worker: V2 plan limits stay off", "error", err)
+	}
+	if p := v2plans.New(planRegistry, enforce); p != nil {
+		v2Opts = append(v2Opts, ledger.WithPlans(p))
+		logEnabled("V2 plan limits", enforce)
+	}
 	if embedCfg.Enabled() {
 		v2Opts = append(v2Opts, ledger.WithIndexJobs())
 	}

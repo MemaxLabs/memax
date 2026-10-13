@@ -441,7 +441,7 @@ func (l *Ledger) reportOnce(ctx context.Context, c *CheckReport, scope Scope, gr
 	if err != nil {
 		return CheckReportResult{}, err
 	}
-	dec := policy.Decide(toPolicyActor(c.Actor, c.Via, grant), policy.ActionReportChecks, policy.Object{}, sp.policy())
+	dec := policy.Decide(toPolicyActor(c.Actor, c.Via, grant, l.plans), policy.ActionReportChecks, policy.Object{}, sp.policy())
 	if dec.Effect == policy.EffectRefuse {
 		return CheckReportResult{Policy: dec}, nil
 	}

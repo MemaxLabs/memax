@@ -88,7 +88,7 @@ func (l *Ledger) PreviewForget(ctx context.Context, scope Scope, actor Actor, vi
 		p := &ForgetPreview{Ref: mem.Ref, Version: mem.Version, Carries: nonNilSlice(carried),
 			Files: []TombstoneTarget{}, Allowed: true}
 		grant, _ := scope.Grant(mem.SpaceID)
-		pa := toPolicyActor(actor, via, grant)
+		pa := toPolicyActor(actor, via, grant, l.plans)
 		decide := func(m Carried, decision bool) {
 			if !p.Allowed {
 				return

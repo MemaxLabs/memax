@@ -352,13 +352,17 @@ func (h *Handler) runDream(w http.ResponseWriter, r *http.Request) {
 	}
 	h.dream.recent[sp.SpaceID] = now
 	h.dream.mu.Unlock()
-	ok, window, err := h.dream.engine.ManualAllowed(r.Context(), scope, sp.SpaceID)
+	runNow, err := h.dream.engine.ManualAllowed(r.Context(), scope, sp.SpaceID)
 	if err != nil {
 		writeError(w, h.fromLedger(r, err))
 		return
 	}
-	if !ok {
-		wait := int(window.Seconds())
+	if runNow.Refusal != nil {
+		h.writeRefusal(w, r, *runNow.Refusal)
+		return
+	}
+	if !runNow.Allowed {
+		wait := int(runNow.Wait.Seconds())
 		writeError(w, &apiError{status: http.StatusTooManyRequests, code: codeRateLimited, retryAfter: wait,
 			message: "Dream has run now as often as your plan allows for this space. It still runs on its own each night.",
 			details: &errorDetails{RetryAfter: wait}})

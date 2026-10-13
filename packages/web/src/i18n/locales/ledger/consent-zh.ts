@@ -55,6 +55,7 @@ export const ledgerConsentZh: Translations["ledger"]["consent"] = {
   footnoteDisconnect: "你随时可以在 Agent 页面断开 {client}。",
   errors: {
     space: "这个账号连接不了那个空间。从这里列出的空间里选一个吧。",
+    plan: "你连接的 Agent 种类已经达到套餐上限，所以没有连接 {client}。在 Agents 里断开一个不用的，或者换到 Pro 套餐，不限种类。",
     failed: "没能完成，再试一次吧。",
   },
   loading: "正在读取请求",

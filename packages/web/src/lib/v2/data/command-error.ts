@@ -1,4 +1,4 @@
-import { MemaxError, refusalOf } from "memax-sdk";
+import { MemaxError, refusalOf, type V2 } from "memax-sdk";
 import { GATE_ENDS, type GateEnd } from "./gates";
 
 /**
@@ -9,8 +9,17 @@ import { GATE_ENDS, type GateEnd } from "./gates";
  * (records-copy.ts), keyed by these kinds and the policy code.
  */
 export type CommandFailure =
-  /** 403 `refused`: policy said no. `code` is spec PolicyCode. */
-  | { kind: "refused"; code: string | null; message: string | null }
+  /**
+   * 403 `refused`: policy said no. `code` is spec PolicyCode; `limit` is
+   * the plan limit it met (space_limit, agent_kind_limit, ask_limit,
+   * seat_needed, dream_cadence), when plan limits are enforced.
+   */
+  | {
+      kind: "refused";
+      code: string | null;
+      message: string | null;
+      limit?: V2.PlanLimit | null;
+    }
   /** 412 `edit_clash`: the memory changed since the person read it. */
   | { kind: "clash"; currentVersion: number | null }
   /**
@@ -101,6 +110,7 @@ export function toFailure(err: unknown): CommandFailure {
         kind: "refused",
         code: policy?.code ?? null,
         message: policy?.message ?? err.message ?? null,
+        limit: policy?.limit ?? null,
       };
     }
     if (err.code === "needs_passkey") {

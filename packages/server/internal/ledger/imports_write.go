@@ -350,7 +350,7 @@ func (l *Ledger) importOnce(ctx context.Context, meta Meta, req ImportRequest, o
 	defer func() { _ = tx.Rollback(ctx) }()
 	w := &writer{tx: tx, meta: &meta, command: CommandImportStatement, inserter: l.inserter, loginRole: loginRole,
 		space: req.SpaceID, indexJobs: l.indexJobs, now: now, undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow,
-		returnWindow: l.returnWindow, forgetHonesty: l.honesty, dreamUndoWindow: l.dreamUndoWindow}
+		returnWindow: l.returnWindow, forgetHonesty: l.honesty, dreamUndoWindow: l.dreamUndoWindow, plans: l.plans}
 	actorKind, actorID := string(meta.Actor.Kind), w.actorID()
 	scopeIDs := meta.Scope.SpaceIDs()
 
@@ -466,7 +466,7 @@ func (l *Ledger) importOnce(ctx context.Context, meta Meta, req ImportRequest, o
 		return nil, spaceErr
 	}
 	grant, _ := meta.Scope.Grant(sp.ID)
-	if d := policy.Decide(toPolicyActor(meta.Actor, meta.Via, grant), policy.ActionPropose, policy.Object{}, sp.policy()); d.Effect == policy.EffectRefuse {
+	if d := policy.Decide(toPolicyActor(meta.Actor, meta.Via, grant, l.plans), policy.ActionPropose, policy.Object{}, sp.policy()); d.Effect == policy.EffectRefuse {
 		return &ImportResult{Refused: &d}, nil
 	}
 	if importID == uuid.Nil || (len(groups) > 0 && !allocated) {

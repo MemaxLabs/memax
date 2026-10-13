@@ -47,7 +47,7 @@ export function ConsentForm({
     () => request.spaces.find((s) => !s.disabled)?.id ?? null,
   );
   const [doing, setDoing] = useState<Doing | null>(null);
-  const [error, setError] = useState<"space" | "failed" | null>(null);
+  const [error, setError] = useState<"space" | "plan" | "failed" | null>(null);
   const space = request.spaces.find((s) => s.id === chosen);
 
   const failed = (err: unknown) => {
@@ -57,8 +57,9 @@ export function ConsentForm({
       return;
     }
     setError(
-      err instanceof ConsentDecisionError && err.refusal === "space"
-        ? "space"
+      err instanceof ConsentDecisionError &&
+        (err.refusal === "space" || err.refusal === "plan")
+        ? err.refusal
         : "failed",
     );
   };
@@ -147,7 +148,7 @@ export function ConsentForm({
       </div>
       {error ? (
         <p className={styles.alert} role="alert">
-          {copy.errors[error]}
+          {interpolate(copy.errors[error], { client: short })}
         </p>
       ) : null}
       {noSpaces ? (

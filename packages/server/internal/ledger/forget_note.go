@@ -405,7 +405,7 @@ func (l *Ledger) PreviewForgetNote(ctx context.Context, actor Actor, via policy.
 			return err
 		}
 		out = &NoteForgetPreview{Ref: n.Ref, Carries: nonNilSlice(carried)}
-		d := policy.Decide(toPolicyActor(actor, via, g), policy.ActionForget, policy.Object{Ref: n.Ref}, sp.policy())
+		d := policy.Decide(toPolicyActor(actor, via, g, l.plans), policy.ActionForget, policy.Object{Ref: n.Ref}, sp.policy())
 		out.Allowed = d.Effect != policy.EffectRefuse
 		if !out.Allowed {
 			out.Policy = &d

@@ -268,7 +268,7 @@ func (l *Ledger) bulkReview(ctx context.Context, verb CommandName, meta Meta, it
 	now := l.now()
 	w := &writer{tx: tx, meta: &meta, command: verb, inserter: l.inserter, loginRole: loginRole, space: spaceID,
 		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, returnWindow: l.returnWindow, now: now,
-		indexJobs: l.indexJobs, forgetHonesty: l.honesty, dreamUndoWindow: l.dreamUndoWindow}
+		indexJobs: l.indexJobs, forgetHonesty: l.honesty, dreamUndoWindow: l.dreamUndoWindow, plans: l.plans}
 
 	ids, seqs, keys := []uuid.UUID{}, []int64{}, make([]string, len(items))
 	for i, it := range items {

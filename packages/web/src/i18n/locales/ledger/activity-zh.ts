@@ -56,7 +56,8 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     compiles: "编译",
     notRecorded: "还没开始记录",
   },
-  retention: "Pro 保留 30 天的动态。Team 方案全部保留，并且可以导出。",
+  retention:
+    "动态在 Free 套餐上保留 30 天，Pro 套餐 90 天，Team 套餐一年。回执永久保留。",
   export: {
     loaded: "导出 CSV · 已载入 {n} 条",
     loadedOne: "导出 CSV · 已载入 1 条",

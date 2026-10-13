@@ -39,6 +39,11 @@ type Connection struct {
 	// it starts at Read and only a person on the web raises it, never at
 	// Connect's quiet level.
 	Cloud bool
+	// NewKind is set when Connect makes a connection of a kind of agent
+	// the person has none of yet (claude-code, codex...), and Kinds counts
+	// the kinds they have connected: their plan (Actor.Plan) bounds it.
+	NewKind bool
+	Kinds   int
 }
 
 // AgentCeiling is the most a person with role r may let their agent do in
@@ -89,6 +94,12 @@ func quietLevel(r Role, s Space) Autonomy {
 // Decide's rules for writes apply on top: an agent at Write still
 // proposes what cites an external source.
 //
+// On a plan with limits enforced (plans.go), a new kind of agent is
+// refused past the person's plan (agent_kind_limit), and a member without
+// a seat in the space connects and raises agents as a viewer does
+// (seat_needed). Memax's connections (the V1 backfill, the switch) connect
+// credentials people already had, and are never refused on a plan.
+//
 // These rules hold in a space still on V1 too (Decide's onV1 doesn't
 // apply): a connection is the agent's identity across the person's spaces,
 // not the space's record. V1's tools don't read it until the switch, which
@@ -108,6 +119,22 @@ func DecideConnection(a Actor, act ConnectionAction, c Connection, s Space) Deci
 	}
 	if a.Kind != ActorPerson || a.Credential != CredentialSession {
 		return refuse(CodePersonMustManage, "Only a person can change what an agent may do. Change it in Agents.")
+	}
+	if act == ConnectionConnect && c.NewKind {
+		if d := agentKindLimit(a.Plan, name, c.Kinds); d != nil {
+			return *d
+		}
+	}
+	if a.SpacePlan.Seatless(a.Role) {
+		viewer := a
+		viewer.Role, viewer.SpacePlan = RoleViewer, Plan{}
+		d := DecideConnection(viewer, act, c, s)
+		if d.Code == CodeAutonomyNotAllowed {
+			d = seatNeeded(d, a.SpacePlan, s)
+			d.Message = fmt.Sprintf("Only the owner of %s lets an agent write there until members have Team seats, so %s can propose at most.",
+				spaceName(s), name)
+		}
+		return d
 	}
 
 	switch act {

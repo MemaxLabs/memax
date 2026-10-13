@@ -11,6 +11,7 @@
  */
 import {
   MemaxError,
+  refusalOf,
   type OAuthAutonomy,
   type OAuthRequest,
   type OAuthRequestSpace,
@@ -113,6 +114,11 @@ export type ConsentRefusal =
   | "space"
   /** The request ended meanwhile (consentEnding says how). */
   | "ended"
+  /**
+   * The person has connected as many kinds of agent as their plan has
+   * (policy agent_kind_limit, D9), so this one wasn't connected.
+   */
+  | "plan"
   | "failed";
 
 export class ConsentDecisionError extends Error {
@@ -263,6 +269,9 @@ export function consentRefusal(err: unknown): ConsentDecisionError {
   if (err instanceof ConsentDecisionError) return err;
   if (err instanceof MemaxError && err.code === "consent_space") {
     return new ConsentDecisionError("space");
+  }
+  if (refusalOf(err)?.code === "agent_kind_limit") {
+    return new ConsentDecisionError("plan");
   }
   const ending = consentEnding(err);
   return ending === "failed"

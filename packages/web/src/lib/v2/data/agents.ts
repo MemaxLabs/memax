@@ -216,6 +216,10 @@ export type AgentRefusal =
   | "not_your_agent"
   /** Viewers can't raise, or Write needs someone who keeps in the space. */
   | "not_allowed"
+  /** The person has connected as many kinds of agent as their plan has (D9). */
+  | "agent_kind_limit"
+  /** On a plan that doesn't bill seats only the owner lets an agent write. */
+  | "seat_needed"
   /** Only a person changes what an agent may do. */
   | "person_must_manage"
   | "not_member"

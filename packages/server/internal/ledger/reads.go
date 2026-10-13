@@ -691,7 +691,7 @@ func (l *Ledger) RecordCompileLoad(ctx context.Context, c CompileLoad) (CompileL
 	if err != nil {
 		return CompileLoadResult{}, err
 	}
-	dec := policy.Decide(toPolicyActor(c.Actor, c.Via, grant), policy.ActionRead, policy.Object{}, sp.policy())
+	dec := policy.Decide(toPolicyActor(c.Actor, c.Via, grant, l.plans), policy.ActionRead, policy.Object{}, sp.policy())
 	if dec.Effect == policy.EffectRefuse {
 		return CompileLoadResult{Policy: dec}, nil
 	}

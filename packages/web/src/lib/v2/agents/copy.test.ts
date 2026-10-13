@@ -36,6 +36,8 @@ describe("refusalText", () => {
       "not_your_agent",
       "not_allowed",
       "person_must_manage",
+      "agent_kind_limit",
+      "seat_needed",
       "not_member",
       "surface_unverified",
       "invalid_transition",

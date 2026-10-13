@@ -23,6 +23,10 @@ export type DecisionOption = Schemas["DecisionOption"];
 export type Receipt = Schemas["Receipt"];
 export type ReceiptSource = Schemas["ReceiptSource"];
 export type PolicyDecision = Schemas["PolicyDecision"];
+/** The plan limit a refusal met: the plan, its allowance and use, the plan that lifts it. */
+export type PlanLimit = Schemas["PlanLimit"];
+/** A V2 plan: free, pro, team or enterprise. */
+export type PlanTier = Schemas["PlanTier"];
 
 // Responses (the `data` of each envelope)
 export type SpaceList = Schemas["SpaceList"];

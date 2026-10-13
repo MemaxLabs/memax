@@ -161,7 +161,7 @@ func (e *Engine) run(ctx context.Context, args ledger.DreamSpaceArgs, dry bool) 
 		}
 	}
 	if args.Trigger == ledger.DreamManual {
-		if ok, err := e.manualAllowed(ctx, scope, args.SpaceID); err != nil || !ok {
+		if now, err := e.ManualAllowed(ctx, scope, args.SpaceID); err != nil || !now.Allowed {
 			return Outcome{Reason: ReasonCap}, err
 		}
 	}
@@ -264,26 +264,42 @@ func callsOf(s ledger.DreamStats) int {
 	return s.Model.Calls
 }
 
-// manualAllowed applies the plan's run-now cap.
-func (e *Engine) manualAllowed(ctx context.Context, scope ledger.Scope, space uuid.UUID) (bool, error) {
-	ok, _, err := e.ManualAllowed(ctx, scope, space)
-	return ok, err
+// RunNow is whether a space may run now under its plan's cap.
+type RunNow struct {
+	Allowed bool
+	// Wait is the cap's window, when it isn't allowed.
+	Wait time.Duration
+	// Refusal is policy's, when the space's plan limits are enforced
+	// (dream_cadence); without them the cap is a rate limit.
+	Refusal *policy.Decision
 }
 
-// ManualAllowed reports whether the space may run now, under its plan's
-// cap (DREAM_MANUAL_PER_DAY on Pro, DREAM_MANUAL_PER_WEEK on Free), and
-// when the next run-now is allowed if not.
-func (e *Engine) ManualAllowed(ctx context.Context, scope ledger.Scope, space uuid.UUID) (bool, time.Duration, error) {
+// ManualAllowed says whether the space may run now, under its plan's cap
+// (DREAM_MANUAL_PER_DAY on a nightly plan, DREAM_MANUAL_PER_WEEK on a
+// weekly one): the space's own plan when plan limits are enforced, else
+// DREAM_PLAN.
+func (e *Engine) ManualAllowed(ctx context.Context, scope ledger.Scope, space uuid.UUID) (RunNow, error) {
 	window, limit := 24*time.Hour, e.cfg.ManualPerDay
 	if e.cfg.Plan == PlanFree {
 		window, limit = 7*24*time.Hour, e.cfg.ManualPerWeek
 	}
+	g, _ := scope.Grant(space)
+	plan := e.ledger.SpacePlan(g)
+	if plan.Enforced {
+		window, limit = policy.RunNowWindow(plan), e.cfg.ManualPerWeek
+		if plan.DreamCadence == policy.CadenceNightly {
+			limit = e.cfg.ManualPerDay
+		}
+	}
 	_, manual, err := e.ledger.RecentEditions(ctx, scope, space, e.now().Add(-window))
 	if err != nil {
-		return false, 0, err
+		return RunNow{}, err
+	}
+	if d := policy.DecideRunNow(plan, manual, limit); d.Effect == policy.EffectRefuse {
+		return RunNow{Wait: window, Refusal: &d}, nil
 	}
 	if manual >= limit {
-		return false, window, nil
+		return RunNow{Wait: window}, nil
 	}
-	return true, 0, nil
+	return RunNow{Allowed: true}, nil
 }

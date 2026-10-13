@@ -60,6 +60,10 @@ export const ledgerAgentsZh: Translations["ledger"]["agents"] = {
     notAllowed:
       "{agent} 在 {space} 最多只能提议：只有能在这里保留的人，才能让 Agent 写入。",
     viewer: "查看者不能调高 {space} 里 Agent 的权限，找一位成员来改吧。",
+    agentKindLimit:
+      "你连接的 Agent 种类已经达到套餐上限，所以 {agent} 连不上。断开一个不用的，或者换到 Pro 套餐，不限种类。",
+    seatNeeded:
+      "{agent} 在 {space} 最多只能提议：在它的套餐上只有所有者能保留，成员需要 Team 席位。",
     personMustManage: "只有人能改 Agent 能做的事。",
     notMember: "你不是 {space} 的成员，它的 Agent 轮不到你来改。",
     surfaceUnverified: "网页端的签名没通过校验，什么都没改。刷新页面再试一次。",

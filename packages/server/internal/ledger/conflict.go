@@ -1014,7 +1014,7 @@ func (l *Ledger) GetConflict(ctx context.Context, scope Scope, actor Actor, via 
 			return err
 		}
 		grant, _ := scope.Grant(this.SpaceID)
-		pa := toPolicyActor(actor, via, grant)
+		pa := toPolicyActor(actor, via, grant, l.plans)
 		question, labels, suggested, err := conflictWords(ctx, tx, p)
 		if err != nil {
 			return err

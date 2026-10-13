@@ -39,9 +39,11 @@ func TestResolveUserScope(t *testing.T) {
 		orphan: {SpaceID: orphan, TenantID: orphan, Kind: policy.SpaceTeam, Role: policy.RoleOwner, CanForget: true, Name: "Orphan"},
 	}
 	// The slug and the name come with the grant (the fixture's slug is the
-	// space's id).
+	// space's id), and so do the plan rows (everyone here is on Free; the
+	// plans are TestScopeReadsPlans').
 	for id, w := range want {
 		w.Slug = id.String()
+		w.PlanID, w.OwnerPlanID = "personal_free", "personal_free"
 		want[id] = w
 	}
 	if len(scope.Spaces) != len(want) {

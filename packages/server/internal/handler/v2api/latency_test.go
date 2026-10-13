@@ -18,8 +18,10 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/embed/mockembed"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb/netsim"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 )
 
@@ -54,7 +56,22 @@ type armedCondition struct{ ref, hash string }
 
 func newAPIRig(t *testing.T, o testdb.Options) *apiRig {
 	t.Helper()
+	return newAPIRigWith(t, o, false)
+}
+
+// newAPIRigWith is newAPIRig, its ledger under the migrated plan rows with
+// their limits enforced when plansEnforced (V2_PLAN_LIMITS=enforce).
+func newAPIRigWith(t *testing.T, o testdb.Options, plansEnforced bool) *apiRig {
+	t.Helper()
 	db := testdb.Open(t, o)
+	lopts := []ledger.Option{ledger.WithIndexJobs()}
+	if plansEnforced {
+		reg := plans.NewRegistry(db.Store)
+		if err := reg.Load(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		lopts = append(lopts, ledger.WithPlans(v2plans.New(reg, true)))
+	}
 	words := mockembed.NewWords()
 	model := instantModel{}
 	e := newEnvOn(t, db, func(e *env) []v2api.Option {
@@ -62,7 +79,7 @@ func newAPIRig(t *testing.T, o testdb.Options) *apiRig {
 		search := v2recall.New(e.ledger).WithVectors(vec)
 		return []v2api.Option{v2api.WithSearch(search),
 			v2api.WithAsk(ask.New(e.ledger, search, model, ask.Config{Model: "test/answer-tier", Log: quiet}))}
-	}, ledger.WithIndexJobs())
+	}, lopts...)
 	zz := e.user("zz")
 	e.space(zz, policy.SpacePersonal, "zz") // as every account has
 	sp := e.space(zz, policy.SpaceProject, "memax-v2")
@@ -371,6 +388,24 @@ func TestAPIRoundTrips(t *testing.T) {
 	r := newAPIRig(t, testdb.Options{Watch: audit.Observe})
 	audit.Arm()
 	defer audit.Require(t)
+	checkAPIRoundTrips(t, r)
+}
+
+// TestPlanLimitsAddNoRoundTrips: with V2_PLAN_LIMITS enforcing the plans,
+// every hot path keeps its budget. The plan rows come with the scope's one
+// statement (and a space's, in a command), and the registry answers from
+// memory.
+func TestPlanLimitsAddNoRoundTrips(t *testing.T) {
+	audit := netsim.NewAudit(ledger.DBRole)
+	r := newAPIRigWith(t, testdb.Options{Watch: audit.Observe}, true)
+	audit.Arm()
+	defer audit.Require(t)
+	checkAPIRoundTrips(t, r)
+}
+
+// checkAPIRoundTrips measures each hot path and holds it to its budget.
+func checkAPIRoundTrips(t *testing.T, r *apiRig) {
+	t.Helper()
 	// Before the pipelined ledger (Oct 7, 2026) these were 15, 25, 16, 14,
 	// 32, 27 and 30. Keep and Remember count River's insert notification
 	// (PGNotifyMany), which River sends at most once per queue per fetch

@@ -18,7 +18,13 @@ export type AskState =
   /** Answers are off on the server: what matched, without an answer. */
   | { status: "off"; question: string; sources: AskSource[] }
   /** The plan's asks this month are used up. */
-  | { status: "limit"; question: string; limit: number; resetAt: string }
+  | {
+      status: "limit";
+      question: string;
+      limit: number;
+      resetAt: string;
+      upgrade: string | null;
+    }
   | { status: "unavailable"; question: string }
   /** The space is still on V1: Ask answers only from the V2 record. */
   | { status: "onV1"; question: string }
@@ -96,6 +102,7 @@ export function useAsk(space: SpaceSummary) {
                   question: q,
                   limit: event.limit,
                   resetAt: event.resetAt,
+                  upgrade: event.upgrade,
                 };
             }
           });

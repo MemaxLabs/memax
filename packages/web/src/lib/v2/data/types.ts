@@ -199,7 +199,12 @@ export type AskEvent =
   /** Answers are off on this server: the kept memories that match, and no answer. */
   | { type: "off"; sources: AskSource[] }
   /** The plan's asks this month are used up (D9); they start again at resetAt. */
-  | { type: "limit"; limit: number; resetAt: string }
+  /**
+   * The month's asks are used up (policy ask_limit): how many, when they
+   * start again, and the plan that answers more (policy limit.upgrade;
+   * null when none does, or limits aren't the plan's).
+   */
+  | { type: "limit"; limit: number; resetAt: string; upgrade: string | null }
   /** The source can't ask at all (no /v2 Ask on this server). */
   | { type: "unavailable" }
   /** The space is still on V1, and Ask answers only from the V2 record (policy space_on_v1). */

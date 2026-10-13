@@ -58,6 +58,13 @@
   color: var(--ink-2);
 }
 
+.noneActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 @media (max-width: 639px) {
   .search {
     width: 100%;

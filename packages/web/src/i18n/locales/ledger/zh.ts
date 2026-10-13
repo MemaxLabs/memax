@@ -17,6 +17,8 @@ import { ledgerSettingsZh } from "./settings-zh";
 import { ledgerTodayZh } from "./today-zh";
 import { ledgerVerifyZh } from "./verify-zh";
 import { ledgerMachinesZh } from "./machines-zh";
+import { ledgerNewSpaceZh } from "./new-space-zh";
+import { ledgerSearchZh } from "./search-zh";
 
 export const ledgerZh: Translations["ledger"] = {
   meta: {
@@ -49,6 +51,8 @@ export const ledgerZh: Translations["ledger"] = {
   memory: ledgerMemoryZh,
   verify: ledgerVerifyZh,
   machines: ledgerMachinesZh,
+  search: ledgerSearchZh,
+  newSpace: ledgerNewSpaceZh,
   brief: ledgerBriefZh,
   today: ledgerTodayZh,
   dream: ledgerDreamZh,

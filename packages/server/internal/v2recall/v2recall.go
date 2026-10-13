@@ -63,6 +63,10 @@ type Filter struct {
 	Spaces []uuid.UUID
 	// Lifecycle is "kept" (the default) or "proposed".
 	Lifecycle string
+	// Lifecycles reads several lifecycles at once, in place of Lifecycle: a
+	// person's search reads what was kept and the proposals waiting in
+	// Review together. Agents read kept memories only.
+	Lifecycles []lifecycle.Lifecycle
 	// Kind narrows to facts or decisions.
 	Kind ledger.Kind
 	// Proposer and SessionRef narrow proposals to the ones one agent
@@ -312,8 +316,12 @@ func (s *Searcher) Search(ctx context.Context, scope ledger.Scope, q Query) (Res
 	return res, nil
 }
 
-// filterLifecycles is the lifecycle a filter reads, for the vector lane.
+// filterLifecycles are the lifecycles a filter reads: Lifecycles, else
+// Lifecycle, else kept.
 func filterLifecycles(f Filter) []lifecycle.Lifecycle {
+	if len(f.Lifecycles) > 0 {
+		return f.Lifecycles
+	}
 	if f.Lifecycle == "" {
 		return []lifecycle.Lifecycle{lifecycle.Kept}
 	}
@@ -418,10 +426,10 @@ func withHits(ranking string) string {
 }
 
 // filterSQL is the WHERE clause every lane shares, from $2 on: spaces,
-// lifecycle, kind, proposer, session. A superseded decision stays kept,
+// lifecycles, kind, proposer, session. A superseded decision stays kept,
 // with its history, but is no longer in force, so recall and search leave
 // it out, as the compiled files do (see notSuperseded).
-const filterSQL = `m.space_id = ANY($2) AND m.lifecycle = $3 AND ($4 = '' OR m.kind = $4) AND ` + notSuperseded + `
+const filterSQL = `m.space_id = ANY($2) AND m.lifecycle = ANY($3::text[]) AND ($4 = '' OR m.kind = $4) AND ` + notSuperseded + `
 	AND ($5::uuid IS NULL OR EXISTS (
 	      SELECT 1 FROM v2.receipts r
 	       WHERE r.id = m.created_receipt_id AND r.space_id = m.space_id
@@ -432,16 +440,17 @@ const filterSQL = `m.space_id = ANY($2) AND m.lifecycle = $3 AND ($4 = '' OR m.k
 const notSuperseded = `NOT (m.kind = 'decision' AND COALESCE(m.decision ->> 'status', '') = 'superseded')`
 
 func filterArgs(f Filter) []any {
-	lifecycle := f.Lifecycle
-	if lifecycle == "" {
-		lifecycle = "kept"
+	lifecycles := filterLifecycles(f)
+	names := make([]string, len(lifecycles))
+	for i, l := range lifecycles {
+		names[i] = string(l)
 	}
 	var proposer *uuid.UUID
 	if f.Proposer != uuid.Nil {
 		p := f.Proposer
 		proposer = &p
 	}
-	return []any{f.Spaces, lifecycle, string(f.Kind), proposer, f.SessionRef}
+	return []any{f.Spaces, names, string(f.Kind), proposer, f.SessionRef}
 }
 
 // FullText ranks by full-text search over the statement (the search

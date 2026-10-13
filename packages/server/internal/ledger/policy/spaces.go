@@ -13,10 +13,11 @@ const MaxOwnedProjectSpaces = 50
 
 // The space decision codes; all refusals.
 const (
-	CodeSpaceByPerson = "space_by_person" // agents and API keys don't create or switch spaces
-	CodeSpaceKind     = "space_kind"      // only project spaces are created here
-	CodeSpaceLimit    = "space_limit"     // MaxOwnedProjectSpaces reached
-	CodeSwitchByOwner = "switch_by_owner" // only a space's owner switches it
+	CodeSpaceByPerson  = "space_by_person" // agents and API keys don't create or switch spaces
+	CodeSpaceKind      = "space_kind"      // only project spaces are created here; team spaces come with Team
+	CodePersonalExists = "personal_exists" // each person has one personal space, made with their account
+	CodeSpaceLimit     = "space_limit"     // MaxOwnedProjectSpaces reached
+	CodeSwitchByOwner  = "switch_by_owner" // only a space's owner switches it
 )
 
 // DecideCreateSpace decides whether the actor may create a space of this
@@ -28,8 +29,11 @@ func DecideCreateSpace(a Actor, kind SpaceKind, owned int) Decision {
 	if a.Kind != ActorPerson || a.Credential != CredentialSession {
 		return refuse(CodeSpaceByPerson, "Only a person creates spaces. Sign in with memax login, or create it on the web.")
 	}
+	if kind == SpacePersonal {
+		return refuse(CodePersonalExists, "You have a personal space already: each person has one, made with their account.")
+	}
 	if kind != SpaceProject {
-		return refuse(CodeSpaceKind, "Only project spaces can be created here. Your personal space already exists, and team spaces come with Team.")
+		return refuse(CodeSpaceKind, "Only project spaces can be created here. Team spaces come with Team.")
 	}
 	if owned >= MaxOwnedProjectSpaces {
 		return refuse(CodeSpaceLimit, fmt.Sprintf(

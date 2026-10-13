@@ -203,15 +203,20 @@ test("filters in the URL; C compares a conflict and keeps one answer", async ({
 });
 
 test("an empty queue is one panel across the sheet", async ({ page }) => {
-  await open(page, "/memax-web/review");
+  await open(page, "/personal/review");
   await expect(page.getByText("No proposals waiting.")).toBeVisible();
   await expect(
     page.getByRole("complementary", { name: "Waiting on you" }),
   ).toHaveCount(0);
-  await open(page, "/personal/review");
   await expect(
     page.getByText("Last review today at 09:41 · 4 kept, 1 rejected"),
   ).toBeVisible();
+  // A space with nothing in it yet shows its three steps instead.
+  await open(page, "/memax-web/review");
+  await expect(
+    page.getByRole("region", { name: "Three steps to a first compile" }),
+  ).toBeVisible();
+  await expect(page.getByText("No proposals waiting.")).toHaveCount(0);
 });
 
 test("Memories: filters, search, more, and rows by keyboard", async ({

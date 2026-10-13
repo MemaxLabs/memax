@@ -325,6 +325,8 @@ tags:
     description: Signing the memax CLI in on a machine with no browser, with a code you confirm on the web.
   - name: sessions
     description: Everywhere you are signed in, and signing any of it out.
+  - name: search
+    description: Memories that match some words, across the spaces you belong to.
   - name: ask
     description: Cited answers from a space's kept memories, for people.
   - name: dream
@@ -341,7 +343,10 @@ paths:
       operationId: listSpaces
       tags: [spaces]
       summary: List your spaces
-      description: Every space you belong to, with your role in it. Not paginated.
+      description: |
+        Every space you belong to, with your role in it and, for a space on
+        the V2 record, its counts: what is kept, what waits on a person and
+        the agents connected. Not paginated.
       responses:
         '200':
           description: Your spaces.
@@ -370,7 +375,8 @@ paths:
         the name's slug is used, with a number added when it is taken; a
         slug you name must be free (409 `slug_taken`). Only a signed-in
         person creates spaces, and here only project spaces: your personal
-        space exists already, and team spaces come with Team. A space isn't
+        space exists already (403 `refused`, policy `personal_exists`),
+        and team spaces come with Team (`space_kind`). A space isn't
         part of its own record, so creating one writes no receipt; its
         Activity starts with its first change. The same `Idempotency-Key`
         finds the space the first call created.
@@ -403,6 +409,99 @@ paths:
           $ref: '#/components/responses/SpaceConflict'
         '422':
           $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/search:
+    get:
+      operationId: search
+      tags: [search]
+      summary: Search your spaces
+      description: |
+        The memories that match `q`, best first, across every space you
+        belong to that is on the V2 record (or the ones `space` names;
+        one you can't read is 404). It is the search agents' `memax_search`
+        and recall run: full-text and trigram matching on the words, the
+        meaning of the words when this server embeds them (within 120 ms of
+        the request, else by the words alone, and `lexical_only` says so),
+        fused and reranked. A space still on V1 has nothing here: its
+        memories are V1's until it switches.
+
+        A person finds what was kept and the proposals waiting in Review;
+        an agent finds what was kept, in the spaces its connection is
+        connected to. Superseded decisions, and rejected, merged, faded and
+        forgotten memories, never come back (a forgotten memory has no
+        words left to match). Each item is the memory without its sources
+        or links (read one memory for those), with the receipts that say
+        who wrote it and who changed it last.
+
+        With `include_notes`, the first page also carries your notes (N-)
+        that match, by their words: yours, and every note in a space you
+        own. Notes are raw material and never kept context.
+
+        A person's search changes nothing and records no read; an agent's
+        is recorded as a read of what it found, like `memax_search`. A
+        search ranks its 50 best matches; `limit` and `cursor` page through
+        them, and each page runs the search again, so a page can differ
+        slightly from the one before it if the record changed in between.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: The words to search for.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 500
+        - name: space
+          in: query
+          description: Only these spaces, by id or slug. Repeat for more than one; none searches them all.
+          style: form
+          explode: true
+          schema:
+            type: array
+            maxItems: 20
+            items:
+              $ref: '#/components/schemas/SpaceKey'
+        - name: kind
+          in: query
+          description: Only facts or only decisions.
+          schema:
+            $ref: '#/components/schemas/MemoryKind'
+        - name: include_notes
+          in: query
+          description: Also search your notes (the first page carries them).
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Cursor'
+        - name: limit
+          in: query
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: One page of matches.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -6120,9 +6219,11 @@ components:
         they are saved, and the same resolution waits for the judge).
         Confirmation: confirm_in_agent.
         Refused changes to spaces: space_by_person (only a signed-in person
-        creates or switches a space), space_kind (only project spaces are
-        created here), space_limit (the most project spaces one person owns
-        during the alpha), switch_by_owner (only the owner switches a space).
+        creates or switches a space), personal_exists (each person has one
+        personal space, made with their account), space_kind (only project
+        spaces are created here; team spaces come with Team), space_limit
+        (the most project spaces one person owns during the alpha),
+        switch_by_owner (only the owner switches a space).
         Refused device codes: device_by_person (only a person signs a device
         in), device_needs_web (confirming or declining a code needs a person
         on the web app). Refused sessions: session_by_person (only a person
@@ -6196,6 +6297,7 @@ components:
         - judge_pending
         - confirm_in_agent
         - space_by_person
+        - personal_exists
         - space_kind
         - space_limit
         - switch_by_owner
@@ -6486,6 +6588,37 @@ components:
             behaviour applies to every surface.
           type: string
           format: date-time
+        created_at:
+          description: When the space was made, in the list of your spaces and when you create one.
+          $ref: '#/components/schemas/Timestamp'
+        counts:
+          description: >-
+            In the list of your spaces, for a space on the V2 record: what
+            the space switcher says about it. Absent for a space on V1,
+            whose memories are V1's.
+          $ref: '#/components/schemas/SpaceCounts'
+
+    SpaceCounts:
+      description: A space's numbers, as the space switcher shows them.
+      type: object
+      additionalProperties: false
+      required: [kept, waiting, agents]
+      properties:
+        kept:
+          description: Its kept memories.
+          type: integer
+          minimum: 0
+        waiting:
+          description: >-
+            What waits on a person: Review's queue (every proposal, and every
+            kept memory flagged as a conflict or stale) and the decision
+            gates waiting for an answer.
+          type: integer
+          minimum: 0
+        agents:
+          description: The agents connected to it and not paused.
+          type: integer
+          minimum: 0
 
     DecisionOption:
       type: object
@@ -7585,6 +7718,48 @@ components:
           type: boolean
         next_cursor:
           $ref: '#/components/schemas/Cursor'
+
+    SearchHit:
+      description: One memory a search found.
+      type: object
+      additionalProperties: false
+      required: [memory, receipts]
+      properties:
+        memory:
+          description: The memory, without its sources, links, the memory it updates or the judge's verdict.
+          $ref: '#/components/schemas/Memory'
+        receipts:
+          description: |
+            The receipts the memory names: the one that wrote it
+            (`created_receipt_id`) and the latest (`last_receipt_id`),
+            oldest first; one when they are the same.
+          type: array
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    SearchPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more, lexical_only]
+      properties:
+        items:
+          description: The matches, best first.
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchHit'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+        notes:
+          description: With `include_notes`, on the first page, your notes that match, best first.
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+        lexical_only:
+          description: Nothing matched by meaning, only by the words (no embeddings here, or the query's missed its deadline).
+          type: boolean
 
     ReviewPage:
       type: object
@@ -11043,9 +11218,13 @@ components:
           type: string
           pattern: '^[a-z0-9][a-z0-9-]{2,48}[a-z0-9]$'
         kind:
-          description: Only project spaces are created here; the default.
+          description: |
+            The kind of space; project, the default, is the one created
+            here. Each person has one personal space, made with their
+            account (403 `refused`, policy `personal_exists`), and team
+            spaces come with Team (policy `space_kind`).
           type: string
-          enum: [project]
+          enum: [personal, project, team]
         repository:
           description: The repository the space compiles for, "owner/name".
           type: string
@@ -12907,6 +13086,13 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/NotePage'
+    SearchPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SearchPage'
     NoteEnvelope:
       type: object
       additionalProperties: false

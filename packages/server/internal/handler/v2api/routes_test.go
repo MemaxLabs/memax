@@ -61,6 +61,7 @@ var sampleRequests = map[string]struct {
 	header map[string]string
 }{
 	"listSpaces":         {path: "/v2/spaces"},
+	"search":             {path: "/v2/search?q=deploy&space=memax-v2&kind=fact&include_notes=true&limit=10"},
 	"rememberMemory":     {path: "/v2/spaces/memax-v2/memories", body: `{"statement":"x","section":"decisions"}`},
 	"listMemories":       {path: "/v2/spaces/memax-v2/memories?state=kept&state=proposed&limit=10"},
 	"findNearDuplicates": {path: "/v2/spaces/memax-v2/memories:near-duplicates", body: `{"statement":"Use pnpm catalogs"}`},

@@ -52,6 +52,14 @@ func TestCreateAndSwitchSpaces(t *testing.T) {
 		fails(http.StatusForbidden, "refused"); err.Details.Policy.Code != policy.CodeSpaceByPerson {
 		t.Errorf("an API key creates a space: %+v", err.Details.Policy)
 	}
+	// A person has one personal space, and team spaces come with Team:
+	// each refusal says which (NewSpace words them).
+	for kind, code := range map[string]string{"personal": policy.CodePersonalExists, "team": policy.CodeSpaceKind} {
+		if err := e.do(call{method: "POST", path: "/v2/spaces", token: tok, body: map[string]any{"name": "Another", "kind": kind}}).
+			fails(http.StatusForbidden, "refused"); err.Details.Policy.Code != code {
+			t.Errorf("a %s space: %+v, want %s", kind, err.Details.Policy, code)
+		}
+	}
 
 	// The new space is in the person's list, on V2.
 	var list page[spaceOut]

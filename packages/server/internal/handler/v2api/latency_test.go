@@ -60,7 +60,8 @@ func newAPIRig(t *testing.T, o testdb.Options) *apiRig {
 	e := newEnvOn(t, db, func(e *env) []v2api.Option {
 		vec := v2recall.NewVectors(e.ledger, words, words, v2recall.VectorConfig{Model: embedModel, Log: quiet})
 		search := v2recall.New(e.ledger).WithVectors(vec)
-		return []v2api.Option{v2api.WithAsk(ask.New(e.ledger, search, model, ask.Config{Model: "test/answer-tier", Log: quiet}))}
+		return []v2api.Option{v2api.WithSearch(search),
+			v2api.WithAsk(ask.New(e.ledger, search, model, ask.Config{Model: "test/answer-tier", Log: quiet}))}
 	}, ledger.WithIndexJobs())
 	zz := e.user("zz")
 	e.space(zz, policy.SpacePersonal, "zz") // as every account has
@@ -257,6 +258,10 @@ func (r *apiRig) ops() []apiOp {
 		{"/v2 check run that flags (+ jobs)", func(t *testing.T, ctx context.Context) time.Duration {
 			return r.checkRun(t, ctx, r.nextArmed(t), "fails")
 		}},
+		// Search across the person's spaces (their personal space and
+		// memax-v2), and in one; words that match some memories.
+		{"/v2 search across spaces", r.get("/v2/search?q=deploy+target+postgres")},
+		{"/v2 search in a space", r.get("/v2/search?q=deploy+target+postgres&space=" + slug)},
 		{"/v2 Ask, to the sources event", func(t *testing.T, ctx context.Context) time.Duration {
 			r.seq++
 			req := r.e.request(call{method: "POST", path: "/v2/spaces/" + slug + "/ask", token: r.tok, ctx: ctx,
@@ -327,6 +332,8 @@ func TestAPILatency(t *testing.T) {
 		"/v2 check run":                     300 * time.Millisecond,
 		"/v2 check run that flags (+ jobs)": 500 * time.Millisecond,
 		"/v2 Ask, to the sources event":     300 * time.Millisecond,
+		"/v2 search across spaces":          300 * time.Millisecond,
+		"/v2 search in a space":             300 * time.Millisecond,
 	}
 	aims := map[string]time.Duration{"/v2 Keep (+ jobs)": 200 * time.Millisecond}
 	var rows []string
@@ -389,7 +396,11 @@ func TestAPIRoundTrips(t *testing.T) {
 	// these runs measure each op right after its warm-ups, inside River's
 	// cooldown, so it is usually skipped here, but a busy machine sends it
 	// (Keep 12 and Remember 11, Oct 13, 2026), as alpha traffic nearly
-	// always does.
+	// always does. A search is the auth's one, the lexical lanes'
+	// transaction, the vector lane's (the query embedded meanwhile), and
+	// one ReadBatch for the hits with their receipts: four on the answer's
+	// path, and two read-only COMMITs sent after it. Across spaces costs no
+	// more than in one: the spaces come with the scope.
 	budgets := map[string]int{
 		"/v2 memory list":                   4,
 		"/v2 memory get":                    5,
@@ -403,6 +414,8 @@ func TestAPIRoundTrips(t *testing.T) {
 		"/v2 check run":                     5,
 		"/v2 check run that flags (+ jobs)": 7,
 		"/v2 Ask, to the sources event":     8,
+		"/v2 search across spaces":          6,
+		"/v2 search in a space":             6,
 	}
 	for _, op := range r.ops() {
 		for range 2 {

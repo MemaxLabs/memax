@@ -156,9 +156,9 @@ func (l *Ledger) CreateSpace(ctx context.Context, actor Actor, in NewSpace) (*Sp
 		id = uuid.NewSHA1(spaceKeys, []byte(actor.ID.String()+"\x00"+in.Key))
 		var sp Space
 		var owner uuid.UUID
-		err := tx.QueryRow(ctx, `SELECT id, tenant_id, slug, name, space_kind, COALESCE(repository, ''), v2_enabled_at, owner_id
+		err := tx.QueryRow(ctx, `SELECT id, tenant_id, slug, name, space_kind, COALESCE(repository, ''), v2_enabled_at, created_at, owner_id
 			  FROM public.hubs WHERE id = $1`, id).
-			Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository, &sp.V2EnabledAt, &owner)
+			Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository, &sp.V2EnabledAt, &sp.CreatedAt, &owner)
 		switch {
 		case err == nil && owner == actor.ID && sp.Name == in.Name && sp.Kind == in.Kind && sp.Repository == in.Repository &&
 			(in.Slug == "" || in.Slug == sp.Slug):
@@ -224,8 +224,8 @@ func (l *Ledger) CreateSpace(ctx context.Context, actor Actor, in NewSpace) (*Sp
 		return nil, false, fmt.Errorf("ledger: create space: %w", err)
 	}
 	var sp Space
-	if err := tx.QueryRow(ctx, `SELECT id, tenant_id, slug, name, space_kind, COALESCE(repository, ''), v2_enabled_at FROM public.hubs WHERE id = $1`, id).
-		Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository, &sp.V2EnabledAt); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT id, tenant_id, slug, name, space_kind, COALESCE(repository, ''), v2_enabled_at, created_at FROM public.hubs WHERE id = $1`, id).
+		Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository, &sp.V2EnabledAt, &sp.CreatedAt); err != nil {
 		return nil, false, fmt.Errorf("ledger: create space: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {

@@ -140,6 +140,15 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     unavailable: "这个暂时还不能用。",
     unknown: "再试一次；要是一直这样，刷新一下页面。",
     retry: "再试一次",
+    createSpace: "{name} 没建成。",
+    refusedSpace: {
+      personal_exists: "你已经有个人空间了，每个人只有一个。",
+      space_kind: "团队空间随 Team 推出。现在先建一个项目空间。",
+      space_limit: "你已经有 50 个项目空间，这是内测期间一个人能拥有的上限。",
+      space_by_person: "只有本人登录后才能建空间，Agent 的密钥不行。",
+      other: "Memax 拒绝了：{message}",
+      otherBare: "Memax 拒绝了。",
+    },
     refused: {
       viewer: "查看者可以提议和评论，保留要由成员来。",
       owners_keep: "在 {space} 里只有所有者能保留。请所有者来保留吧。",

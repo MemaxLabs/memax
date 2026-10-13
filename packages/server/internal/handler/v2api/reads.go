@@ -16,7 +16,7 @@ func (h *Handler) listSpaces(w http.ResponseWriter, r *http.Request) {
 		writeError(w, e)
 		return
 	}
-	spaces, err := h.ledger.ListSpaces(r.Context(), p.scope)
+	spaces, err := h.ledger.ListSpacesCounted(r.Context(), p.scope)
 	if err != nil {
 		writeError(w, h.fromLedger(r, err))
 		return

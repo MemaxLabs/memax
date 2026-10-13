@@ -359,6 +359,48 @@ export function failureText(
   return joinSentences([lead, reason], locale);
 }
 
+/**
+ * Why NewSpace's space wasn't made, and what to do: "acme wasn't made.
+ * You have a personal space already, and each person has one." Policy
+ * refusals by code (personal_exists, space_kind, space_limit,
+ * space_by_person); an unknown code falls back to the server's English.
+ */
+export function spaceFailureText(
+  copy: RecordsCopy,
+  failure: CommandFailure,
+  { name, locale }: { name: string; locale: Locale },
+): string {
+  const f = copy.failure;
+  const lead = interpolate(f.createSpace, { name });
+  let reason: string;
+  switch (failure.kind) {
+    case "refused":
+      reason = refusalReason(
+        f.refusedSpace as Record<string, string>,
+        failure,
+        {},
+        f.refusedSpace,
+      );
+      break;
+    case "rate-limited":
+      reason =
+        failure.retryAfter !== null
+          ? interpolate(f.rateLimited, { n: failure.retryAfter })
+          : f.rateLimitedSoon;
+      break;
+    case "unreachable":
+    case "busy":
+      reason = f.unreachable;
+      break;
+    case "unavailable":
+      reason = f.unavailable;
+      break;
+    default:
+      reason = f.unknown;
+  }
+  return joinSentences([lead, reason], locale);
+}
+
 /** What an undo did (no mark): "Undid the keep. M-0430 is back in Review." */
 export function undoneText(
   copy: RecordsCopy,

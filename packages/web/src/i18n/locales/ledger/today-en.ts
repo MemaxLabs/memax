@@ -69,6 +69,8 @@ export const ledgerTodayEn = {
   },
   empty: {
     title: "Nothing here yet",
+    // The eyebrow says when the space was made: "created just now".
+    created: "created {when}",
     lede: "Connect an agent and Memax reads what it already knows about {where}. Everything arrives as a proposal.",
     steps: "Three steps to a first compile",
     connect: "Connect an agent in this repository",

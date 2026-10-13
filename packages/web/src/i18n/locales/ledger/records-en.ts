@@ -160,6 +160,19 @@ export const ledgerRecordsEn = {
     unavailable: "That isn't available yet.",
     unknown: "Try again, and reload the page if it keeps happening.",
     retry: "Try again",
+    // NewSpace: a space that wasn't made, and why (spec PolicyCode).
+    createSpace: "{name} wasn't made.",
+    refusedSpace: {
+      personal_exists:
+        "You have a personal space already, and each person has one.",
+      space_kind: "Team spaces come with Team. Make a project space for now.",
+      space_limit:
+        "You own 50 project spaces, the most one person can during the alpha.",
+      space_by_person:
+        "Only a person makes spaces, signed in as themselves, never with an agent's key.",
+      other: "Memax refused it: {message}",
+      otherBare: "Memax refused it.",
+    },
     // By spec PolicyCode.
     refused: {
       viewer: "Viewers can propose and comment. A member keeps.",

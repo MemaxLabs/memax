@@ -21,6 +21,7 @@ import { CommandCenter } from "./command-center";
 import { FrameKeys } from "./frame-keys";
 import { FrameFailed, FrameSkeleton } from "./frame-states";
 import { MobileTabBar, MobileTopBar } from "./mobile-bars";
+import { NewSpaceDialog } from "./new-space";
 import { PasskeyCheckHost } from "./passkey-check";
 import { useRailProps } from "./rail-props";
 import { ShortcutsSheet } from "./shortcuts-sheet";
@@ -32,7 +33,7 @@ import styles from "./app-frame.module.css";
 
 /**
  * The V2 app frame (plan §6.4): Shell with the rail, the space
- * switcher, ⌘K, the `?` sheet, toasts and the keymap, around every
+ * switcher and New space, ⌘K, the `?` sheet, toasts and the keymap, around every
  * place and settings page. `mode` says where the data comes from; the
  * layout decides it.
  */
@@ -184,6 +185,7 @@ function FrameReady({
       />
       <CommandCenter space={space} spaces={spaces} />
       <ShortcutsSheet />
+      <NewSpaceDialog />
     </div>
   );
 }

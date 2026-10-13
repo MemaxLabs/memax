@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@memaxlabs/ledger";
+import { Button, PageHeader } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { count, formatWhen, joinSentences } from "@/lib/v2/copy";
 import { waitingOnYou } from "@/lib/v2/data/types";
@@ -9,8 +9,10 @@ import { KeyScopeBoundary } from "@/lib/v2/keymap/react";
 import { placeHref } from "@/lib/v2/places";
 import { EmptyState } from "../../_components/empty-state";
 import { PlaceError } from "../../_components/status";
+import { PlaceColumn } from "../place";
 import { useRecordsView, type RecordsView } from "../records-view";
 import { ReviewImportPlace } from "../review-import";
+import { EmptySpaceSteps, hasNothing } from "../today/empty-space";
 import { CardColumn } from "./card-column";
 import { Queue } from "./queue";
 import { useReviewKeys } from "./review-keys";
@@ -99,9 +101,25 @@ function ReviewScreen({
   );
 }
 
-/** Nothing waiting: the States board's panel, across the whole sheet. */
+/**
+ * Nothing waiting: the States board's panel, across the whole sheet. A
+ * space with nothing in it at all shows its three steps instead, under
+ * Review's name (EmptySpace.png).
+ */
 function ReviewEmpty({ view }: { view: RecordsView }) {
   const { copy, overview, space, now, timeZone, locale } = view;
+  if (hasNothing(view)) {
+    return (
+      <PlaceColumn>
+        <PageHeader
+          eyebrow={view.eyebrow}
+          title={copy.review.title}
+          lede={copy.empty.review.detail}
+        />
+        <EmptySpaceSteps view={view} />
+      </PlaceColumn>
+    );
+  }
   const lastReview = overview?.lastReview;
   const targets = overview?.targets;
   const inSync =

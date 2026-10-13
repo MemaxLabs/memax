@@ -15,6 +15,7 @@ import { useAfterCompile } from "../../_lib/compile";
 import { useSource } from "../../_lib/data";
 import { useOverlays } from "../../_lib/overlays";
 import type { RecordsView } from "../records-view";
+import { EmptySpaceSteps, hasNothing } from "../today/empty-space";
 import styles from "./brief.module.css";
 
 const ORDER: Section[] = [
@@ -105,30 +106,37 @@ export function BriefEmpty({ view }: { view: RecordsView }) {
             : copy.brief.ledeSpace
         }
       />
-      <EmptyState
-        title={copy.empty.brief.title}
-        detail={canStart ? l.brief.empty.startDetail : copy.empty.brief.detail}
-        action={
-          canStart ? (
-            <Button
-              variant="secondary"
-              icon="brief"
-              pending={pending}
-              onClick={() => void start()}
-            >
-              {l.brief.empty.start}
-            </Button>
-          ) : (
-            <Button
-              variant="secondary"
-              icon="plus"
-              onClick={() => openCommand("remember")}
-            >
-              {copy.empty.remember}
-            </Button>
-          )
-        }
-      />
+      {!canStart && hasNothing(view) ? (
+        // Nothing in the space yet: its three steps to a first compile.
+        <EmptySpaceSteps view={view} />
+      ) : (
+        <EmptyState
+          title={copy.empty.brief.title}
+          detail={
+            canStart ? l.brief.empty.startDetail : copy.empty.brief.detail
+          }
+          action={
+            canStart ? (
+              <Button
+                variant="secondary"
+                icon="brief"
+                pending={pending}
+                onClick={() => void start()}
+              >
+                {l.brief.empty.start}
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                icon="plus"
+                onClick={() => openCommand("remember")}
+              >
+                {copy.empty.remember}
+              </Button>
+            )
+          }
+        />
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import type { SpaceSummary } from "@/lib/v2/data/types";
 import { KeyScopeBoundary, useHotkey, useKeycaps } from "@/lib/v2/keymap/react";
 import { switchHref, type PlaceRoute } from "@/lib/v2/places";
 import { useCount } from "../_lib/frame-copy";
+import { useOverlays } from "../_lib/overlays";
 import styles from "./space-menu.module.css";
 
 interface SpaceMenuProps {
@@ -61,8 +62,9 @@ function MenuKeys({
 
 /**
  * Your spaces, then teams, each with its ⌘1–⌘9 key, a check on the
- * current one and the waiting count on the others. Base UI's Menu gives
- * it roving focus, typeahead and Escape.
+ * current one and the waiting count on the others, then New space (the
+ * NewSpace layer) and Join with an invite link (not yet: invites come
+ * with Team). Base UI's Menu gives it roving focus, typeahead and Escape.
  */
 function SpaceMenuPopup({
   spaces,
@@ -74,6 +76,7 @@ function SpaceMenuPopup({
   const { t } = useLocale();
   const copy = t.ledger.app;
   const caps = useKeycaps("space.switch");
+  const { openNewSpace } = useOverlays();
   const waitingLabel = useCount(
     copy.frame.reviewCountOne,
     copy.frame.reviewCount,
@@ -158,7 +161,7 @@ function SpaceMenuPopup({
             </Menu.Group>
           ))}
           <div className={styles.footer}>
-            <Menu.Item className={styles.action} disabled title={copy.notYet}>
+            <Menu.Item className={styles.action} onClick={openNewSpace}>
               <Icon name="plus" />
               {copy.spaces.newSpace}
             </Menu.Item>

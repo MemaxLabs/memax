@@ -19,12 +19,14 @@ import { createSdkMachines, machinesOrNull } from "./machines-sdk";
 import type { LedgerDataSource } from "./source";
 import { createSdkTargets, targetsOrNull } from "./targets-sdk";
 import { createSdkToday } from "./today-sdk";
-import type { KeepResult, SpaceOverview, Viewer } from "./types";
+import { createSdkSearch } from "./search-sdk";
+import type { KeepResult, SpaceOverview, SpaceSummary, Viewer } from "./types";
 
 /**
  * The SDK source: memax.v2 for signed-in people.
  *
- * What /v2 serves today: the spaces list, Review's queue and the
+ * What /v2 serves today: the spaces list (with each one's counts),
+ * making a space, search across spaces, Review's queue and the
  * decision gates waiting on an answer (together the rail's ochre count),
  * memories, receipts, agents, the Brief and its compile targets (which
  * feed the status line), Remember's near-duplicate check and Ask.
@@ -75,21 +77,17 @@ export function createSdkSource({
     account: createSdkAccount(client),
     async spaces(signal) {
       const { items } = await client.v2.spaces.list({ signal });
-      return items.map((space) => ({
-        id: space.id,
-        slug: space.slug,
-        name: space.name,
-        kind: space.kind,
-        role: space.role,
-        repository: space.repository,
-        onV2: Boolean(space.v2_enabled_at),
-        // PLACEHOLDER: the spaces list carries no counts yet.
-        kept: null,
-        agents: null,
-        people: null,
-        waiting: null,
-      }));
+      return items.map(spaceSummaryOf);
     },
+    async createSpace({ name, kind, repository, idempotencyKey }) {
+      const space = await client.v2.spaces.create(
+        repository ? { name, kind, repository } : { name, kind },
+        { idempotencyKey },
+      );
+      // A new space has nothing in it yet; the list says the same.
+      return { ...spaceSummaryOf(space), kept: 0, agents: 0, waiting: 0 };
+    },
+    search: createSdkSearch(client, viewerId),
     async overview(space, signal): Promise<SpaceOverview> {
       const [review, memories, receipts, agents, targets, asked, machines] =
         await Promise.all([
@@ -186,6 +184,29 @@ export function createSdkSource({
       );
       return { refs: result.memories.map((m) => m.ref) };
     },
+  };
+}
+
+/**
+ * A space as the switcher lists it. The list counts what's kept, waiting
+ * and connected in each space on V2 (a space on V1 has no counts: its
+ * record is V1's); how many people share one isn't served yet
+ * (PLACEHOLDER: null).
+ */
+export function spaceSummaryOf(space: V2.Space): SpaceSummary {
+  return {
+    id: space.id,
+    slug: space.slug,
+    name: space.name,
+    kind: space.kind,
+    role: space.role,
+    repository: space.repository,
+    onV2: Boolean(space.v2_enabled_at),
+    createdAt: space.created_at,
+    kept: space.counts?.kept ?? null,
+    agents: space.counts?.agents ?? null,
+    people: null,
+    waiting: space.counts?.waiting ?? null,
   };
 }
 

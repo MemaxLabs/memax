@@ -4,9 +4,8 @@ import { usePathname } from "next/navigation";
 import { Button } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
 import type { SpaceSummary } from "@/lib/v2/data/types";
-import { placeHref } from "@/lib/v2/places";
+import { placeHref, searchHref } from "@/lib/v2/places";
 import { StatusPage } from "../../_components/status-page";
-import { useOverlays } from "../_lib/overlays";
 
 // Not found and error inside the frame (States2 "Not found": say why it
 // might be gone, then offer a way on). The rail stays, so the person
@@ -41,7 +40,6 @@ export function SpaceNotFound({
 export function PlaceNotFound({ space }: { space: SpaceSummary }) {
   const { t } = useLocale();
   const pathname = usePathname();
-  const { openCommand } = useOverlays();
   return (
     <StatusPage
       variant="sheet"
@@ -54,7 +52,7 @@ export function PlaceNotFound({ space }: { space: SpaceSummary }) {
             variant="secondary"
             size="sm"
             icon="search"
-            onClick={() => openCommand("ask")}
+            href={searchHref(space.slug)}
           >
             {t.ledger.app.notFound.searchMemories}
           </Button>

@@ -27,6 +27,8 @@ import type { HandEditReporter } from "./report.js";
 import { UnsafePathError } from "./safe-path.js";
 import type { FileSnapshot, LocalState } from "./snapshot.js";
 import type { DeviceState } from "./state.js";
+import { agent } from "../agents/agents.js";
+import { capOf } from "../agents/loads.js";
 
 export interface DeliverDeps {
   api: DaemonApi;
@@ -69,7 +71,10 @@ const BLOCK_KINDS: ReadonlySet<V2.TargetKind> = new Set([
 const FILE_CAPS: Partial<
   Record<V2.TargetKind, { chars: number; tool: string }>
 > = {
-  windsurf_user: { chars: 6_000, tool: "Windsurf" },
+  windsurf_user: {
+    chars: capOf("windsurf", { user: "windsurf_global_rules" }).chars!,
+    tool: agent("windsurf").name,
+  },
 };
 
 /** Why a file can't be written whole within its tool's limit, or null. */

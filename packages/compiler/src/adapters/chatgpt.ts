@@ -6,15 +6,18 @@
  * live through the memax connector; this is the plain-text copy a person
  * pastes into the project once, and again after it changes.
  */
+import { agent } from "@memaxlabs/agents";
 import { compose, headerPlain } from "../document.js";
 import { select } from "../select.js";
 import type { Adapter } from "./adapter.js";
+
+const CHATGPT = agent("chatgpt");
 
 export const chatgpt: Adapter = {
   kind: "chatgpt",
   version: 1,
   role: "copy",
-  tool: "ChatGPT",
+  tool: CHATGPT.name,
   defaultPath: null,
   pathHint: "(chatgpt is copied out, so it takes no path)",
   acceptsPath: () => false,
@@ -25,7 +28,7 @@ export const chatgpt: Adapter = {
   render(model, target, limit) {
     const selection = select(model, target, {
       accepts: (f) =>
-        (f.agents.length === 0 || f.agents.includes("chatgpt")) &&
+        (f.agents.length === 0 || f.agents.includes(CHATGPT.key)) &&
         (f.paths.length === 0 || target.scoped === "inline"),
       prose: true,
     });

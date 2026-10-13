@@ -7,15 +7,18 @@
  * Path-scoped facts go to `.github/instructions/memax-<area>.instructions.md`
  * with an `applyTo` glob list.
  */
+import { agent } from "@memaxlabs/agents";
 import { quoted, scoped } from "./scoped.js";
+
+const COPILOT = agent("copilot");
 
 export const copilot = scoped({
   kind: "copilot",
-  tool: "Copilot",
+  tool: COPILOT.name,
   defaultPath: ".github/instructions",
   dirs: [".github/instructions"],
   extension: ".instructions.md",
-  accepts: (f) => f.agents.length === 0 || f.agents.includes("copilot"),
+  accepts: (f) => f.agents.length === 0 || f.agents.includes(COPILOT.key),
   frontmatter: (paths) => ["---", `applyTo: ${quoted(paths.join(","))}`, "---"],
   limits: {},
 });

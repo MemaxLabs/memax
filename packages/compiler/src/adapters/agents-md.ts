@@ -14,6 +14,7 @@
  * the personal intro line, and defaults to 6 KiB. Personal spaces never
  * compiled before, so no project file changes.
  */
+import { agent, capOf } from "@memaxlabs/agents";
 import { compose, headerComment } from "../document.js";
 import { parseFile } from "../parse.js";
 import { select } from "../select.js";
@@ -25,6 +26,9 @@ import {
   personalFacts,
   proseOn,
 } from "./home.js";
+
+/** Codex stops reading AGENTS.md past its project_doc_max_bytes. */
+const CODEX = agent("codex");
 
 export const INTRO_LINE =
   "Every line cites a memory. Ask the memax MCP server for anything else.";
@@ -39,14 +43,19 @@ export const agentsMd: Adapter = {
   kind: "agents_md",
   version: 1,
   role: "canonical",
-  tool: "Codex",
+  tool: CODEX.name,
   defaultPath: "AGENTS.md",
   pathHint: "ending in AGENTS.md",
   acceptsPath: (path) => basename(path) === "AGENTS.md",
   roots: ["repo", "home"],
   defaultBudget: (model) =>
     model.space.kind === "personal" ? HOME_BUDGET : null,
-  limits: { bytes: { value: 32 * 1024, tool: "Codex" } },
+  limits: {
+    bytes: {
+      value: capOf(CODEX.id, { repo: "agents_md" }).bytes!,
+      tool: CODEX.name,
+    },
+  },
   reads: () => null,
   parse: parseFile,
 

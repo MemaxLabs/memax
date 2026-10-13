@@ -26,6 +26,9 @@
 import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import type { V2 } from "memax-sdk";
+import { agent } from "../agents/agents.js";
+import { readerOf } from "../agents/loads.js";
+import type { AgentId } from "../agents/types.js";
 import { blockState } from "../daemon/compiler/drift.js";
 import { removeManagedBlock } from "../daemon/compiler/managed-block.js";
 import {
@@ -36,6 +39,9 @@ import {
 } from "../daemon/home-place.js";
 import { geminiDir, geminiReaders } from "../connect/gemini.js";
 import type { HomeFile } from "../daemon/home-link.js";
+
+/** An agent's name, as the registry has it. */
+const named = (id: AgentId) => agent(id).name;
 
 export interface HomeEnv {
   /** The home folder, a real path. */
@@ -226,7 +232,7 @@ export function planHomeFiles(
       plan(
         e,
         "claude_user",
-        "Claude Code",
+        named("claude-code"),
         join(claude, "rules", "memax-personal.md"),
         ["claude-code"],
       ),
@@ -239,7 +245,7 @@ export function planHomeFiles(
       plan(
         e,
         "codex_user",
-        "Codex",
+        named("codex"),
         nonEmptyFile(override) ? override : join(codex, "AGENTS.md"),
         ["codex"],
       ),
@@ -254,7 +260,11 @@ export function planHomeFiles(
         e,
         "gemini_user",
         readers
-          .map((r) => (r === "antigravity" ? "Antigravity" : "Gemini CLI"))
+          .map((r) =>
+            r === "antigravity"
+              ? readerOf("antigravity")!.name
+              : named("gemini-cli"),
+          )
           .join(" and "),
         join(gemini, "AGENTS.md"),
         readers,
@@ -267,7 +277,7 @@ export function planHomeFiles(
       plan(
         e,
         "copilot_user",
-        "Copilot",
+        named("copilot"),
         join(copilot, "copilot-instructions.md"),
         ["copilot"],
       ),
@@ -279,7 +289,7 @@ export function planHomeFiles(
       plan(
         e,
         "windsurf_user",
-        "Windsurf",
+        named("windsurf"),
         join(windsurf, "memories", "global_rules.md"),
         ["windsurf"],
       ),

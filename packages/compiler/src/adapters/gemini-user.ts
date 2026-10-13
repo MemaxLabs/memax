@@ -13,17 +13,27 @@
  * the lines are inline. The file is the person's whenever they have one, so
  * Memax always manages one block in it, as for Codex.
  */
+import { agent, capOf, readerOf } from "@memaxlabs/agents";
 import { basename } from "../text.js";
 import { home } from "./home.js";
 
+const GEMINI = agent("gemini-cli");
+/** Antigravity reads the file and holds it to its limit; Gemini CLI reads it too once asked. */
+const ANTIGRAVITY = readerOf("antigravity")!;
+
 export const geminiUser = home({
   kind: "gemini_user",
-  tool: "Antigravity",
-  agent: "gemini",
-  defaultPath: ".gemini/AGENTS.md",
+  tool: ANTIGRAVITY.name,
+  agent: GEMINI.key,
+  defaultPath: GEMINI.home!.path,
   pathHint: "ending in .gemini/AGENTS.md",
   acceptsPath: (path) =>
     basename(path) === "AGENTS.md" && path.split("/").at(-2) === ".gemini",
   owner: () => "block",
-  limits: { bytes: { value: 24_000, tool: "Antigravity" } },
+  limits: {
+    bytes: {
+      value: capOf(ANTIGRAVITY.id, { user: "gemini_agents_md" }).bytes!,
+      tool: ANTIGRAVITY.name,
+    },
+  },
 });

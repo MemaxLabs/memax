@@ -38,6 +38,7 @@ import {
   writeAgentsMd,
   type ShimSpace,
 } from "./gemini.js";
+import { agentOf } from "../agents/agents.js";
 import { AGENTS, type AgentEntry } from "../init/agents.js";
 import { connectToSpaces } from "../init/connect.js";
 import { readHomeLink } from "../daemon/home-link.js";
@@ -157,17 +158,13 @@ export interface ConnectReport {
   };
 }
 
-const ALIASES: Record<string, V2.AgentKind> = {
-  "claude-code": "claude-code",
-  codex: "codex",
-  cursor: "cursor",
-  gemini: "gemini-cli",
-  "gemini-cli": "gemini-cli",
-  copilot: "copilot",
-  opencode: "opencode",
-  windsurf: "windsurf",
-  chatgpt: "chatgpt",
-};
+/** Each agent memax connect knows, by its short key (`gemini`) or its id. */
+const ALIASES: Record<string, V2.AgentKind> = Object.fromEntries(
+  AGENTS.flatMap((a) => [
+    [agentOf(a.kind)?.key ?? a.kind, a.kind],
+    [a.kind, a.kind],
+  ]),
+);
 
 /** The agent a `memax connect` argument names, or null. */
 export function agentFor(arg: string): AgentEntry | null {
@@ -175,9 +172,8 @@ export function agentFor(arg: string): AgentEntry | null {
   return kind ? (AGENTS.find((a) => a.kind === kind) ?? null) : null;
 }
 
-export const CONNECT_AGENTS = Object.keys(ALIASES).filter(
-  (k) => k !== "gemini-cli",
-);
+/** What memax connect takes, by each agent's short key. */
+export const CONNECT_AGENTS = AGENTS.map((a) => agentOf(a.kind)?.key ?? a.kind);
 
 /** Whether every file target of the space is compiled and written here. */
 function inSync(targets: V2.Target[]): boolean {

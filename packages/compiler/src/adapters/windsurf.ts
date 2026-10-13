@@ -7,20 +7,28 @@
  * `trigger: glob`. Each rule file is capped at 12,000 characters, so the
  * fill stops there whatever the byte budget says.
  */
+import { agent, capOf } from "@memaxlabs/agents";
 import { scoped } from "./scoped.js";
+
+const WINDSURF = agent("windsurf");
 
 export const windsurf = scoped({
   kind: "windsurf",
-  tool: "Windsurf",
+  tool: WINDSURF.name,
   defaultPath: ".devin/rules",
   dirs: [".devin/rules", ".windsurf/rules"],
   extension: ".md",
-  accepts: (f) => f.agents.length === 0 || f.agents.includes("windsurf"),
+  accepts: (f) => f.agents.length === 0 || f.agents.includes(WINDSURF.key),
   frontmatter: (paths) => [
     "---",
     "trigger: glob",
     `globs: ${paths.join(",")}`,
     "---",
   ],
-  limits: { chars: { value: 12_000, tool: "Windsurf" } },
+  limits: {
+    chars: {
+      value: capOf(WINDSURF.id, { repo: "windsurf" }).chars!,
+      tool: WINDSURF.name,
+    },
+  },
 });

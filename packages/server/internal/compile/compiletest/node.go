@@ -126,8 +126,9 @@ func Client(baseURL string, opts ...compile.ClientOption) *compile.Client {
 	return compile.NewClient(baseURL, append([]compile.ClientOption{compile.WithToken(Token())}, opts...)...)
 }
 
-// build compiles the compiler and the service with tsc when stale. A lock
-// file serialises it across the test binaries go test runs in parallel.
+// build compiles the agents registry, the compiler (which imports it) and
+// the service with tsc when stale. A lock file serialises it across the
+// test binaries go test runs in parallel.
 func build(root, tsc string) error {
 	lock, err := os.OpenFile(filepath.Join(os.TempDir(), "memax-compile-service-build.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
@@ -139,6 +140,7 @@ func build(root, tsc string) error {
 	}
 	defer func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) }()
 	for _, pkg := range []struct{ dir, entry string }{
+		{"agents", "index.js"},
 		{"compiler", "index.js"},
 		{"compile-service", "main.js"},
 	} {

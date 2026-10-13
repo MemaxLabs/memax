@@ -266,8 +266,9 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
       SERVER,
     );
   }
-  // The compile service imports the built compiler.
-  for (const pkg of ["compiler", "compile-service"]) {
+  // The compile service imports the built compiler, which imports the
+  // built agents registry.
+  for (const pkg of ["agents", "compiler", "compile-service"]) {
     await run(process.execPath, [
       join(REPO, "packages", pkg, "node_modules", "typescript", "bin", "tsc"),
       "-p",

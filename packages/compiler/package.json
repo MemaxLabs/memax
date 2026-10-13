@@ -26,6 +26,9 @@
     "NOTICE"
   ],
   "sideEffects": false,
+  "dependencies": {
+    "@memaxlabs/agents": "workspace:*"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

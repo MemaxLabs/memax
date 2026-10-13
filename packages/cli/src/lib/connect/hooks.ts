@@ -1,14 +1,11 @@
 // The session-start hook, installed in each agent's own hook settings
 // (user level, so it runs in every repository; the hook finds the
-// repository from the session's directory). Shapes checked against each
-// agent's hook docs, Oct 2026 (docs-site cli/hook.mdx has the links):
-//
-// - Claude Code: ~/.claude/settings.json hooks.SessionStart (seconds).
-// - Codex: ~/.codex/hooks.json hooks.SessionStart (seconds); Codex asks a
-//   person to trust a new hook once, in /hooks.
-// - Gemini CLI: ~/.gemini/settings.json hooks.SessionStart (milliseconds).
-// - Cursor: ~/.cursor/hooks.json hooks.sessionStart (seconds).
-// - Copilot CLI: ~/.copilot/hooks/memax.json hooks.sessionStart (timeoutSec).
+// repository from the session's directory). Where each agent keeps it and
+// the event it runs on are the agents registry's (lib/agents/, from
+// @memaxlabs/agents); the entry's shape, checked against each agent's hook
+// docs, Oct 2026, is here: Claude Code's and Codex's time out in seconds,
+// Gemini CLI's in milliseconds, Cursor's in seconds and Copilot CLI's in
+// `timeoutSec`; Codex asks a person to trust a new hook once, in /hooks.
 //
 // OpenCode, Windsurf and Antigravity CLI have no session-start hook that
 // adds context; ChatGPT and VS Code have none at all. Writing is
@@ -17,6 +14,8 @@
 // the file changes.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { AGENTS as REGISTRY } from "../agents/agents.js";
+import type { Hook } from "../agents/types.js";
 import { parseJsoncObject, setJsonc } from "../jsonc.js";
 
 export type HookOutcome =
@@ -41,36 +40,30 @@ export function hookCommand(agent: string): string {
   return `command -v memax >/dev/null 2>&1 && memax hook session-start --agent ${agent} || true`;
 }
 
-const SUPPORT: Record<string, HookSupport> = {
-  "claude-code": { file: join(".claude", "settings.json") },
-  codex: {
-    file: join(".codex", "hooks.json"),
-    note: "Codex asks you to trust it once: run /hooks in Codex",
-  },
-  "gemini-cli": { file: join(".gemini", "settings.json") },
-  cursor: { file: join(".cursor", "hooks.json") },
-  copilot: { file: join(".copilot", "hooks", "memax.json") },
-  opencode: {
-    file: null,
-    note: "OpenCode has no session-start hook; it reads AGENTS.md and Memax over MCP",
-  },
-  windsurf: {
-    file: null,
-    note: "Windsurf has no session-start hook; it reads its rules and Memax over MCP",
-  },
-  chatgpt: {
-    file: null,
-    note: "ChatGPT has no hooks; it reads Memax through its connector",
-  },
+/** What to tell a person about an agent's hook, beyond where it is. */
+const NOTES: Record<string, string> = {
+  codex: "Codex asks you to trust it once: run /hooks in Codex",
+  opencode:
+    "OpenCode has no session-start hook; it reads AGENTS.md and Memax over MCP",
+  windsurf:
+    "Windsurf has no session-start hook; it reads its rules and Memax over MCP",
+  chatgpt: "ChatGPT has no hooks; it reads Memax through its connector",
 };
 
+/** The agents registry's hook for an agent, if it has one. */
+function hookOf(kind: string): Hook | null {
+  return REGISTRY.find((a) => a.id === kind)?.hook ?? null;
+}
+
 export function hookSupport(kind: string): HookSupport {
-  return (
-    SUPPORT[kind] ?? {
-      file: null,
-      note: "this agent has no session-start hook Memax can use",
-    }
-  );
+  const hook = hookOf(kind);
+  const note = NOTES[kind];
+  if (hook)
+    return { file: join(...hook.file.split("/")), ...(note ? { note } : {}) };
+  return {
+    file: null,
+    note: note ?? "this agent has no session-start hook Memax can use",
+  };
 }
 
 type Json = Record<string, unknown>;
@@ -116,11 +109,12 @@ function upsert(list: unknown, entry: Json): unknown[] | null {
 /** The entry each agent's settings get. */
 export function hookEntry(kind: string): { event: string; entry: Json } {
   const command = hookCommand(kind);
+  const event = hookOf(kind)?.event ?? "";
   switch (kind) {
     case "claude-code":
     case "codex":
       return {
-        event: "SessionStart",
+        event,
         entry: {
           matcher: "startup|resume|clear|compact",
           hooks: [{ type: "command", command, timeout: 10 }],
@@ -128,17 +122,17 @@ export function hookEntry(kind: string): { event: string; entry: Json } {
       };
     case "gemini-cli":
       return {
-        event: "SessionStart",
+        event,
         entry: {
           matcher: "*",
           hooks: [{ name: "memax", type: "command", command, timeout: 10_000 }],
         },
       };
     case "cursor":
-      return { event: "sessionStart", entry: { command, timeout: 10 } };
+      return { event, entry: { command, timeout: 10 } };
     case "copilot":
       return {
-        event: "sessionStart",
+        event,
         entry: { type: "command", bash: command, timeoutSec: 10 },
       };
     default:

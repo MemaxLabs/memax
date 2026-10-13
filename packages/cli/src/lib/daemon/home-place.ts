@@ -8,16 +8,17 @@ import { lstatSync, realpathSync } from "node:fs";
 import { lstat, mkdir } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import type { V2 } from "memax-sdk";
+import { HOME_CANONICAL, WINDSURF_GLOBAL_RULES } from "../agents/agents.js";
 import type { HomeLink } from "./home-link.js";
 import type { Place, PlaceTarget } from "./place.js";
 import { UnsafePathError, validRepoPath } from "./safe-path.js";
 
-/** The personal canonical copy, as the server names it (HomeCanonicalPath). */
-export const HOME_CANONICAL = ".memax/personal/AGENTS.md";
-
-/** Windsurf's one global rules file (the server's WindsurfGlobalRules). */
-export const WINDSURF_GLOBAL_RULES =
-  ".codeium/windsurf/memories/global_rules.md";
+/**
+ * The personal canonical copy, as the server names it (HomeCanonicalPath),
+ * and Windsurf's one global rules file (its WindsurfGlobalRules), from the
+ * agents registry.
+ */
+export { HOME_CANONICAL, WINDSURF_GLOBAL_RULES };
 
 /** The server's checkHomePath: a home file of a kind, in a dot folder. */
 export function validHomePath(kind: V2.TargetKind, path: string): boolean {

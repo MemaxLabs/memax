@@ -4,6 +4,10 @@
 !pnpm-lock.yaml
 !pnpm-workspace.yaml
 !tsconfig.json
+!packages/agents/package.json
+!packages/agents/tsconfig.json
+!packages/agents/src
+!packages/agents/NOTICE
 !packages/compiler/package.json
 !packages/compiler/tsconfig.json
 !packages/compiler/src

@@ -1,0 +1,234 @@
+/* Pricing (Pricing.png; exact values from Pricing.dc.html). Tokens only. */
+
+.hero {
+  padding: 72px 0 40px;
+  max-width: 760px;
+}
+
+.hero > p:first-child {
+  margin-bottom: 20px;
+}
+
+/* The alpha's note and the billing period. */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin-bottom: 16px;
+}
+
+.alpha {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+  max-width: 44em;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.alpha :global(.mx-icon) {
+  margin-top: 2px;
+  color: var(--ink-3);
+}
+
+.plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+/* Pro's ink edge, as drawn; 1.5px less the 0.5px it takes from the padding. */
+.outlined {
+  border: 1.5px solid var(--ink);
+  padding: 23.5px;
+}
+
+/* Enterprise sits on the paper. */
+.open {
+  background: transparent;
+}
+
+.planHead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.planName {
+  margin: 0;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.priceBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.priceBlock :global(.mx-meta) {
+  margin: 0;
+}
+
+.price {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 40px;
+  line-height: 44px;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.unit {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+
+.features {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.features li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.features :global(.mx-icon) {
+  margin-top: 2px;
+  color: var(--ink-3);
+}
+
+/* Not built yet: a clock instead of a check, and the word. */
+.soon {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.action {
+  margin-top: auto;
+}
+
+.closed {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+
+.closedWord {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 550;
+  color: var(--ink);
+}
+
+/* On every plan. */
+.every {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 24px;
+  margin-top: 24px;
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.everyItem {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.everyIcon {
+  display: flex;
+  padding-top: 2px;
+  color: var(--ink-3);
+}
+
+.everyTitle {
+  display: block;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.everyBody {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+/* Questions. */
+.faq {
+  padding: 64px 0 56px;
+}
+
+.faqTitle {
+  margin: 0 0 24px;
+  font-family: var(--font-serif);
+  font-size: 32px;
+  line-height: 38px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.faqGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 0 48px;
+  border-top: 1px solid var(--line);
+}
+
+.faqItem {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.question {
+  margin: 0 0 6px;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.answer {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 25px;
+  color: var(--ink-2);
+}

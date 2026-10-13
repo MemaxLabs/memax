@@ -19,6 +19,7 @@ import { ledgerVerifyZh } from "./verify-zh";
 import { ledgerMachinesZh } from "./machines-zh";
 import { ledgerNewSpaceZh } from "./new-space-zh";
 import { ledgerSearchZh } from "./search-zh";
+import { ledgerPublicZh } from "./public-zh";
 
 export const ledgerZh: Translations["ledger"] = {
   meta: {
@@ -60,6 +61,7 @@ export const ledgerZh: Translations["ledger"] = {
   consent: ledgerConsentZh,
   settings: ledgerSettingsZh,
   account: ledgerAccountZh,
+  public: ledgerPublicZh,
   devTokens: {
     breadcrumb: "Ledger · 开发样张",
     title: "设计令牌与字体",

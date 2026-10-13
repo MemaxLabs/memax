@@ -21,6 +21,7 @@ import { ledgerVerifyEn } from "./verify-en";
 import { ledgerMachinesEn } from "./machines-en";
 import { ledgerNewSpaceEn } from "./new-space-en";
 import { ledgerSearchEn } from "./search-en";
+import { ledgerPublicEn } from "./public-en";
 
 export const ledgerEn = {
   meta: {
@@ -64,6 +65,7 @@ export const ledgerEn = {
   consent: ledgerConsentEn,
   settings: ledgerSettingsEn,
   account: ledgerAccountEn,
+  public: ledgerPublicEn,
   devTokens: {
     breadcrumb: "Ledger · Dev fixture",
     title: "Tokens and type",

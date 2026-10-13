@@ -1,0 +1,176 @@
+/* The public site's frame and the type every public page shares
+ * (Landing.png, Pricing.png, Security.png). Tokens only. */
+
+.site {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  min-height: 100dvh;
+}
+
+/* .mx-meta sets tabular figures, which in Schibsted Grotesk also widen
+ * "." and ",": the public pages' meta lines are sentences, so they take
+ * proportional ones (the board's "project . Works with" gap). */
+.site :global(.mx-meta) {
+  font-variant-numeric: normal;
+}
+
+.wrap {
+  max-width: 1312px;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 4.5vw, 64px) 48px;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 32px;
+  min-height: 72px;
+  padding: 12px 0;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--line);
+}
+
+.home {
+  display: inline-flex;
+  color: var(--ink);
+  border-radius: var(--radius-xs);
+}
+
+.nav ul,
+.footerNav ul {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav ul {
+  gap: 8px 32px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.nav a,
+.footerNav a {
+  color: var(--ink-2);
+  text-decoration: none;
+  border-radius: var(--radius-xs);
+}
+
+.nav a:hover,
+.footerNav a:hover {
+  color: var(--ink);
+}
+
+.nav a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 550;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.main:focus {
+  outline: none;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.footerMark {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink);
+}
+
+.footerNav ul {
+  gap: 8px 24px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+/* Phones: the nav on one line (the changelog is in the footer too). */
+@media (max-width: 480px) {
+  .nav .wide {
+    display: none;
+  }
+}
+
+/* Phones: every link a 44px target. */
+@media (pointer: coarse) {
+  .nav a,
+  .footerNav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+/* Shared type. */
+
+.eyebrow {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(44px, 5vw, 64px);
+  line-height: 1.05;
+  font-weight: 360;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.line {
+  display: block;
+}
+
+.lede {
+  margin: 24px 0 0;
+  max-width: 34em;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  line-height: 29px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 32px;
+  line-height: 38px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.hero {
+  padding: 72px 0 40px;
+  max-width: 800px;
+}
+
+.hero .eyebrow {
+  margin-bottom: 20px;
+}

@@ -1,0 +1,346 @@
+/* Docs · quickstart (Docs.png; exact values from Docs.dc.html). Tokens only. */
+
+.page {
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+/* Sentences, not figures in columns (site.module.css). */
+.page :global(.mx-meta) {
+  font-variant-numeric: normal;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  min-height: 64px;
+  padding: 10px clamp(16px, 3vw, 32px);
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--line);
+}
+
+.home {
+  display: inline-flex;
+  color: var(--ink);
+  border-radius: var(--radius-xs);
+}
+
+.section {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.search {
+  width: 320px;
+  max-width: 100%;
+}
+
+.open {
+  flex: none;
+}
+
+.body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 48px;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 24px clamp(16px, 3vw, 32px) 64px;
+  box-sizing: border-box;
+}
+
+/* The tree. */
+.tree {
+  flex: 0 0 220px;
+}
+
+.status {
+  margin: 0;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-2);
+}
+
+.status:empty {
+  display: none;
+}
+
+.status a {
+  color: var(--ink);
+}
+
+.groupLabel {
+  margin: 16px 0 4px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree li a {
+  display: block;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
+.tree li a:hover {
+  color: var(--ink);
+}
+
+.tree li a[aria-current="page"] {
+  background: var(--select);
+  color: var(--ink);
+  font-weight: 550;
+}
+
+/* The article. */
+.article {
+  flex: 999 1 560px;
+  min-width: 0;
+  max-width: 720px;
+}
+
+.article:focus {
+  outline: none;
+}
+
+.eyebrow {
+  margin: 8px 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.title {
+  margin: 0 0 12px;
+  font-family: var(--font-serif);
+  font-size: 44px;
+  line-height: 50px;
+  font-weight: 380;
+  letter-spacing: -0.022em;
+  color: var(--ink);
+}
+
+.article h2 {
+  margin: 40px 0 10px;
+  font-family: var(--font-serif);
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 450;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+  scroll-margin-top: 16px;
+}
+
+.article > p {
+  margin: 0 0 14px;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 28px;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.article > .lede {
+  font-size: 19px;
+  line-height: 30px;
+  color: var(--ink-2);
+}
+
+.article > .eyebrow {
+  margin: 8px 0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.cmd {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: var(--night);
+  color: var(--night-ink);
+  border: 1px solid var(--night-line);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 21px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.cmd code {
+  font: inherit;
+}
+
+.prompt {
+  color: var(--night-ink-2);
+}
+
+/* The tools. */
+.tools {
+  margin-bottom: 16px;
+}
+
+.toolHead,
+.tool {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.tool:last-child {
+  border-bottom: 0;
+}
+
+.toolHead {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.tool code {
+  justify-self: start;
+}
+
+@media (max-width: 560px) {
+  .toolHead {
+    display: none;
+  }
+
+  .toolHead,
+  .tool {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
+
+.note {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.note :global(.mx-icon) {
+  margin-top: 2px;
+  color: var(--ink-3);
+}
+
+.next {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.next a {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-decoration: none;
+  border-radius: var(--radius-xs);
+}
+
+.nextTitle {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 550;
+  color: var(--ink);
+}
+
+/* On this page. */
+.toc {
+  flex: 0 0 180px;
+  padding-top: 8px;
+}
+
+.toc ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toc a {
+  display: block;
+  padding: 4px 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+  text-decoration: none;
+  border-radius: var(--radius-xs);
+}
+
+.toc a:hover {
+  color: var(--ink);
+}
+
+/* Narrower: the tree in two columns above the article; "On this page"
+ * goes, since the headings are right there. */
+@media (max-width: 1100px) {
+  .toc {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .tree {
+    flex-basis: 100%;
+    columns: 2;
+    column-gap: 16px;
+  }
+
+  .group {
+    break-inside: avoid;
+  }
+
+  .status {
+    column-span: all;
+  }
+
+  .search {
+    order: 4;
+    width: 100%;
+  }
+}
+
+@media (pointer: coarse) {
+  .tree li a,
+  .toc a {
+    min-height: 44px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+  }
+}

@@ -172,7 +172,19 @@ export function renderCheck(
       "",
       `  ${chalk.yellow(MARK.waiting)} Memax marked ${refs} stale. Verify ${one ? "it" : "each"}: ${chalk.bold(`memax verify ${one ? flagged[0] : "<M-id>"}`)}`,
     );
-  } else if (run.ran && (run.sent ?? 0) > 0 && run.flagged === undefined) {
+  }
+  const cleared = run.unflagged ?? [];
+  if (cleared.length > 0)
+    lines.push(
+      "",
+      `  ${chalk.green(MARK.done)} Memax took the stale mark off ${cleared.join(", ")}: what ${cleared.length === 1 ? "it relies" : "they rely"} on holds again.`,
+    );
+  if (
+    flagged.length === 0 &&
+    run.ran &&
+    (run.sent ?? 0) > 0 &&
+    run.flagged === undefined
+  ) {
     lines.push(
       "",
       chalk.gray(

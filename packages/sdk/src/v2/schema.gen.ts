@@ -3379,10 +3379,12 @@ export interface components {
          *     written before they were typed). Memax's derived conditions ride on
          *     the command that wrote the version, with no receipt of their own.
          *     A cloud agent's new start key, under the same connection, is
-         *     rekeyed (`object_kind: agent`).
+         *     rekeyed (`object_kind: agent`). Memax clearing its own stale flag,
+         *     when a check finds what failed holding again (a revert), is
+         *     unflagged (via system, its source the run).
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported" | "noted" | "switched" | "switched_back" | "unlinked" | "scoped" | "conditions_changed" | "rekeyed";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported" | "noted" | "switched" | "switched_back" | "unlinked" | "scoped" | "conditions_changed" | "rekeyed" | "unflagged";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space" | "machine";
         /**
@@ -5677,6 +5679,12 @@ export interface components {
             run: components["schemas"]["CheckRun"];
             /** @description The memories this run marked stale. */
             flagged: components["schemas"]["DisplayRef"][];
+            /**
+             * @description The memories whose stale flag this run cleared: Memax's own flag,
+             *     from a check, now that every condition that stopped holding holds
+             *     again (a revert). A flag Dream or a date set is never cleared here.
+             */
+            unflagged: components["schemas"]["DisplayRef"][];
         };
         CheckRunResultEnvelope: {
             data: components["schemas"]["CheckRunResult"];

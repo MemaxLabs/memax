@@ -25,6 +25,8 @@ export const ledgerRecordsEn = {
     undid: "undone",
     // The judge put a write kept at once back in Review (rule 11).
     returned: "back in Review",
+    // Memax took its own stale mark off: what it relies on holds again.
+    unflagged: "no longer stale",
     // A decision gate's receipts.
     asked: "asked",
     withdrawn: "withdrawn",

@@ -647,3 +647,72 @@ func TestConditionsListWhatsBeingVerified(t *testing.T) {
 		t.Errorf("after Verify: %+v", list.Stale)
 	}
 }
+
+// Memax clears its own flag when a later run finds what failed holding
+// again (a revert): an `unflagged` receipt by Memax, via system, citing
+// the run, and every target recompiling; never a flag Dream or a date set.
+func TestCheckRunUnflagsARevert(t *testing.T) {
+	t.Parallel()
+	r := newCheckRig(t)
+	r.f.brief(r.owner, r.sp, 0, nil)
+	r.f.target(r.owner, r.sp, ledger.TargetAgentsMD)
+	ctx := context.Background()
+	a, aAt := commit(1, 4)
+	b, bAt := commit(2, 3)
+	c, cAt := commit(3, 2)
+	r.report(t, a, aAt, r.holds(r.mem.Ref))
+	if got := r.report(t, b, bAt, r.removed(r.mem.Ref)); fmt.Sprint(got.Flagged) != "["+r.mem.Ref+"]" {
+		t.Fatalf("the failure: %+v", got)
+	}
+	dirty := r.f.count(`SELECT COALESCE(sum(dirty_gen), 0)::int FROM v2.targets WHERE space_id = $1`, r.sp)
+
+	back := r.report(t, c, cAt, r.holds(r.mem.Ref))
+	if fmt.Sprint(back.Unflagged) != "["+r.mem.Ref+"]" || len(back.Flagged) != 0 {
+		t.Fatalf("the revert: %+v", back)
+	}
+	m := r.memory(t, r.mem.Ref)
+	if m.Flags.Has(lifecycle.Stale) {
+		t.Errorf("still stale after the revert: %v", m.Flags)
+	}
+	receipts, err := r.f.l.ListReceipts(ctx, r.scope, ledger.ReceiptQuery{SpaceID: r.sp, ObjectID: m.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	un := receipts.Receipts[0] // newest first
+	if un.Action != ledger.ActionUnflagged || un.ActorKind != policy.ActorMemax || un.Via != policy.ViaSystem ||
+		un.Source == nil || un.Source.Kind != ledger.StaleSourceCheck || un.Source.Ref != back.Run.ID.String() {
+		t.Fatalf("unflagged receipt: %+v", un)
+	}
+	if n := r.f.count(`SELECT COALESCE(sum(dirty_gen), 0)::int FROM v2.targets WHERE space_id = $1`, r.sp); n <= dirty {
+		t.Errorf("the targets didn't recompile: dirty_gen %d → %d", dirty, n)
+	}
+	// The same result again changes nothing.
+	d, dAt := commit(4, 1)
+	if again := r.report(t, d, dAt, r.holds(r.mem.Ref)); len(again.Unflagged)+len(again.Flagged) != 0 {
+		t.Errorf("a hold after the revert: %+v", again)
+	}
+	r.f.everyRowReceipted(t)
+}
+
+// A flag no check set (a date's, here) isn't a check's to clear.
+func TestCheckRunLeavesADatesFlag(t *testing.T) {
+	t.Parallel()
+	r := newCheckRig(t)
+	a, aAt := commit(1, 4)
+	r.report(t, a, aAt, r.holds(r.mem.Ref))
+	if res := r.f.apply(&ledger.FlagStale{Meta: meta(ledger.Actor{Kind: policy.ActorMemax}, r.scope, policy.ViaSystem), SpaceID: r.sp,
+		Source: ledger.ReceiptSource{Kind: ledger.StaleSourceDate, Ref: "2026-10-01"},
+		Flags:  []ledger.StaleFlag{{Memory: r.mem.ID, Reason: "Its date to check again passed."}}}); res.Outcome != ledger.OutcomeApplied {
+		t.Fatalf("date flag: %+v", res)
+	}
+	// A failure and its revert, both after the date's flag.
+	b, bAt := commit(2, 3)
+	c, cAt := commit(3, 2)
+	r.report(t, b, bAt, r.removed(r.mem.Ref))
+	if back := r.report(t, c, cAt, r.holds(r.mem.Ref)); len(back.Unflagged) != 0 {
+		t.Fatalf("cleared a date's flag: %+v", back)
+	}
+	if m := r.memory(t, r.mem.Ref); !m.Flags.Has(lifecycle.Stale) {
+		t.Error("a date's flag went with a check's hold")
+	}
+}

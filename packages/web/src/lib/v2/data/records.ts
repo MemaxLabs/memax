@@ -40,7 +40,9 @@ export type RecordAction =
   | "answered"
   | "undid"
   // The judge put a Write agent's write back in Review (rule 11).
-  | "returned";
+  | "returned"
+  // Memax took its own stale mark off: what it relies on holds again.
+  | "unflagged";
 
 /** A memory's displayed state (spec State, without the internal `rejected`). */
 export type DisplayState =

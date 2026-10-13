@@ -231,6 +231,8 @@ export const ledgerActivityEn = {
     scoped: "{actor} changed where {ref} applies.",
     // Its "stays true while" conditions (Memax typing them, for now).
     conditionsChanged: "{actor} changed what {ref} stays true while.",
+    unflagged:
+      "{actor} took the stale mark off {ref}: what it relies on holds again.",
     other: "{actor} changed {ref}.",
   },
 } as const;

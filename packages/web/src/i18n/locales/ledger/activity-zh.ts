@@ -210,6 +210,7 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     machineUnlinked: "{actor}把这个空间从 {ref} 上移除了。",
     scoped: "{actor}改动了 {ref} 的适用范围。",
     conditionsChanged: "{actor}改动了 {ref} 成立的前提。",
+    unflagged: "{actor}去掉了 {ref} 的过时标记：它依赖的前提又成立了。",
     other: "{actor}改动了 {ref}。",
   },
 };

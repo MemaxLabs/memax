@@ -32,7 +32,9 @@ Run it in a repository [linked](/cli/link) to its space.
 A memory is marked stale only when a condition that held on the default
 branch stops holding there. What the check couldn't tell (a file too
 large, a manifest it can't read, a commit this clone doesn't have) never
-marks anything.
+marks anything. When the change is undone (a revert brings the file back),
+Memax takes its own mark off again. A mark from a date to check again
+stays until a person answers it.
 
 ## What it checks, and what leaves the machine
 

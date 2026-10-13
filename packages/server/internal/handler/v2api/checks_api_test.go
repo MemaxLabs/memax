@@ -49,7 +49,8 @@ type checkRunOut struct {
 			Holds, Fails, Unknown, Ignored int
 		} `json:"counts"`
 	} `json:"run"`
-	Flagged []string `json:"flagged"`
+	Flagged   []string `json:"flagged"`
+	Unflagged []string `json:"unflagged"`
 }
 
 // checksEnv is a project space on MemaxLabs/memax with a Brief, AGENTS.md
@@ -302,5 +303,31 @@ func TestAMemorysPageSaysWhenItWasChecked(t *testing.T) {
 	c.do(call{method: "GET", path: memoryPath(res.Memory, ""), token: c.tok}).ok(http.StatusOK, &other)
 	if other.Checked != nil {
 		t.Errorf("a memory without conditions says it was checked: %+v", other.Checked)
+	}
+}
+
+// A revert over the API: the failure flags, the file back takes Memax's
+// mark off (unflagged), and the memory reads kept again.
+func TestARevertTakesTheMarkOffOverTheAPI(t *testing.T) {
+	t.Parallel()
+	c := newChecksEnv(t)
+	var out checkRunOut
+	c.report(c.tok, uuid.NewString(), c.runBody(1, 3, "holds")).ok(http.StatusCreated, &out)
+	c.report(c.tok, uuid.NewString(), c.runBody(2, 2, "fails")).ok(http.StatusCreated, &out)
+	if fmt.Sprint(out.Flagged) != "["+c.mem.Ref+"]" || len(out.Unflagged) != 0 {
+		t.Fatalf("the failure: %+v", out)
+	}
+	c.report(c.tok, uuid.NewString(), c.runBody(3, 1, "holds")).ok(http.StatusCreated, &out)
+	if fmt.Sprint(out.Unflagged) != "["+c.mem.Ref+"]" || len(out.Flagged) != 0 {
+		t.Fatalf("the revert: %+v", out)
+	}
+	var d struct {
+		Memory struct {
+			State string `json:"state"`
+		} `json:"memory"`
+	}
+	c.do(call{method: "GET", path: memoryPath(c.mem, ""), token: c.tok}).ok(http.StatusOK, &d)
+	if d.Memory.State != "kept" {
+		t.Errorf("after the revert it reads %q", d.Memory.State)
 	}
 }

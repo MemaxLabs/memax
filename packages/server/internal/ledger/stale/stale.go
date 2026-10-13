@@ -19,6 +19,11 @@
 // follow the move (the words don't name the path). Only an authoritative
 // observer's results flag (§2.4: the App, where it covers the repository;
 // a person's machine otherwise).
+//
+// Memax clears its own flag (§3.4, decision 8) when the change is undone:
+// the memory's flag came from a check, a condition that failed holds again
+// in this run, and none of its armed conditions fails any more. It never
+// clears a flag Dream or a date set, which no check can answer.
 package stale
 
 import (
@@ -68,6 +73,8 @@ type Check struct {
 	FailedAt       *time.Time
 	// Change is the failure's evidence ("removed", "renamed", …).
 	Change string
+	// Recovered: this run moved it from failing to holding.
+	Recovered bool
 }
 
 // Memory is a memory the run reported on, with the checks the run changed
@@ -79,6 +86,12 @@ type Memory struct {
 	// ActedAt is the latest keep, edit or verification by a person.
 	ActedAt *time.Time
 	Checks  []Check
+	// FlaggedByCheck: its stale flag is Memax's, from a check, so a check
+	// may clear it.
+	FlaggedByCheck bool
+	// StillFailing is how many of its armed conditions fail after the run,
+	// this run's results or not.
+	StillFailing int
 }
 
 // Input is a run's memories and the space's armed count.
@@ -96,11 +109,13 @@ type Flag struct {
 	Conditions []string
 }
 
-// Output is what to flag. Capped: the run tripped the bulk cap, so nothing
-// is flagged one by one.
+// Output is what to flag, and whose flag to clear. Capped: the run
+// tripped the bulk cap, so nothing is flagged one by one (clearing isn't
+// capped: it only undoes what a check did).
 type Output struct {
-	Flags  []Flag
-	Capped bool
+	Flags   []Flag
+	Capped  bool
+	Unflags []uuid.UUID
 }
 
 // Decide says what the run flags.
@@ -109,7 +124,11 @@ func Decide(in Input) Output {
 		return Output{}
 	}
 	var out Output
+	var unflags []uuid.UUID
 	for _, m := range in.Memories {
+		if m.Kept && m.Stale && unflags1(m) {
+			unflags = append(unflags, m.ID)
+		}
 		if !m.Kept || m.Stale {
 			continue
 		}
@@ -125,9 +144,19 @@ func Decide(in Input) Output {
 		}
 	}
 	if n := len(out.Flags); n > CapMemories || (n >= CapFloor && float64(n) > CapShare*float64(in.Armed)) {
-		return Output{Capped: true}
+		out = Output{Capped: true}
 	}
+	out.Unflags = unflags
 	return out
+}
+
+// unflags1 reports whether a stale memory's flag is Memax's to clear now:
+// its own, from a check; a failure undone in this run; none left.
+func unflags1(m Memory) bool {
+	if !m.FlaggedByCheck || m.StillFailing > 0 {
+		return false
+	}
+	return slices.ContainsFunc(m.Checks, func(c Check) bool { return c.Recovered && c.Outcome == Holds })
 }
 
 // fails reports whether one check flags its memory.

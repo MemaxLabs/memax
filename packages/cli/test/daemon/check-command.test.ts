@@ -67,6 +67,9 @@ async function setup() {
     ],
   };
   const reports: V2.CheckRunInput[] = [];
+  // As the server decides it: a failure flags, and the same memory holding
+  // again takes Memax's mark off.
+  const stale = new Set<string>();
   h.fake.extra.push((method, path, _url, body) => {
     if (method === "GET" && path === `/v2/spaces/${sp.id}/conditions`)
       return { status: 200, data: conds };
@@ -74,9 +77,17 @@ async function setup() {
       const input = body as V2.CheckRunInput;
       reports.push(input);
       const flagged = input.results
-        .filter((r) => r.outcome === "fails")
+        .filter((r) => r.outcome === "fails" && !stale.has(r.memory))
         .map((r) => r.memory);
-      return { status: 201, data: { run: { id: "run-1" }, flagged } };
+      const unflagged = input.results
+        .filter((r) => r.outcome === "holds" && stale.has(r.memory))
+        .map((r) => r.memory);
+      for (const m of flagged) stale.add(m);
+      for (const m of unflagged) stale.delete(m);
+      return {
+        status: 201,
+        data: { run: { id: "run-1" }, flagged, unflagged },
+      };
     }
     return null;
   });
@@ -138,6 +149,17 @@ describe("memax check", () => {
     expect(reports[1].results.map((r) => [r.memory, r.outcome])).toEqual([
       ["M-0001", "fails"],
     ]);
+
+    // Reverted: the file is back, and Memax takes its mark off.
+    git(root, "revert", "--no-edit", "HEAD");
+    git(root, "push", "-q", "origin", "main");
+    out.length = 0;
+    expect(await check({}, deps(root, out))).toBe(0);
+    text = plain(out);
+    expect(text).toMatch(/● M-0001 {2}docs\/adr\.md exists/);
+    expect(text).toContain(
+      "Memax took the stale mark off M-0001: what it relies on holds again.",
+    );
   });
 
   it("asks the running daemon, and reports in JSON", async () => {

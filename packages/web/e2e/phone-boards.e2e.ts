@@ -19,18 +19,22 @@ import {
 // how far each screen is from its board (E2E_BOARDS_MAX_RATIO=0 prints
 // every difference); phone.e2e.ts holds the screens to their baselines.
 //
-// What differs on purpose, so each board has its own bar:
-// - Today: the demo's own Dream edition and waiting rows (the real data's
-//   words), and the receipt's space.
-// - Review: no keycaps on a phone's buttons (there are no keys), the
-//   Previous and Next under the card, and what the card touches below.
-// - Gate: the demo's question is in Memax team, and nothing is chosen
-//   before the person chooses; Withdraw sits under Answer, and the line
-//   under the card is the gate's session and expiry (handoffs aren't
-//   built). Review stays the current tab: that's where the gate is.
-// - Ask: the demo's answer and sources, and Copy with citations under
-//   Keep as memory.
-// - Memory: back to Memories, and the demo memory's full lineage.
+// What differs on purpose, so each board has its own bar, a point above
+// what it measured (Oct 13, 2026; pixels of 780×1688):
+// - Today, 0.1425: the demo's own Dream edition, whose three items take
+//   two lines each where the board's take one, so everything under it
+//   sits about 54px lower; and its date in the edition's line.
+// - Review, 0.0397: no keycaps on a phone's buttons (there are no keys),
+//   the Previous and Next under the card, and what the card touches below.
+// - Gate, 0.1298: the demo's question is in Memax team, in its own longer
+//   words, and nothing is chosen before the person chooses; Withdraw sits
+//   under Answer, and the line under the card is the gate's session and
+//   expiry (handoffs aren't built, nor the board's Compare link). Review
+//   stays the current tab: that's where the gate is.
+// - Ask, 0.1329: the demo's longer answer and sources; a 44px field at
+//   16px (a finger's target, and iOS zooms into a smaller font); and
+//   Copy with citations under Keep as memory.
+// - Memory, 0.0365: back to Memories, and the demo memory's full lineage.
 
 skipWithoutBrowser();
 
@@ -67,11 +71,11 @@ const BOARDS: {
   open?: (page: Page) => Promise<void>;
   max: number;
 }[] = [
-  { board: "MobileToday", path: "/memax-v2/today", max: 0.12 },
-  { board: "MobileReview", path: "/memax-v2/review", max: 0.12 },
-  { board: "MobileGate", path: "/memax-team/review?gate=G-0012", max: 0.12 },
-  { board: "MobileAsk", path: "/memax-v2/today", open: ask, max: 0.12 },
-  { board: "MobileMemory", path: "/memax-v2/memories/M-0219", max: 0.12 },
+  { board: "MobileToday", path: "/memax-v2/today", max: 0.153 },
+  { board: "MobileReview", path: "/memax-v2/review", max: 0.05 },
+  { board: "MobileGate", path: "/memax-team/review?gate=G-0012", max: 0.14 },
+  { board: "MobileAsk", path: "/memax-v2/today", open: ask, max: 0.143 },
+  { board: "MobileMemory", path: "/memax-v2/memories/M-0219", max: 0.047 },
 ];
 
 test.beforeAll(() => {

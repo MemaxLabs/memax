@@ -260,6 +260,8 @@ func (l *Ledger) applyOnce(ctx context.Context, cmd Command, m *Meta, hash []byt
 		res, err = w.verify(ctx, c)
 	case *FlagStale:
 		res, err = w.flagStale(ctx, c)
+	case *FlagDue:
+		res, err = w.flagDue(ctx, c)
 	}
 	if err != nil {
 		return Result{}, nil, mapDBError(err)
@@ -286,6 +288,8 @@ func validateCommand(cmd Command, now time.Time) error {
 		c.Statement = strings.TrimSpace(c.Statement)
 		return c.validate(now)
 	case *FlagStale:
+		return c.validate()
+	case *FlagDue:
 		return c.validate()
 	case *ReviseBrief:
 		return c.validate()

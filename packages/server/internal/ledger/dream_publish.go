@@ -974,27 +974,60 @@ func (w *writer) writeBriefVersion(ctx context.Context, sp spaceRow, cur *briefR
 }
 
 // stillSurfaced keeps what an edition lists for a person that still needs
-// one: a memory still flagged as a conflict, and not one Dream flagged
-// itself (those are its actions).
+// one: a memory still in conflict (and not one Dream flagged itself: those
+// are its actions), and a memory still stale. One read for all of them.
 func (w *writer) stillSurfaced(ctx context.Context, spaceID uuid.UUID, in []Surfaced, ed *editionWrite) ([]Surfaced, error) {
-	var out []Surfaced
 	mine := map[uuid.UUID]bool{}
 	for _, a := range ed.actions {
 		if a.kind == DreamConflict {
 			mine[a.memory] = true
 		}
 	}
+	type key struct {
+		kind string
+		id   uuid.UUID
+	}
+	seen := map[key]bool{}
+	var keep []Surfaced
+	var ids []uuid.UUID
 	for _, s := range in {
-		if s.Kind != "conflict" || mine[s.Memory] || slices.ContainsFunc(out, func(x Surfaced) bool { return x.Memory == s.Memory }) {
+		k := key{s.Kind, s.Memory}
+		if s.Kind == SurfacedStaleWaiting {
+			k.kind = SurfacedStale // one entry a memory, either way
+		}
+		if seen[k] || (s.Kind == SurfacedConflict && mine[s.Memory]) {
 			continue
 		}
-		var flagged bool
-		if err := w.tx.QueryRow(ctx, `
-			SELECT EXISTS (SELECT 1 FROM v2.memories WHERE id = $1 AND space_id = $2 AND 'conflict' = ANY (flags))`,
-			s.Memory, spaceID).Scan(&flagged); err != nil {
-			return nil, fmt.Errorf("ledger: read conflicts: %w", err)
+		switch s.Kind {
+		case SurfacedConflict, SurfacedStale, SurfacedStaleWaiting:
+		default:
+			continue
 		}
-		if flagged {
+		seen[k] = true
+		keep = append(keep, s)
+		ids = append(ids, s.Memory)
+	}
+	if len(keep) == 0 {
+		return nil, nil
+	}
+	rows, err := w.tx.Query(ctx, `SELECT id, flags FROM v2.memories WHERE id = ANY ($1) AND space_id = $2 AND flags && '{conflict,stale}'`,
+		ids, spaceID)
+	if err != nil {
+		return nil, fmt.Errorf("ledger: read what an edition surfaces: %w", err)
+	}
+	flags := map[uuid.UUID]lifecycle.Flags{}
+	var id uuid.UUID
+	var fl []string
+	if _, err := pgx.ForEachRow(rows, []any{&id, &fl}, func() error {
+		parsed, err := lifecycle.ParseFlags(fl)
+		flags[id] = parsed
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("ledger: read what an edition surfaces: %w", err)
+	}
+	var out []Surfaced
+	for _, s := range keep {
+		if surfacedWaits(s, flags[s.Memory]) {
 			out = append(out, s)
 		}
 	}

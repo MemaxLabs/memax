@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 )
 
 // Reading editions back. An edition holds ids and counts; the words of the
@@ -95,7 +97,8 @@ func attachEditionFacts(ctx context.Context, tx pgx.Tx, es []*DreamEdition) erro
 		undone, need bool
 	}
 	var facts []actionFact
-	flagged := map[uuid.UUID]bool{}
+	// flagged is each surfaced memory's flags now.
+	flagged := map[uuid.UUID]lifecycle.Flags{}
 	refs := map[uuid.UUID]string{}
 	b := &pgx.Batch{}
 	b.Queue(`
@@ -117,14 +120,17 @@ func attachEditionFacts(ctx context.Context, tx pgx.Tx, es []*DreamEdition) erro
 		}
 		return nil
 	})
-	// What an edition surfaced still needs a person while it is flagged.
+	// What an edition surfaced still needs a person while it is flagged:
+	// in conflict, or stale.
 	if len(surfaced) > 0 {
-		b.Queue(`SELECT id FROM v2.memories WHERE id = ANY ($1) AND 'conflict' = ANY (flags)`, surfaced).
+		b.Queue(`SELECT id, flags FROM v2.memories WHERE id = ANY ($1) AND flags && '{conflict,stale}'`, surfaced).
 			Query(func(rows pgx.Rows) error {
 				var id uuid.UUID
-				_, err := pgx.ForEachRow(rows, []any{&id}, func() error {
-					flagged[id] = true
-					return nil
+				var fl []string
+				_, err := pgx.ForEachRow(rows, []any{&id, &fl}, func() error {
+					parsed, err := lifecycle.ParseFlags(fl)
+					flagged[id] = parsed
+					return err
 				})
 				if err != nil {
 					return fmt.Errorf("ledger: read surfaced: %w", err)
@@ -166,7 +172,7 @@ func attachEditionFacts(ctx context.Context, tx pgx.Tx, es []*DreamEdition) erro
 	}
 	for _, e := range es {
 		for _, s := range e.surfaced {
-			if flagged[s.Memory] {
+			if surfacedWaits(s, flagged[s.Memory]) {
 				e.NeedsYou++
 			}
 		}
@@ -338,7 +344,11 @@ func (l *Ledger) GetEdition(ctx context.Context, scope Scope, spaceID uuid.UUID,
 			if ms[s.Memory] == nil {
 				continue
 			}
-			e.Surfaced = append(e.Surfaced, SurfacedMemory{Kind: s.Kind, Memory: ms[s.Memory], With: ms[s.With]})
+			sm := SurfacedMemory{Kind: s.Kind, Memory: ms[s.Memory], With: ms[s.With]}
+			if s.Receipt != uuid.Nil {
+				sm.Receipt = &s.Receipt
+			}
+			e.Surfaced = append(e.Surfaced, sm)
 		}
 		out = e
 		return nil
@@ -620,4 +630,17 @@ func (l *Ledger) GetDreamAction(ctx context.Context, scope Scope, id uuid.UUID) 
 		return nil
 	})
 	return out, err
+}
+
+// surfacedWaits reports whether what an edition surfaced still waits on a
+// person: a conflict while the memory is in conflict, a stale memory while
+// it is stale.
+func surfacedWaits(s Surfaced, flags lifecycle.Flags) bool {
+	switch s.Kind {
+	case SurfacedConflict:
+		return flags.Has(lifecycle.Conflict)
+	case SurfacedStale, SurfacedStaleWaiting:
+		return flags.Has(lifecycle.Stale)
+	}
+	return false
 }

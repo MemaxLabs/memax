@@ -88,16 +88,16 @@ type DreamSnapshot struct {
 	Unjudged []DreamMemory
 	// Decisions are the decisions in force.
 	Decisions []DreamMemory
-	// StaleDue are kept memories past their stale_after date that nobody
-	// has looked at since.
-	StaleDue []DreamMemory
 	// Brief is the version in force (nil: the space has none), Placed the
 	// kept memories it places or cites, by ref, and Unplaced the kept
 	// memories it doesn't.
 	Brief    *Brief
 	Placed   map[string]DreamMemory
 	Unplaced []DreamMemory
-	// Surfaced are conflicts the judge flagged since Since, still open.
+	// Surfaced are conflicts the judge flagged since Since, still open;
+	// then what Memax marked stale and no edition has reported, still stale (the date
+	// sweep's flags, a check's: Dream flags none since migration 068), and
+	// what has been stale StaleWaitingAfter and hasn't had its reminder.
 	Surfaced []Surfaced
 	// Acted are the memory pairs (and single memories, Related nil) Dream
 	// already acted on, keyed by kind, memory, version and related: a pair
@@ -115,10 +115,19 @@ type DreamActed struct {
 }
 
 // HasInput reports whether the space has anything new since the last
-// edition: notes, record changes or a stale_after date that came due. No
-// input, no run (plan 25 §5.10: empty nights cost nothing).
+// edition: notes, record changes, or a memory that went stale or has
+// waited a month to be verified. No input, no run (plan 25 §5.10: empty
+// nights cost nothing).
 func (s *DreamSnapshot) HasInput() bool {
-	return len(s.Notes) > 0 || s.Changes > 0 || len(s.StaleDue) > 0
+	if len(s.Notes) > 0 || s.Changes > 0 {
+		return true
+	}
+	for _, x := range s.Surfaced {
+		if x.Kind == SurfacedStale || x.Kind == SurfacedStaleWaiting {
+			return true
+		}
+	}
+	return false
 }
 
 const dreamMemorySelect = `
@@ -324,12 +333,6 @@ func (l *Ledger) DreamSnapshot(ctx context.Context, scope Scope, spaceID uuid.UU
 			 WHERE m.space_id = $1 AND m.kind = 'decision' AND m.lifecycle = 'kept'
 			   AND COALESCE(m.decision ->> 'status', '') IN ('', 'in_force')
 			 ORDER BY m.seq DESC LIMIT $2`, spaceID, judgeMaxDecisions)
-		queueDreamMemories(b, &s.StaleDue, `
-			 WHERE m.space_id = $1 AND m.lifecycle = 'kept' AND NOT ('stale' = ANY (m.flags))
-			   AND m.stale_after IS NOT NULL AND m.stale_after <= $2
-			   AND NOT EXISTS (SELECT 1 FROM v2.receipts r WHERE r.stream_id = m.id AND r.space_id = m.space_id
-			                    AND r.actor_kind = 'person' AND r.recorded_at > m.stale_after AND r.id <> m.created_receipt_id)
-			 ORDER BY m.stale_after LIMIT $3`, spaceID, s.Now, limit)
 		// The Brief in force.
 		queueBriefInForce(b, spaceID, &s.Brief)
 		// Conflicts the judge flagged since the last edition, still open.
@@ -344,13 +347,42 @@ func (l *Ledger) DreamSnapshot(ctx context.Context, scope Scope, spaceID uuid.UU
 			Query(func(rows pgx.Rows) error {
 				var err error
 				s.Surfaced, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Surfaced, error) {
-					sf := Surfaced{Kind: "conflict"}
+					sf := Surfaced{Kind: SurfacedConflict}
 					err := r.Scan(&sf.Memory, &sf.With)
 					return sf, err
 				})
 				if err != nil {
 					return fmt.Errorf("ledger: dream snapshot: conflicts: %w", err)
 				}
+				return nil
+			})
+		// Each stale memory's latest flag, the one its entry cites: report
+		// it once, and remind once after a month. Check the published entries,
+		// not just Since: the cap may have left some for the next edition.
+		// Memax flags (the date sweep, the checks); Dream reports.
+		b.Queue(`
+			SELECT m.id, f.id, CASE WHEN f.recorded_at <= $3 THEN 'stale_waiting' ELSE 'stale' END
+			  FROM v2.memories m
+			 CROSS JOIN LATERAL (SELECT r.id, r.recorded_at FROM v2.receipts r
+			                      WHERE r.stream_id = m.id AND r.space_id = m.space_id AND `+staleFlagCond+`
+			                      ORDER BY r.stream_version DESC LIMIT 1) f
+			 WHERE m.space_id = $1 AND m.lifecycle = 'kept' AND 'stale' = ANY (m.flags)
+			   AND f.recorded_at <= $2
+			   AND NOT EXISTS (SELECT 1 FROM v2.dream_editions e WHERE e.space_id = m.space_id
+			                    AND e.surfaced @> jsonb_build_array(jsonb_build_object(
+			                        'memory_id', m.id, 'receipt_id', f.id,
+			                        'kind', CASE WHEN f.recorded_at <= $3 THEN 'stale_waiting' ELSE 'stale' END)))
+			 ORDER BY f.recorded_at, m.seq LIMIT $4`, spaceID, s.Now, s.Now.Add(-StaleWaitingAfter), MaxDreamSurfaced).
+			Query(func(rows pgx.Rows) error {
+				stale, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Surfaced, error) {
+					var sf Surfaced
+					err := r.Scan(&sf.Memory, &sf.Receipt, &sf.Kind)
+					return sf, err
+				})
+				if err != nil {
+					return fmt.Errorf("ledger: dream snapshot: stale: %w", err)
+				}
+				s.Surfaced = append(s.Surfaced, stale...)
 				return nil
 			})
 		// What Dream did before, so it doesn't raise the same thing twice.

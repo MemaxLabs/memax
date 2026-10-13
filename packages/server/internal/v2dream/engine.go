@@ -19,7 +19,11 @@
 //     the nearest kept facts, with the judge's classifier; a contradiction
 //     is flagged and linked for a person. Conflicts the judge flagged since
 //     are listed too.
-//   - stale: kept memories past their stale_after date are flagged.
+//   - stale: nothing to do. Memax flags what went stale (the hourly date
+//     sweep, internal/stalesweep, and the repository checks), and the
+//     edition lists it, with what has waited a month to be verified
+//     (DreamSnapshot.Surfaced). Editions before migration 068 flagged
+//     dates themselves; their stale actions keep their undo.
 //   - fade: kept memories nobody read or touched in 60 days fade
 //     (Ledger.FadeCandidates: never one in a file whose loads Memax can't
 //     observe, a decision in force, a flagged memory, or one the Brief
@@ -28,7 +32,7 @@
 //     reword, add a line), never a rewrite; an uncited line fails.
 //
 // Cost: a run happens only when the space has new input since its last
-// edition (notes, record changes, a stale_after date that came due), its
+// edition (notes, record changes, a memory that went stale), its
 // model calls are capped (DREAM_MAX_CALLS), and the plan's cadence and
 // run-now caps bound how often (D9). Scheduling is the catch-up sweep in
 // jobs.go: no River Pro (§5.17).
@@ -182,7 +186,7 @@ func (e *Engine) run(ctx context.Context, args ledger.DreamSpaceArgs, dry bool) 
 		name string
 		fn   func(context.Context) error
 	}{
-		{"fold", r.fold}, {"dedupe", r.dedupe}, {"conflict", r.conflicts}, {"stale", r.stale},
+		{"fold", r.fold}, {"dedupe", r.dedupe}, {"conflict", r.conflicts},
 		{"fade", r.fade}, {"brief", r.brief},
 	} {
 		t := time.Now()

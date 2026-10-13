@@ -16,6 +16,7 @@ import {
   agentKey,
   listItemOf,
   receiptsFor,
+  staleNoteOf,
   type V2Client,
 } from "./sdk-records";
 
@@ -107,12 +108,18 @@ export function editionViewOf(
     actions,
     surfaced: (e.surfaced ?? []).flatMap((s) => {
       const memory = item(s.memory);
+      if (memory?.state === "stale" && s.receipt_id) {
+        memory.note =
+          staleNoteOf(s.memory, receipts.get(s.receipt_id)) ?? memory.note;
+      }
       const other = item(s.with);
       return memory
         ? [
             {
+              kind: s.kind,
               memory,
               with: other ? { ref: other.ref, keptBy: keptByOf(other) } : null,
+              receiptId: s.receipt_id ?? null,
             },
           ]
         : [];
@@ -158,6 +165,11 @@ export function createSdkDream(
       }
       for (const s of e.surfaced ?? []) {
         memories.push(s.memory);
+        // The entry cites the flag, even when a later receipt changed
+        // something else. Join that receipt with the memory's rail.
+        if (s.receipt_id && s.receipt_id !== s.memory.last_receipt_id) {
+          memories.push({ ...s.memory, last_receipt_id: s.receipt_id });
+        }
         if (s.with) memories.push(s.with);
       }
       const receipts = await receiptsFor(client, space.slug, memories, signal);

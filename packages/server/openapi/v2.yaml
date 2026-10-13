@@ -12518,18 +12518,25 @@ components:
         created_at:
           $ref: '#/components/schemas/Timestamp'
     DreamSurfaced:
-      description: Something the edition lists because it needs a person, though Dream didn't do it.
+      description: >-
+        Something the edition lists because it needs a person, though Dream didn't do it: a conflict the judge
+        flagged since the last edition (`conflict`), a memory Memax marked stale since (`stale`: a date that
+        passed, a failing check), or one that has waited 30 days to be verified, said once (`stale_waiting`).
+        Dream flags no date itself.
       type: object
       additionalProperties: false
       required: [kind, memory]
       properties:
         kind:
           type: string
-          enum: [conflict]
+          enum: [conflict, stale, stale_waiting]
         memory:
           $ref: '#/components/schemas/Memory'
         with:
           $ref: '#/components/schemas/Memory'
+        receipt_id:
+          description: For `stale` and `stale_waiting`, the receipt that marked the memory stale.
+          $ref: '#/components/schemas/Id'
     DreamEdition:
       description: 'One edition (D-): what Dream read and what it did.'
       type: object

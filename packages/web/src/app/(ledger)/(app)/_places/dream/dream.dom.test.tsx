@@ -216,6 +216,41 @@ describe("a Dream edition", () => {
     expect(await screen.findByText("No edition yet")).toBeTruthy();
   });
 
+  it("links Memax's stale reports to Verify and gives the month reminder no Undo", async () => {
+    withDream((real) => ({
+      peekEdition: () => undefined,
+      edition: async (input) => {
+        const e = (await real.edition(input))!;
+        const m = e.actions.find((a) => a.kind === "stale")!.memory!;
+        return {
+          ...e,
+          actions: e.actions.filter((a) => a.kind !== "stale"),
+          surfaced: [
+            ...e.surfaced,
+            {
+              kind: "stale_waiting",
+              memory: m,
+              with: null,
+              receiptId: "r-stale",
+            },
+          ],
+        };
+      },
+    }));
+    renderPlace(<DreamPlace editionRef="214" />);
+    await screen.findByText(
+      "Marked stale a month ago, and still waiting. Verify it.",
+    );
+    const needs = section("Needs you");
+    const row = within(needs)
+      .getAllByRole("listitem")
+      .find((item) => item.textContent?.includes("Marked stale a month ago"))!;
+    expect(within(row).getByRole("link").getAttribute("href")).toMatch(
+      /^\/memax-v2\/memories\/M-\d+\?overlay=verify$/,
+    );
+    expect(within(row).queryByRole("button", { name: "Unflag" })).toBeNull();
+  });
+
   it("opens from Today's card", async () => {
     withDream();
     renderPlace(<TodayPlace />);

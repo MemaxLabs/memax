@@ -970,7 +970,9 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	legacyScopes := scopeBundles
+	// An explicit permission set may have no legacy bundles. pgx encodes a
+	// nil slice as SQL NULL, but api_keys.scopes is non-nullable.
+	legacyScopes := append([]string{}, scopeBundles...)
 	if len(legacyScopes) == 0 && len(req.Permissions) == 0 {
 		legacyScopes = []string{"read", "write"}
 	}

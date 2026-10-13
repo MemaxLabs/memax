@@ -144,6 +144,7 @@ export function ReadsStep({
   onToggle,
   target,
   homeFile = null,
+  homePrinted = false,
 }: {
   agent: string;
   autonomy: Autonomy;
@@ -153,6 +154,8 @@ export function ReadsStep({
   target: AgentTarget | null | undefined;
   /** The agent's own file Personal is written into, when Personal is chosen. */
   homeFile?: string | null;
+  /** Its session-start hook prints Personal instead (Cursor), when chosen. */
+  homePrinted?: boolean;
 }) {
   const { t } = useLocale();
   const { strings, agents } = useLedger();
@@ -204,15 +207,17 @@ export function ReadsStep({
           status={target.status}
         />
       ) : null}
-      {homeFile ? (
+      {homeFile || homePrinted ? (
         <div className={styles.live}>
           <span className={styles.liveIcon}>
             <Icon name="file" />
           </span>
           <span>
-            {formatNodes(setup.reads, {
-              file: <code className="mx-code">{homeFile}</code>,
-            })}{" "}
+            {homeFile
+              ? formatNodes(setup.reads, {
+                  file: <code className="mx-code">{homeFile}</code>,
+                })
+              : setup.printed}{" "}
             <span className={`mx-meta ${styles.plain}`}>
               {formatNodes(setup.readsHint, {
                 command: <code className="mx-code">{linkHomeCommand()}</code>,

@@ -31,6 +31,7 @@ linked.
 | Windsurf    | one block in `~/.codeium/windsurf/memories/global_rules.md` | Yours. Memax keeps one marked block in it. |
 | (all)       | `~/.memax/personal/AGENTS.md`                               | Memax's: a local copy of what's compiled.  |
 | OpenCode    | one entry in its `instructions`, naming the copy above      | Your settings. Memax adds only the entry.  |
+| Cursor      | nothing: its session-start hook prints the copy above       | Nothing on disk.                           |
 
 Antigravity reads `~/.gemini/AGENTS.md` beside `~/.gemini/GEMINI.md` in
 every session. Memax writes its block there when you run
@@ -66,6 +67,12 @@ and leaves your comments and other settings as they are. It doesn't create
 from `~/.claude/CLAUDE.md` (Memax's block there, for an old Claude Code),
 Memax adds no entry, since OpenCode would load it twice.
 `memax unlink --home` takes the entry out again.
+
+Cursor reads no file Memax could write (its User Rules live in its
+settings), so its [session-start hook](/cli/hook) prints the kept lines of
+`~/.memax/personal/AGENTS.md` at every session start, about 1,500 tokens
+at most; the rest stay live over MCP. `memax connect cursor` on a linked
+machine installs the hook and adds the copy to the link if it isn't there.
 
 Paths follow `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME` and
 `COPILOT_HOME`, read in your shell when you link (the daemon runs without them). Codex reads
@@ -175,7 +182,3 @@ when:
 A network error or a server that's busy never takes anything off. A file
 you edited by hand stays, and `memax unlink --home` says which.
 
-<Callout type="info">
-  Cursor gets your Personal space in a later release. Until then it reads it
-  over MCP.
-</Callout>

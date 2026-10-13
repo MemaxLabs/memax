@@ -104,8 +104,15 @@ export const ledgerMachinesEn = {
         "Memax's block in {file} on {machine}, which Antigravity reads in every project, and Gemini CLI once it reads AGENTS.md. Your own lines in that file stay on your machine; Memax doesn't read them.",
       agents_md:
         "Your Personal space in one file on {machine}, for you to read and for agents that have no file of their own.",
-      agents_md_opencode:
-        "Your Personal space in one file on {machine}, for you to read and for agents that have no file of their own. OpenCode reads it in every project there: its settings name this file.",
+    },
+    // Who reads the canonical copy there, after its lede (its read_by).
+    canonicalReaders: {
+      opencode:
+        "OpenCode reads it in every project there: its settings name this file.",
+      cursor:
+        "Cursor gets it at every session start there, from its session-start hook.",
+      // Between the lede and these sentences.
+      gap: " ",
     },
     fileHead: "{machine} · {file}",
     block:
@@ -154,6 +161,8 @@ export const ledgerMachinesEn = {
     notYet:
       "Personal isn't written into your agents' own files yet. Run this on each computer you work on:",
     reads: "Reads your Personal space from {file} on each machine you link.",
+    printed:
+      "Gets your Personal space from its session-start hook, at every session start, on each machine you link.",
     readsHint: "On a machine without it, run {command} first.",
   },
 } as const;

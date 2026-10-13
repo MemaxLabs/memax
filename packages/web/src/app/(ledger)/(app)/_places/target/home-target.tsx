@@ -58,10 +58,15 @@ export function homeLede(
             ? lede.copilot_user
             : target.kind === "windsurf_user"
               ? lede.windsurf_user
-              : target.readBy.includes("opencode")
-                ? lede.agents_md_opencode
-                : lede.agents_md;
-  return interpolate(template, { machine, file: target.label });
+              : lede.agents_md;
+  const text = interpolate(template, { machine, file: target.label });
+  if (target.kind !== "agents_md") return text;
+  // The agents with no file of their own that read the canonical copy.
+  const readers = (["opencode", "cursor"] as const).filter((a) =>
+    target.readBy.includes(a),
+  );
+  const r = m.target.canonicalReaders;
+  return [text, ...readers.map((a) => r[a])].join(r.gap);
 }
 
 /**

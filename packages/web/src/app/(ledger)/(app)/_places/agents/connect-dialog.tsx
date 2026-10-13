@@ -14,7 +14,7 @@ import { interpolate, useLocale } from "@/i18n";
 import { isComposing } from "@/lib/v2/keymap/keymap";
 import { KeyScopeBoundary } from "@/lib/v2/keymap/react";
 import { isRaise, type AgentConnectionView } from "@/lib/v2/data/agents";
-import { HOME_FILE_OF_AGENT } from "@/lib/v2/data/home-files";
+import { HOME_FILE_OF_AGENT, HOME_PRINTED_FOR } from "@/lib/v2/data/home-files";
 import { cliCommand } from "@/lib/v2/cli";
 import { MCP_URL } from "@/lib/urls";
 import { useSource, useSpaces } from "../../_lib/data";
@@ -267,6 +267,7 @@ function ConnectBody({
                 }
                 target={source.targetFor(space, agent)}
                 homeFile={personal ? (HOME_FILE_OF_AGENT[agent] ?? null) : null}
+                homePrinted={personal && HOME_PRINTED_FOR.has(agent)}
               />
             </div>
 

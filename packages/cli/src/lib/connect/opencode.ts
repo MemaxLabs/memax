@@ -28,7 +28,6 @@
 //   opencode.json, config.json that exists. L365–366: the project's and
 //   OPENCODE_CONFIG's lists add to the global one.
 // - L240: the files are JSONC, so they're edited in place (lib/jsonc.ts).
-import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -40,7 +39,6 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Memax } from "memax-sdk";
 import {
   readHomeLink,
-  writeHomeLink,
   type HomeFile,
   type HomeLink,
 } from "../daemon/home-link.js";
@@ -53,7 +51,7 @@ import {
   SettingsFileError,
   setJsonc,
 } from "../jsonc.js";
-import { connectHomeFile, type HomeFileReport } from "./home.js";
+import { linkedCanonical, setReaders, type HomeFileReport } from "./home.js";
 
 export interface OpenCodeEnv {
   /** The home folder, a real path. */
@@ -229,48 +227,11 @@ export interface OpenCodeDeps {
   env: Record<string, string | undefined>;
 }
 
-/**
- * Who reads a home file, on the server (the target's read_by, for fading)
- * and in home.json (for the hook): `change` applied, written only when it
- * changes something.
- */
-async function setReaders(
-  d: OpenCodeDeps,
-  link: HomeLink,
-  file: HomeFile,
-  change: (readers: string[]) => string[],
-): Promise<void> {
-  const target = (
-    await d.memax.v2.targets.list(link.space_id, { machine: link.machine_id })
-  ).items.find((t) => t.id === file.target_id);
-  if (!target) return;
-  const was = [...(target.settings.read_by ?? [])].sort();
-  const next = [...new Set(change(was))].sort();
-  if (next.join() !== was.join()) {
-    await d.memax.v2.targets.update(
-      target.id,
-      {
-        settings: { read_by: next },
-        reason: next.includes("opencode")
-          ? "OpenCode reads it on this machine"
-          : "OpenCode reads the Personal space from another file on this machine",
-      },
-      { idempotencyKey: randomUUID(), via: "cli", ifMatch: target.version },
-    );
-  }
-  const now = readHomeLink(d.paths) ?? link;
-  writeHomeLink(d.paths, {
-    ...now,
-    files: now.files.map((f) => {
-      if (f.target_id !== file.target_id) return f;
-      const { read_by: _, ...rest } = f;
-      return next.length > 0 ? { ...rest, read_by: next } : rest;
-    }),
-  });
-}
-
 const without = (r: string[]) => r.filter((a) => a !== "opencode");
 const withIt = (r: string[]) => [...r, "opencode"];
+const READS = "OpenCode reads it on this machine";
+const READS_ELSEWHERE =
+  "OpenCode reads the Personal space from another file on this machine";
 
 /**
  * memax connect opencode on a machine whose home is linked: OpenCode's
@@ -283,33 +244,26 @@ const withIt = (r: string[]) => [...r, "opencode"];
 export async function connectOpenCode(
   d: OpenCodeDeps,
 ): Promise<HomeFileReport & { needsCompile?: boolean }> {
-  let link = readHomeLink(d.paths);
-  if (!link) return { state: "not_linked" };
-  const e = { home: link.home, env: d.env };
+  const linked = readHomeLink(d.paths);
+  if (!linked) return { state: "not_linked" };
+  const e = { home: linked.home, env: d.env };
   const dir = openCodeDir(e);
-  if (!isDir(dir)) return { state: "absent", path: tilde(link.home, dir) };
-
-  let canonical = link.files.find((f) => f.kind === "agents_md");
-  if (!canonical) {
-    const added = await connectHomeFile("agents_md", d);
-    if (added.state !== "added") return added;
-    link = readHomeLink(d.paths)!;
-    canonical = link.files.find((f) => f.kind === "agents_md");
-    if (!canonical)
-      return { state: "refused", note: "Memax didn't add its canonical copy" };
-  }
+  if (!isDir(dir)) return { state: "absent", path: tilde(linked.home, dir) };
+  const got = await linkedCanonical(d);
+  if ("report" in got) return got.report;
+  const { link, canonical } = got;
 
   const claude = readsThroughClaude(e, link);
   if (claude) {
     const removed = removeInstruction(e, canonical.abs);
-    await setReaders(d, link, canonical, without);
-    await setReaders(d, readHomeLink(d.paths) ?? link, claude, withIt);
+    await setReaders(d, link, canonical, without, READS_ELSEWHERE);
+    await setReaders(d, readHomeLink(d.paths) ?? link, claude, withIt, READS);
     return {
       state: "present",
       path: tilde(link.home, claude.abs),
       note: `OpenCode reads your Personal space there${
         removed.length > 0
-          ? `, so Memax took ${tilde(link.home, canonical.abs)} out of its instructions (${removed.map((p) => tilde(link!.home, p)).join(", ")}): it would load twice`
+          ? `, so Memax took ${tilde(link.home, canonical.abs)} out of its instructions (${removed.map((p) => tilde(link.home, p)).join(", ")}): it would load twice`
           : ""
       }`,
     };
@@ -326,7 +280,7 @@ export async function connectOpenCode(
       note: err.message,
     };
   }
-  await setReaders(d, link, canonical, withIt);
+  await setReaders(d, link, canonical, withIt, READS);
   const file = tilde(link.home, res.file);
   const reads = tilde(link.home, canonical.abs);
   return {

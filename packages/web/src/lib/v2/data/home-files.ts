@@ -54,6 +54,12 @@ export const HOME_FILE_OF_AGENT: Readonly<Record<string, string>> = {
   opencode: "~/.memax/personal/AGENTS.md",
 };
 
+/**
+ * Agents that load no file of the Personal space: their session-start
+ * hook prints the canonical copy at every session start (Cursor).
+ */
+export const HOME_PRINTED_FOR: ReadonlySet<string> = new Set(["cursor"]);
+
 /** The agent a home kind is written for; the canonical copy (agents_md) is for people and agents with no file. */
 export function homeAgent(kind: TargetKind): string | null {
   if (kind === "claude_user") return "claude-code";

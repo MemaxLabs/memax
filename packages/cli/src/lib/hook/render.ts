@@ -9,6 +9,8 @@
 // repository's, the same way (personal-layer design §7.1): what changed
 // in the agent's own home file. Outside a repository it is the block. The
 // budget is shared, the repository's lines first: Personal's are cut first.
+// An agent that loads no file of the Personal space (Cursor) gets its kept
+// lines in full instead (`print`), every session: it holds no other copy.
 import type { CitedLine } from "./compiled.js";
 
 export interface BlockFile {
@@ -68,6 +70,20 @@ export interface BlockBranch {
   hints: BlockVerifying[];
 }
 
+/**
+ * A file printed in full, for an agent that loads none of it: its kept
+ * lines under their headings, as many as its share of the budget holds.
+ */
+export interface BlockPrint {
+  path: string;
+  compile: string;
+  groups: Array<{ heading?: string; lines: string[] }>;
+  /** Lines left out for the print's own cap. */
+  more: number;
+  /** A hand edit waits in Review: the lines are as the file has them. */
+  handEdit: boolean;
+}
+
 /** One space's news: the repository's, or the Personal space's here. */
 export interface BlockSection {
   space: string;
@@ -79,6 +95,8 @@ export interface BlockSection {
   verifying?: BlockVerifying[];
   /** This branch's hints not told before. */
   branch?: BlockBranch;
+  /** The Personal space in full, for an agent with no file of it. */
+  print?: BlockPrint;
 }
 
 export interface BlockInput {
@@ -130,6 +148,7 @@ function attr(s: string): string {
 
 function hasNews(b: BlockSection): boolean {
   return (
+    (b.print?.groups.length ?? 0) > 0 ||
     b.forgotten.length > 0 ||
     b.gates.length > 0 ||
     b.behind.length > 0 ||
@@ -209,8 +228,35 @@ function frame(
   return { head, tail };
 }
 
-/** One piece of a file's changes: a plain line, or a titled list. */
-type Piece = { line: string } | { title: string; bullets: string[] };
+/**
+ * One piece of a file's changes: a plain line, or a titled list. A
+ * printed list (`printed`) holds lines no loaded file has.
+ */
+type Piece =
+  | { line: string }
+  | { title: string; bullets: string[]; printed?: boolean };
+
+/** A printed section's opening sentence. */
+function printIntro(b: BlockSection, alone: boolean): string {
+  const lead = alone ? "Memax: your" : "Your";
+  return `${lead} Personal space (${b.space}). You load no file of it, so its kept lines are here at every session start. Where a project's own files disagree, follow the project.`;
+}
+
+/** A printed file's lines, under their headings. */
+function printPieces(p: BlockPrint): Piece[] {
+  const out: Piece[] = [];
+  if (p.handEdit)
+    out.push({
+      line: `${p.path} has a local edit that waits in Review, so these lines are as the file has them.`,
+    });
+  for (const g of p.groups)
+    out.push({
+      title: g.heading ? `${g.heading}:` : "",
+      bullets: g.lines.map(bullet),
+      printed: true,
+    });
+  return out;
+}
 
 /** The block, or "" when nothing changed. */
 export function renderBlock(b: BlockInput): string {
@@ -228,7 +274,12 @@ export function renderBlock(b: BlockInput): string {
       ...frame(repo, cloud ? cloudIntro(repo) : REPO_INTRO),
       pieces: repo.files.flatMap(cloud ? cloudPieces : filePieces),
     });
-  if (personal) {
+  if (personal?.print) {
+    sections.push({
+      ...frame(personal, printIntro(personal, !repo)),
+      pieces: printPieces(personal.print),
+    });
+  } else if (personal) {
     const intro = repo
       ? `Your Personal space (${personal.space}): what changed in your own file on this machine since your last session. It is already loaded too.`
       : PERSONAL_ALONE;
@@ -254,11 +305,15 @@ export function renderBlock(b: BlockInput): string {
   const leftOut = cloud
     ? (repo?.files ?? []).reduce((n, f) => n + (f.more ?? 0), 0)
     : 0;
+  // Printed lines left out for the print's own cap: live over MCP.
+  const printOut = personal?.print?.more ?? 0;
   // The first `keep` changed lines, in order (the repository's first); a
   // list left empty goes.
   const lines = (keep: number): string[] => {
     const out: string[] = [open];
     let left = keep;
+    let cut = 0;
+    let printCut = printOut;
     sections.forEach((sec, i) => {
       out.push(...sec.head);
       for (const p of sec.pieces) {
@@ -268,16 +323,22 @@ export function renderBlock(b: BlockInput): string {
         }
         const shown = p.bullets.slice(0, Math.max(0, left));
         left -= shown.length;
-        if (shown.length > 0) out.push(p.title, ...shown);
+        if (p.printed) printCut += p.bullets.length - shown.length;
+        else cut += p.bullets.length - shown.length;
+        if (shown.length > 0) out.push(...(p.title ? [p.title] : []), ...shown);
       }
-      if (i === sections.length - 1 && (keep < total || leftOut > 0)) {
-        const more = total - keep + leftOut;
+      if (i === sections.length - 1 && (cut > 0 || leftOut > 0)) {
+        const more = cut + leftOut;
         out.push(
           cloud
             ? `…and ${more} more new or changed line${more === 1 ? "" : "s"} in the space's latest compile, not shown here.`
             : `…and ${more} more new or changed line${more === 1 ? "" : "s"}, already in the files above.`,
         );
       }
+      if (i === sections.length - 1 && printCut > 0)
+        out.push(
+          `…and ${printCut} more line${printCut === 1 ? "" : "s"} of your Personal space, not shown here: the rest stay live over MCP (memax_recall).`,
+        );
       out.push(...sec.tail);
     });
     return [...out, close];

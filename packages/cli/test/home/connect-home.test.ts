@@ -191,6 +191,37 @@ describe("memax connect on a linked machine", () => {
     });
   });
 
+  it("has Cursor's hook print the canonical copy, adding it to the link, and says so once", async () => {
+    mkdirSync(join(h.home, ".cursor"), { recursive: true });
+    const { d, compiles } = deps();
+    const r = await runConnect(agentFor("cursor")!, {}, d);
+    expect(links().at(-1)?.body).toMatchObject({
+      files: [{ kind: "agents_md", path: ".memax/personal/AGENTS.md" }],
+    });
+    expect(r.home).toMatchObject({
+      state: "added",
+      path: "~/.memax/personal/AGENTS.md",
+      note: "Cursor's session-start hook prints it at every session start",
+      compile: "compiled",
+    });
+    expect(compiles).toEqual(["personal"]);
+    const canonical = readHomeLink(h.paths)!.files.find(
+      (f) => f.kind === "agents_md",
+    )!;
+    expect(canonical.read_by).toEqual(["cursor"]);
+    expect(h.fake.entry(canonical.target_id).target.settings.read_by).toEqual([
+      "cursor",
+    ]);
+    expect(plain(renderConnect(r, "https://memax.app"))).toContain(
+      "Home     ~/.memax/personal/AGENTS.md: Cursor's session-start hook prints it at every session start; written",
+    );
+
+    const again = await runConnect(agentFor("cursor")!, {}, d);
+    expect(again.home).toMatchObject({ state: "present" });
+    expect(links()).toHaveLength(1);
+    expect(h.fake.calls("PATCH", /^\/v2\/targets\//)).toHaveLength(1);
+  });
+
   it("says Gemini CLI alone needs --agents-md to read the Personal space", async () => {
     mkdirSync(join(h.home, ".gemini"), { recursive: true });
     const r = await runConnect(agentFor("gemini")!, {}, deps().d);

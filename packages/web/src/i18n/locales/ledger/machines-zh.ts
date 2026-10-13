@@ -96,8 +96,13 @@ export const ledgerMachinesZh: Translations["ledger"]["machines"] = {
         "{machine} 上 {file} 里属于 Memax 的那一段，Antigravity 在每个项目里都会读；Gemini CLI 设置成读 AGENTS.md 之后也会读。这个文件里你自己写的内容只留在你的电脑上，Memax 不读。",
       agents_md:
         "{machine} 上把整个个人空间写成的一个文件，给你自己看，也给没有专属文件的 Agent 读。",
-      agents_md_opencode:
-        "{machine} 上把整个个人空间写成的一个文件，给你自己看，也给没有专属文件的 Agent 读。OpenCode 的设置指向这个文件，所以它在那台电脑的每个项目里都会读。",
+    },
+    canonicalReaders: {
+      opencode:
+        "OpenCode 的设置指向这个文件，所以它在那台电脑的每个项目里都会读。",
+      cursor:
+        "在那台电脑上，Cursor 每次会话开始时都会通过它的会话开始钩子拿到这个文件的内容。",
+      gap: "",
     },
     fileHead: "{machine} · {file}",
     block:
@@ -140,6 +145,8 @@ export const ledgerMachinesZh: Translations["ledger"]["machines"] = {
     writtenNone: "个人空间：已写到 {machine} 上。",
     notYet: "个人空间还没写进你的 Agent 自己的文件。在你用的每台电脑上运行：",
     reads: "在你关联的每台电脑上，从 {file} 读取你的个人空间。",
+    printed:
+      "在你关联的每台电脑上，每次会话开始时由它的会话开始钩子拿到你的个人空间。",
     readsHint: "还没关联的电脑，先运行 {command}。",
   },
 };

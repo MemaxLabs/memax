@@ -23,9 +23,10 @@
 //    linked (memax link --home), connect the agent to the Personal space
 //    too, and add its home file (Claude Code's rules file, Codex's block),
 //    or move it to the file the agent reads now; then deliver it. OpenCode
-//    has no file of its own: its instructions name the canonical copy
-//    (lib/connect/opencode.ts). Outside a repository, the Personal space
-//    is the space.
+//    and Cursor have no file of their own: OpenCode's instructions name
+//    the canonical copy (lib/connect/opencode.ts), and Cursor's
+//    session-start hook prints it (lib/hook/agents.ts `prints`). Outside a
+//    repository, the Personal space is the space.
 import type { Memax, V2 } from "memax-sdk";
 import type { DaemonPaths } from "../daemon/paths.js";
 import { findLinkedRepo, readRegistry } from "../daemon/registry.js";
@@ -41,6 +42,7 @@ import { AGENTS, type AgentEntry } from "../init/agents.js";
 import { connectToSpaces } from "../init/connect.js";
 import { readHomeLink } from "../daemon/home-link.js";
 import {
+  connectCursorHome,
   connectHomeFile,
   HOME_KIND,
   linkedPersonal,
@@ -354,12 +356,13 @@ export async function runConnect(
 
   // 6. The agent's home file, on a machine whose home is linked.
   const homeKind = HOME_KIND[a.kind];
-  if (a.kind === "opencode" && homeLink) {
-    const { needsCompile, ...home } = await connectOpenCode({
-      memax: d.memax,
-      paths: d.paths,
-      env: d.env ?? {},
-    });
+  const viaCanonical = a.kind === "opencode" || a.kind === "cursor";
+  if (viaCanonical && homeLink) {
+    const deps = { memax: d.memax, paths: d.paths, env: d.env ?? {} };
+    const { needsCompile, ...home } =
+      a.kind === "opencode"
+        ? await connectOpenCode(deps)
+        : await connectCursorHome(deps);
     r.home = home;
     if (o.compile !== false && needsCompile) {
       const out = await d.compile(
@@ -392,7 +395,7 @@ export async function runConnect(
           ? "timed_out"
           : "compiled";
     }
-  } else if (homeKind || a.kind === "opencode") {
+  } else if (homeKind || viaCanonical) {
     r.home = { state: "not_linked" };
   }
 

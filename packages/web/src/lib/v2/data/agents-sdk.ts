@@ -145,6 +145,8 @@ export function toAgentCommandError(err: unknown): AgentCommandError {
       key_max_propose: "key_max_propose",
       not_your_agent: "not_your_agent",
       autonomy_not_allowed: "not_allowed",
+      agent_kind_limit: "agent_kind_limit",
+      seat_needed: "seat_needed",
       person_must_manage: "person_must_manage",
       not_member: "not_member",
     };

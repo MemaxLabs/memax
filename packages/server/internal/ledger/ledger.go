@@ -61,6 +61,8 @@ type Ledger struct {
 	// and retries counts the attempts after the first.
 	attempts int
 	retries  metric.Int64Counter
+	// plans makes the plans decisions are made under (WithPlans, plans.go).
+	plans Plans
 }
 
 // WithCommandAttempts replaces DefaultCommandAttempts (1 turns the retry off).
@@ -167,7 +169,8 @@ func (l *Ledger) applyOnce(ctx context.Context, cmd Command, m *Meta, hash []byt
 
 	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash, inserter: l.inserter, loginRole: loginRole,
 		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, returnWindow: l.returnWindow, now: now,
-		indexJobs: l.indexJobs, forgetHonesty: l.honesty, dreamUndoWindow: l.dreamUndoWindow, locks: &memoryLocks{}}
+		indexJobs: l.indexJobs, forgetHonesty: l.honesty, dreamUndoWindow: l.dreamUndoWindow, locks: &memoryLocks{},
+		plans: l.plans}
 	var res Result
 	switch c := cmd.(type) {
 	case *Remember:

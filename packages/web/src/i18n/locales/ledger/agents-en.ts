@@ -67,6 +67,10 @@ export const ledgerAgentsEn = {
     notAllowed:
       "{agent} can propose at most in {space}: only people who keep there can let an agent write.",
     viewer: "Viewers can't raise what agents may do in {space}. Ask a member.",
+    agentKindLimit:
+      "You've connected as many kinds of agent as your plan has, so {agent} can't connect. Disconnect one you don't use, or move to Pro for as many as you like.",
+    seatNeeded:
+      "{agent} can propose at most in {space}: on its plan only the owner keeps, and members need a Team seat.",
     personMustManage: "Only a person can change what an agent may do.",
     notMember:
       "You're not a member of {space}, so its agents aren't yours to change.",

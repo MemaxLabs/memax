@@ -3448,8 +3448,16 @@ export interface components {
          *     creates or switches a space), personal_exists (each person has one
          *     personal space, made with their account), space_kind (only project
          *     spaces are created here; team spaces come with Team), space_limit
-         *     (the most project spaces one person owns during the alpha),
+         *     (the person owns as many project spaces as their plan has, or the
+         *     most one person owns on any plan; `limit` says which),
          *     switch_by_owner (only the owner switches a space).
+         *     Plan limits, only when enforced, each with `limit`: space_limit and
+         *     ask_limit as above, agent_kind_limit (the person has connected as
+         *     many kinds of agent as their plan has; another machine or key for a
+         *     kind they have isn't a new one), seat_needed (refused, or sent to
+         *     Review: on a plan that doesn't bill seats, Free and Pro, only the
+         *     owner keeps, and a member acts as a viewer does), dream_cadence (Dream
+         *     has run now as often as the space's plan allows this week or day).
          *     Refused device codes: device_by_person (only a person signs a device
          *     in), device_needs_web (confirming or declining a code needs a person
          *     on the web app). Refused sessions: session_by_person (only a person
@@ -3468,7 +3476,7 @@ export interface components {
          *     needs a sign-in in the last few minutes, or your passkey).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "cloud_propose_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "verify_by_person" | "checks_by_person" | "flag_by_memax" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "personal_exists" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "machines_by_person" | "machines_personal" | "machines_by_owner" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "cloud_propose_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "verify_by_person" | "checks_by_person" | "flag_by_memax" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "personal_exists" | "space_kind" | "space_limit" | "switch_by_owner" | "agent_kind_limit" | "seat_needed" | "dream_cadence" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "machines_by_person" | "machines_personal" | "machines_by_owner" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_kind" | "needs_passkey" | "passkey_invalid";
         /**
@@ -3854,7 +3862,25 @@ export interface components {
              * @enum {string}
              */
             suggest?: "passkey";
+            limit?: components["schemas"]["PlanLimit"];
         };
+        /**
+         * @description The plan limit a decision met (D9), for the plan-limit dialog: the
+         *     plan the limit is the person's or the space's, how much it allows
+         *     and how much is used (absent for seats), and the plan that lifts it
+         *     (absent when none does). Only when plan limits are enforced.
+         */
+        PlanLimit: {
+            plan: components["schemas"]["PlanTier"];
+            allowed?: number;
+            used?: number;
+            upgrade?: components["schemas"]["PlanTier"];
+        };
+        /**
+         * @description A V2 plan (D9).
+         * @enum {string}
+         */
+        PlanTier: "free" | "pro" | "team" | "enterprise";
         CommandResult: {
             outcome: components["schemas"]["Outcome"];
             policy: components["schemas"]["PolicyDecision"];
@@ -4128,6 +4154,12 @@ export interface components {
             next_cursor?: components["schemas"]["Cursor"];
             /** @description The space's reads in the last 7 days. */
             reads_7d: number;
+            /**
+             * @description How far back the space's plan lists reads, in days (D9: Free 30,
+             *     Pro 90, Team a year), when plan limits are enforced; absent, they
+             *     go as far back as they are kept. Older ones are kept, not listed.
+             */
+            retention_days?: number;
         };
         CompileLoadRequest: {
             /** @description The compile run the agent loaded, by display ID (C-0012) or id, from the compiled file's header. */
@@ -4756,6 +4788,12 @@ export interface components {
             items: components["schemas"]["CompileRun"][];
             has_more: boolean;
             next_cursor?: components["schemas"]["Cursor"];
+            /**
+             * @description How far back the space's plan lists compile runs, in days (D9: Free 30,
+             *     Pro 90, Team a year), when plan limits are enforced; absent, they
+             *     go as far back as they are kept. Older ones are kept, not listed.
+             */
+            retention_days?: number;
         };
         /**
          * @description One change the compiler read back from a hand edit: `edit` (a cited

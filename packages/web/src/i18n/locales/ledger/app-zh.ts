@@ -315,7 +315,8 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
     },
     limit: {
       title: "这个月你已经问了 {n} 个问题，用完了套餐的额度。",
-      detail: "{date} 起可以再问。Pro 不限次数。",
+      detail: "{date} 起可以再问。",
+      upgrade: "Pro 套餐每月可以提问 1,000 次。",
     },
     rememberInstead: "改成记住",
     failed: "这次没能回答，什么都没保留。再试一次。",

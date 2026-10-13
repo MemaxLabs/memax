@@ -59,8 +59,9 @@ export const ledgerActivityEn = {
     compiles: "Compiles",
     notRecorded: "Not recorded yet",
   },
+  // D9: how far back Activity's reads and compiles go on each plan.
   retention:
-    "Pro keeps 30 days of activity. The Team plan keeps all of it, with export.",
+    "Activity goes back 30 days on Free, 90 days on Pro and a year on Team. Receipts are kept for good.",
   export: {
     loaded: "Export CSV · {n} loaded",
     loadedOne: "Export CSV · 1 loaded",

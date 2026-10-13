@@ -57,9 +57,10 @@ type targetResult struct {
 }
 
 type compileRunPage struct {
-	Items      []ledger.CompileRun `json:"items"`
-	HasMore    bool                `json:"has_more"`
-	NextCursor string              `json:"next_cursor,omitempty"`
+	Items         []ledger.CompileRun `json:"items"`
+	HasMore       bool                `json:"has_more"`
+	NextCursor    string              `json:"next_cursor,omitempty"`
+	RetentionDays int                 `json:"retention_days,omitempty"`
 }
 
 type targetPreview struct {
@@ -458,7 +459,8 @@ func (h *Handler) listCompileRuns(w http.ResponseWriter, r *http.Request) {
 		writeError(w, h.fromLedger(r, err))
 		return
 	}
-	writeData(w, http.StatusOK, compileRunPage{Items: nonNil(res.Runs), HasMore: res.HasMore, NextCursor: res.NextCursor})
+	writeData(w, http.StatusOK, compileRunPage{Items: nonNil(res.Runs), HasMore: res.HasMore, NextCursor: res.NextCursor,
+		RetentionDays: res.RetentionDays})
 }
 
 // POST /v2/targets/{target}/observations

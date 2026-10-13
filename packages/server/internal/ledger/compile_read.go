@@ -6,6 +6,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
 
 // Reads of the Brief, targets, compile runs and observations. Like the
@@ -165,10 +167,13 @@ type CompileRunQuery struct {
 }
 
 // CompileRunPage is one page of a target's runs, newest first.
+// RetentionDays is how far back its space's plan lists them (0: as far as
+// they are kept).
 type CompileRunPage struct {
-	Runs       []CompileRun
-	NextCursor string
-	HasMore    bool
+	Runs          []CompileRun
+	NextCursor    string
+	HasMore       bool
+	RetentionDays int
 }
 
 // ListCompileRuns pages through a target's compile runs, newest first.
@@ -183,13 +188,19 @@ func (l *Ledger) ListCompileRuns(ctx context.Context, scope Scope, q CompileRunQ
 	}
 	var page CompileRunPage
 	err = l.Read(ctx, scope, func(tx pgx.Tx) error {
-		if _, err := loadTarget(ctx, tx, scope, q.TargetID, false); err != nil {
+		t, err := loadTarget(ctx, tx, scope, q.TargetID, false)
+		if err != nil {
 			return err
 		}
+		// The space's plan says how far back Activity goes (D9).
+		g, _ := scope.Grant(t.SpaceID)
+		plan := l.SpacePlan(g)
+		page.RetentionDays = policy.ActivityDays(plan)
 		rows, err := tx.Query(ctx, compileSelect+`
 			 WHERE r.target_id = $1 AND r.space_id = ANY($2) AND ($3::bigint = 0 OR r.seq < $3)
+			   AND ($5::timestamptz IS NULL OR r.enqueued_at >= $5)
 			 ORDER BY r.seq DESC
-			 LIMIT $4`, q.TargetID, scope.SpaceIDs(), before, limit+1)
+			 LIMIT $4`, q.TargetID, scope.SpaceIDs(), before, limit+1, activitySince(plan, l.now()))
 		if err != nil {
 			return fmt.Errorf("ledger: list compile runs: %w", err)
 		}

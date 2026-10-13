@@ -8,6 +8,7 @@ import {
   ledeText,
   nextText,
   staleNote,
+  runFailureText,
   whoText,
   type DreamWords,
 } from "../dream-copy";
@@ -507,5 +508,31 @@ describe("an edition's words", () => {
     expect(editionNumberOf("D-0214")).toBe(214);
     expect(editionNumberOf("214")).toBe(214);
     expect(editionNumberOf("latest")).toBeNull();
+  });
+});
+
+describe("a run-now that didn't go", () => {
+  it("says the space's plan's cap, worded by the plan (dream_cadence)", () => {
+    const free = {
+      kind: "refused",
+      code: "dream_cadence",
+      message: null,
+      limit: { plan: "free", allowed: 1, used: 1, upgrade: "pro" },
+    } as const;
+    expect(runFailureText(words("en"), free)).toBe(
+      "Dream has run now as often as Free allows this week. It still runs on its own. Pro runs it nightly.",
+    );
+    expect(runFailureText(words("zh"), free)).toMatch(/Free 套餐本周/);
+    const pro = {
+      ...free,
+      limit: { plan: "pro", allowed: 3, used: 3 },
+    } as const;
+    expect(runFailureText(words("en"), pro)).toBe(
+      "Dream has run now as often as Pro allows today. It still runs on its own.",
+    );
+    // Without plan limits the cap is a rate limit, as before.
+    expect(
+      runFailureText(words("en"), { kind: "rate-limited", retryAfter: 86400 }),
+    ).toBe(words("en").dc.refused.runCap);
   });
 });

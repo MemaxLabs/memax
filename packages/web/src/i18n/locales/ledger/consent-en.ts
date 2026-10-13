@@ -56,6 +56,8 @@ export const ledgerConsentEn = {
   errors: {
     space:
       "That space can't be connected from this account. Choose one of the spaces here.",
+    // agent_kind_limit (D9): the person's plan connects so many kinds of agent.
+    plan: "You've connected as many kinds of agent as your plan has, so {client} wasn't connected. Disconnect one you don't use in Agents, or move to Pro for as many as you like.",
     failed: "That didn't go through. Try again.",
   },
   loading: "Loading the request",

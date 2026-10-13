@@ -60,6 +60,10 @@ type SweepSpace struct {
 	ScheduleTimeZone string
 	DueAt            time.Time
 	LastSlot         *time.Time
+	// Plan is the space's plan (the better of its team's subscription and
+	// its owner's plan, Plans): when its limits are enforced, its cadence
+	// is the space's (policy.DreamCadence).
+	Plan policy.Plan
 }
 
 // SweepDecision is what the sweep does with a space: its cadence, the zone
@@ -93,7 +97,8 @@ func (l *Ledger) DreamSweep(ctx context.Context, now time.Time, limit int, decid
 	defer func() { _ = tx.Rollback(ctx) }()
 	rows, err := tx.Query(ctx, `
 		SELECT h.id, h.tenant_id, h.owner_id, COALESCE(ds.time_zone, 'UTC'),
-		       s.space_id IS NOT NULL, COALESCE(s.cadence, ''), COALESCE(s.time_zone, ''), COALESCE(s.due_at, $1), s.last_slot
+		       s.space_id IS NOT NULL, COALESCE(s.cadence, ''), COALESCE(s.time_zone, ''), COALESCE(s.due_at, $1), s.last_slot,
+		       `+spacePlansSQL+`
 		  FROM public.hubs h
 		  LEFT JOIN v2.dream_schedules s ON s.space_id = h.id
 		  LEFT JOIN v2.dream_settings ds ON ds.person_id = h.owner_id
@@ -107,8 +112,10 @@ func (l *Ledger) DreamSweep(ctx context.Context, now time.Time, limit int, decid
 	}
 	spaces, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (SweepSpace, error) {
 		var s SweepSpace
+		var g SpaceGrant
 		err := r.Scan(&s.SpaceID, &s.TenantID, &s.OwnerID, &s.TimeZone, &s.HasSchedule, &s.Cadence, &s.ScheduleTimeZone,
-			&s.DueAt, &s.LastSlot)
+			&s.DueAt, &s.LastSlot, &g.HubPlanID, &g.OwnerPlanID)
+		s.Plan = spacePlan(l.plans, g)
 		return s, err
 	})
 	if err != nil {
@@ -283,7 +290,7 @@ func (l *Ledger) QueueDreamRun(ctx context.Context, scope Scope, actor Actor, vi
 	if err != nil {
 		return DreamSpaceArgs{}, policy.Decision{}, err
 	}
-	dec = policy.Decide(toPolicyActor(actor, via, grant), policy.ActionRunDream, policy.Object{}, sp.policy())
+	dec = policy.Decide(toPolicyActor(actor, via, grant, l.plans), policy.ActionRunDream, policy.Object{}, sp.policy())
 	if dec.Effect == policy.EffectRefuse {
 		return DreamSpaceArgs{}, dec, nil
 	}

@@ -171,11 +171,15 @@ func (l *Ledger) CreateSpace(ctx context.Context, actor Actor, in NewSpace) (*Sp
 			return nil, false, fmt.Errorf("ledger: create space: %w", err)
 		}
 	}
+	// With the count, the person's plan row (their plan bounds it, D9).
 	var owned int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM public.hubs WHERE owner_id = $1 AND space_kind = 'project'`, actor.ID).Scan(&owned); err != nil {
+	var planID string
+	if err := tx.QueryRow(ctx, `SELECT count(*), `+planOfSQL("$1")+` FROM public.hubs WHERE owner_id = $1 AND space_kind = 'project'`,
+		actor.ID).Scan(&owned, &planID); err != nil {
 		return nil, false, fmt.Errorf("ledger: create space: %w", err)
 	}
-	if d := policy.DecideCreateSpace(policy.Actor{Kind: actor.Kind, Credential: actor.Credential}, in.Kind, owned); d.Effect == policy.EffectRefuse {
+	pa := policy.Actor{Kind: actor.Kind, Credential: actor.Credential, Plan: personPlan(l.plans, SpaceGrant{PlanID: planID})}
+	if d := policy.DecideCreateSpace(pa, in.Kind, owned); d.Effect == policy.EffectRefuse {
 		return nil, false, &SpaceRefusedError{Decision: d}
 	}
 

@@ -152,8 +152,19 @@ func (w *writer) connectCloud(ctx context.Context, c *ConnectCloudAgent) (Result
 	}
 	name := CloudDisplayName(c.Agent, g.Slug)
 	mine := a.Kind == policy.ActorPerson && a.ID == w.meta.Scope.PersonID
-	dec := policy.DecideConnection(w.policyActor(g), policy.ConnectionConnect, policy.Connection{
+	pa := w.policyActor(g)
+	// The kinds of agent the person has connected, only where their plan
+	// bounds them (D9): a round trip a connection without one never takes.
+	var kinds int
+	var newKind bool
+	if pa.Plan.Enforced && pa.Plan.AgentKinds >= 0 {
+		if err := w.tx.QueryRow(ctx, connectionKindsSQL, w.meta.Scope.PersonID, string(c.Agent)).Scan(&kinds, &newKind); err != nil {
+			return Result{}, fmt.Errorf("ledger: count agent kinds: %w", err)
+		}
+	}
+	dec := policy.DecideConnection(pa, policy.ConnectionConnect, policy.Connection{
 		Name: name, Mine: mine, Credential: policy.CredentialAPIKey, To: c.Autonomy, Cloud: true,
+		NewKind: newKind, Kinds: kinds,
 	}, sp.policy())
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil

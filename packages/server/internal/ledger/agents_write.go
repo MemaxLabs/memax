@@ -18,6 +18,15 @@ import (
 // 029). Receipts about a connection have object_kind "agent", its id as
 // object_id and stream, and the agent's slug as object_ref.
 
+// connectionKindsSQL counts the kinds of agent person $1 has connected
+// (any connection not disconnected: the same agent on two machines, or
+// with two keys, is one kind; D9), and whether kind $2 is a new one. A
+// person's connections are theirs to see in any space (RLS on
+// app.person_id).
+const connectionKindsSQL = `
+		SELECT (SELECT count(DISTINCT agent) FROM v2.agent_connections WHERE person_id = $1 AND state <> 'disconnected'),
+		       NOT EXISTS (SELECT 1 FROM v2.agent_connections WHERE person_id = $1 AND agent = $2 AND state <> 'disconnected')`
+
 // connect is ConnectAgent.
 func (w *writer) connect(ctx context.Context, c *ConnectAgent) (Result, error) {
 	a := w.meta.Actor
@@ -67,10 +76,13 @@ func (w *writer) connect(ctx context.Context, c *ConnectAgent) (Result, error) {
 	if access == "" {
 		return Result{}, ErrNotFound
 	}
-	var exists bool
-	if err := w.tx.QueryRow(ctx, `
-		SELECT EXISTS (SELECT 1 FROM v2.agent_connections WHERE credential_kind = $1 AND credential_id = $2)`,
-		string(c.Credential), c.CredentialID).Scan(&exists); err != nil {
+	// With it, in the same statement, the kinds of agent the person has
+	// connected (their plan bounds a new kind: D9, "3 agent kinds").
+	var exists, newKind bool
+	var kinds int
+	if err := w.tx.QueryRow(ctx, connectionKindsSQL+`,
+		       EXISTS (SELECT 1 FROM v2.agent_connections WHERE credential_kind = $3 AND credential_id = $4)`,
+		person, string(c.Agent), string(c.Credential), c.CredentialID).Scan(&kinds, &newKind, &exists); err != nil {
 		return Result{}, fmt.Errorf("ledger: look up connection: %w", err)
 	}
 	if exists {
@@ -81,14 +93,16 @@ func (w *writer) connect(ctx context.Context, c *ConnectAgent) (Result, error) {
 	var dec policy.Decision
 	for i := range targets {
 		t := &targets[i]
+		pa := w.policyActor(t.g)
 		if t.level == "" {
-			t.level = policy.DefaultAutonomy(t.g.Role, t.sp.policy())
+			t.level = policy.DefaultAutonomy(policy.SeatRole(t.g.Role, pa.SpacePlan), t.sp.policy())
 		}
 		if c.Cap != "" {
 			t.level = policy.MinAutonomy(t.level, c.Cap)
 		}
-		dec = policy.DecideConnection(w.policyActor(t.g), policy.ConnectionConnect, policy.Connection{
+		dec = policy.DecideConnection(pa, policy.ConnectionConnect, policy.Connection{
 			Name: c.DisplayName, Mine: mine, Credential: c.Credential.Policy(), To: t.level,
+			NewKind: newKind, Kinds: kinds,
 		}, t.sp.policy())
 		if dec.Effect == policy.EffectRefuse {
 			return refused(dec), nil

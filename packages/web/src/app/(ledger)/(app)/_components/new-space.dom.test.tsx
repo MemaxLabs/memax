@@ -177,7 +177,7 @@ describe("New space", () => {
     fireEvent.change(field("Name"), { target: { value: "acme" } });
     fireEvent.click(create());
     expect(text(await screen.findByRole("alert"))).toBe(
-      "acme wasn't made. You own 50 project spaces, the most one person can during the alpha.",
+      "acme wasn't made. You own 50 project spaces, the most one person can.",
     );
     expect(screen.getByRole("dialog", { name: "New space" })).toBeTruthy();
     expect(h.push).not.toHaveBeenCalled();

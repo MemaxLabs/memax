@@ -316,6 +316,7 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "SpaceKind", specEnum(t, "SpaceKind"), []string{string(policy.SpacePersonal), string(policy.SpaceProject), string(policy.SpaceTeam)})
 	sameSet(t, "Role", specEnum(t, "Role"), []string{string(policy.RoleOwner), string(policy.RoleMember), string(policy.RoleViewer)})
 	sameSet(t, "Autonomy", specEnum(t, "Autonomy"), strs(policy.Autonomies))
+	sameSet(t, "PlanTier", specEnum(t, "PlanTier"), strs(policy.PlanTiers))
 	sameSet(t, "AgentKind", specEnum(t, "AgentKind"), strs(ledger.AgentKinds))
 	sameSet(t, "AgentSurface", specEnum(t, "AgentSurface"), strs(ledger.AgentSurfaces))
 	sameSet(t, "AgentState", specEnum(t, "AgentState"), strs(ledger.ConnectionStates))
@@ -327,8 +328,9 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 		stringConsts(t, "../../ledger/policy/spaces.go", "Code")...),
 		stringConsts(t, "../../ledger/policy/devices.go", "Code")...),
 		stringConsts(t, "../../ledger/policy/sessions.go", "Code")...),
-		append(stringConsts(t, "../../ledger/policy/assurance.go", "Code"),
-			stringConsts(t, "../../ledger/policy/machines.go", "Code")...)...))
+		append(append(stringConsts(t, "../../ledger/policy/assurance.go", "Code"),
+			stringConsts(t, "../../ledger/policy/machines.go", "Code")...),
+			stringConsts(t, "../../ledger/policy/plans.go", "Code")...)...))
 	sameSet(t, "PasskeyFailure", specEnum(t, "PasskeyFailure"), []string{
 		string(passkeys.ReasonMalformed), string(passkeys.ReasonUnknown), string(passkeys.ReasonExpired), string(passkeys.ReasonUsed),
 		string(passkeys.ReasonOtherSession), string(passkeys.ReasonOtherRequest), string(passkeys.ReasonNoCredential),

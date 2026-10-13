@@ -59,6 +59,9 @@ type writer struct {
 	// locks are the memories the command holds: it locks them in one round
 	// (locks.go).
 	locks *memoryLocks
+	// plans are the ledger's (plans.go): the plans its decisions are made
+	// under.
+	plans Plans
 }
 
 // write is Remember and Propose.
@@ -658,17 +661,18 @@ func (w *writer) objectReceipt(sp spaceRow, kind string, objectID uuid.UUID, ref
 // status there (SpaceGrant, from WithConnection), falling back to
 // Actor.Autonomy.
 func (w *writer) policyActor(g SpaceGrant) policy.Actor {
-	return toPolicyActor(w.meta.Actor, w.meta.Via, g)
+	return toPolicyActor(w.meta.Actor, w.meta.Via, g, w.plans)
 }
 
 // personAssurance is the assurance a person's change carries (none for
 // anyone else); it doesn't depend on the space.
 func (w *writer) personAssurance() policy.Assurance {
-	return toPolicyActor(w.meta.Actor, w.meta.Via, SpaceGrant{}).Assurance()
+	return toPolicyActor(w.meta.Actor, w.meta.Via, SpaceGrant{}, nil).Assurance()
 }
 
-// toPolicyActor is an actor as policy sees it in one space (policyActor).
-func toPolicyActor(a Actor, via policy.Via, g SpaceGrant) policy.Actor {
+// toPolicyActor is an actor as policy sees it in one space (policyActor),
+// with the plans of the person and the space its grant names.
+func toPolicyActor(a Actor, via policy.Via, g SpaceGrant, plans Plans) policy.Actor {
 	autonomy := a.Autonomy
 	if g.Autonomy != "" {
 		autonomy = g.Autonomy
@@ -678,6 +682,7 @@ func toPolicyActor(a Actor, via policy.Via, g SpaceGrant) policy.Actor {
 		Autonomy: autonomy, AgentStatus: g.AgentStatus, Credential: a.Credential, Via: via,
 		PersonPresent: a.PersonPresent, CanElicit: a.CanElicit,
 		Passkey: a.Passkey, Verified: a.Verified,
+		Plan: personPlan(plans, g), SpacePlan: spacePlan(plans, g),
 	}
 }
 

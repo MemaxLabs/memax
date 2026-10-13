@@ -1,7 +1,7 @@
 // Package policy decides what a write to the V2 record does: apply it,
 // send it to Review as a proposal, ask the person in the agent to
 // confirm, or refuse it. Decide is the one place autonomy, roles,
-// quarantine and (later) plan limits are enforced, for every surface
+// quarantine and plan limits are enforced, for every surface
 // (plan 25 §5.6, HANDOFF rules 2, 3, 4 and 12).
 //
 // Decide is a pure function of its inputs. The ledger loads the facts
@@ -61,6 +61,12 @@
 //     CodeSpaceOnV1 until its owner switches it to V2. The switch's own
 //     steps (Space.Switching) are the exception. Agent connections
 //     (DecideConnection) apply on either.
+//   - Plans (plans.go, D9), only when V2_PLAN_LIMITS enforces them: the
+//     person's plan bounds the project spaces they own (space_limit), the
+//     kinds of agent they connect (agent_kind_limit) and their asks a month
+//     (ask_limit); the space's plan says who holds a seat (on Free and Pro
+//     only the owner keeps, and a member acts as a viewer: seat_needed),
+//     how often Dream runs (dream_cadence) and how far back Activity goes.
 //
 // Messages follow the product voice (sentence case, actionable, no
 // exclamation marks). Clients localise by Code; Message is the English
@@ -382,11 +388,11 @@ const (
 	ActionFlagStale    Action = "flag_stale"
 )
 
-// FreeAskLimit is how many asks a month Free answers (D9: "Ask 50/mo").
-// Pro and Team have no Ask limit. The plan a person is on is the caller's
-// to say (Object.AskLimit): during the free alpha no V2 plan exists yet,
-// so the API counts asks and passes no limit unless ASK_MONTHLY_LIMIT
-// sets one (internal/ask).
+// FreeAskLimit is how many asks a month Free answers (D9: "Ask 50/mo"), as
+// personal_free's row says (migration 067). With plan limits enforced the
+// person's plan says (Actor.Plan, AskLimit); during the alpha the API
+// counts asks and passes no limit unless ASK_MONTHLY_LIMIT sets one
+// (Object.AskLimit, internal/ask).
 const FreeAskLimit = 50
 
 // MaxWaitingGates is how many decisions one agent may have waiting on
@@ -429,6 +435,13 @@ type Actor struct {
 	// assertion bound to the person, their session and the request
 	// (internal/passkeys). It counts only on the web.
 	Verified bool
+	// Plan is the plan of the person acting (or the agent works for):
+	// their effective plan (plans.go). SpacePlan is the plan of the space
+	// the action is in, from the actor's grant (a member without a seat
+	// there acts as a viewer does). The ledger sets both; the zero Plan
+	// enforces nothing.
+	Plan      Plan
+	SpacePlan Plan
 }
 
 // Assurance is the assurance a Keep by this actor carries:
@@ -512,7 +525,8 @@ type Object struct {
 	// waiting in the space (asking another).
 	WaitingGates int
 	// AsksBefore counts the person's asks this month before this one, and
-	// AskLimit is their plan's monthly limit (0: none).
+	// AskLimit is the server's monthly limit (0: none) when plan limits
+	// aren't enforced; when they are, the person's plan's applies (AskLimit).
 	AsksBefore int
 	AskLimit   int
 	// Widens is set when a scope change lets the memory reach places it
@@ -593,6 +607,9 @@ type Decision struct {
 	// Suggest is a hint for the person, on a decision that went through:
 	// SuggestPasskey when it needed a person and they have no passkey.
 	Suggest string `json:"suggest,omitempty"`
+	// Limit is the plan limit a decision met (plans.go): the plan, its
+	// allowance and use, and the plan that lifts it.
+	Limit *PlanLimit `json:"limit,omitempty"`
 }
 
 // Decision codes. Refusals, then downgrades to a proposal, then the
@@ -691,6 +708,9 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 	if !s.OnV2 && !s.Switching && !onV1[act] {
 		return refuseOnV1(a, act, s)
 	}
+	if a.SpacePlan.Seatless(a.Role) && (a.Kind == ActorPerson || a.Kind == ActorAgent) && !seatFree[act] {
+		return decideSeatless(a, act, o, s)
+	}
 	if len(o.Secrets) > 0 && slices.Contains([]Action{ActionRemember, ActionPropose, ActionEdit, ActionReviseBrief,
 		ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate, ActionForget, ActionRequestForget, ActionVerify}, act) {
 		return refuse(CodeSecret, fmt.Sprintf(
@@ -786,6 +806,41 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 	return refuse(CodeUnknownAction, fmt.Sprintf("Memax doesn't know how to %q.", act))
 }
 
+// seatFree are the actions a member decides as a member whether or not
+// they hold a seat (D9): Forget is on every plan, and reads, Ask and
+// export are a viewer's too.
+var seatFree = map[Action]bool{
+	ActionRead: true, ActionAsk: true, ActionExport: true,
+	ActionForget: true, ActionRequestForget: true, ActionDeclineForget: true,
+}
+
+// decideSeatless: plan limits are enforced and the space's plan doesn't
+// bill seats (Free, Pro), so this member holds no seat, and neither does an
+// agent working for them. They act as a viewer does: what a viewer may do
+// they do, and what a viewer may not they may not, said as the seat it
+// needs (seat_needed), before anything else a member would be asked (a
+// passkey, the web). Where the member wouldn't have kept anyway (a proposal
+// on purpose, an agent at Propose), the seat changes nothing, and their own
+// decision stands.
+func decideSeatless(a Actor, act Action, o Object, s Space) Decision {
+	member := a
+	member.SpacePlan = Plan{}
+	m := Decide(member, act, o, s)
+	if m.Effect == EffectPropose {
+		return m
+	}
+	viewer := member
+	viewer.Role = RoleViewer
+	v := Decide(viewer, act, o, s)
+	switch {
+	case v.Code == CodeViewer:
+		return seatNeeded(v, a.SpacePlan, s)
+	case m.Effect == EffectRefuse:
+		return m
+	}
+	return v
+}
+
 // decideRead: people read the spaces they belong to, and system actors
 // the spaces they act on. An agent reads only the spaces it is connected
 // to (decided Oct 6); a paused agent still reads. Autonomy doesn't matter:
@@ -807,10 +862,8 @@ func decideAsk(a Actor, o Object) Decision {
 		return refuse(CodeAskByPerson,
 			"Ask answers people. Agents read the record over MCP with memax_recall and memax_search.")
 	}
-	if o.AskLimit > 0 && o.AsksBefore >= o.AskLimit {
-		return refuse(CodeAskLimit, fmt.Sprintf(
-			"You've asked %d questions this month, all your plan answers. Asks start again on the 1st; Pro answers as many as you like.",
-			o.AskLimit))
+	if d := askLimit(a, o); d != nil {
+		return *d
 	}
 	return apply()
 }

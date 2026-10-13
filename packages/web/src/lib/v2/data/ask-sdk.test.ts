@@ -210,7 +210,40 @@ describe("Ask over memax.v2.ask", () => {
       await collect(
         createSdkAsk(client, () => viewer)({ space, question: "?" }),
       ),
-    ).toEqual([{ type: "limit", limit: 50, resetAt: "2026-11-01T00:00:00Z" }]);
+    ).toEqual([
+      {
+        type: "limit",
+        limit: 50,
+        resetAt: "2026-11-01T00:00:00Z",
+        upgrade: null,
+      },
+    ]);
+    // On a plan whose limits are enforced, the refusal names the plan that
+    // answers more.
+    const planned = new MemaxError("Used up.", "refused", 403, {
+      policy: {
+        effect: "refuse",
+        code: "ask_limit",
+        limit: { plan: "free", allowed: 50, used: 50, upgrade: "pro" },
+      },
+      limit: 50,
+      reset_at: "2026-11-01T00:00:00Z",
+    });
+    expect(
+      await collect(
+        createSdkAsk(
+          clientWith([], planned).client,
+          () => viewer,
+        )({ space, question: "?" }),
+      ),
+    ).toEqual([
+      {
+        type: "limit",
+        limit: 50,
+        resetAt: "2026-11-01T00:00:00Z",
+        upgrade: "pro",
+      },
+    ]);
     const failing = clientWith([
       {
         event: "sources",

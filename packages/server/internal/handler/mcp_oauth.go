@@ -700,20 +700,21 @@ func intersectScopes(requested, selected string) string {
 // the connection is what's enforced, and only a person on the web raises
 // it, in Agents. A failure leaves the V1 grant working; the agent then
 // only reads on V2 until it is connected (cmd/v2-backfill-agents does it
-// too).
-func (h *MCPOAuthHandler) connectAgent(ctx context.Context, session oauthPendingSession, grantID string, hubIDs []string, scope string) {
+// too). A refusal is returned: one on a plan's limit (D9: the kinds of
+// agent a person connects) the caller answers instead of the code.
+func (h *MCPOAuthHandler) connectAgent(ctx context.Context, session oauthPendingSession, grantID string, hubIDs []string, scope string) *policy.Decision {
 	if h.ledger == nil {
-		return
+		return nil
 	}
 	userID, err1 := uuid.Parse(session.userID)
 	credID, err2 := uuid.Parse(grantID)
 	if err1 != nil || err2 != nil {
-		return
+		return nil
 	}
 	userScope, err := h.ledger.UserScope(ctx, userID)
 	if err != nil {
 		slog.Warn("MCP OAuth: can't connect the agent on the V2 record", "grant_id", grantID, "error", err)
-		return
+		return nil
 	}
 	agentSlug := agentNameFromClientName(session.clientName)
 	// Cursor and Gemini CLI start at Read; the rest at the space's default.
@@ -727,7 +728,7 @@ func (h *MCPOAuthHandler) connectAgent(ctx context.Context, session oauthPending
 		}
 	}
 	if len(spaces) == 0 {
-		return
+		return nil
 	}
 	clientID := ""
 	if isMetadataClientID(session.clientID) {
@@ -750,7 +751,9 @@ func (h *MCPOAuthHandler) connectAgent(ctx context.Context, session oauthPending
 		slog.Warn("MCP OAuth: can't connect the agent on the V2 record", "grant_id", grantID, "error", err)
 	case res.Outcome == ledger.OutcomeRefused:
 		slog.Warn("MCP OAuth: connecting the agent was refused", "grant_id", grantID, "policy", res.Policy.Code)
+		return &res.Policy
 	}
+	return nil
 }
 
 // --- Session storage ---

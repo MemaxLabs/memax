@@ -409,7 +409,22 @@ describe("command failures", () => {
       refused("external_needs_review"),
       { kind: "refused", code: "external_needs_review" },
     ],
-    [refused("viewer"), { kind: "refused", code: "viewer" }],
+    [refused("viewer"), { kind: "refused", code: "viewer", limit: null }],
+    [
+      new MemaxError("refused", "refused", 403, {
+        policy: {
+          effect: "refuse",
+          code: "seat_needed",
+          message: "Only the owner keeps.",
+          limit: { plan: "pro", upgrade: "team" },
+        },
+      }),
+      {
+        kind: "refused",
+        code: "seat_needed",
+        limit: { plan: "pro", upgrade: "team" },
+      },
+    ],
     [
       new MemaxError("changed", "edit_clash", 412, { current_version: 3 }),
       { kind: "clash", currentVersion: 3 },

@@ -23,7 +23,7 @@ import type {
 } from "./data/dream";
 import type { Actor } from "./data/records";
 import type { MemoryListItem } from "./data/memories";
-import { actorName } from "./records-copy";
+import { actorName, planLimitText } from "./records-copy";
 import { weekdayName } from "./today-copy";
 
 export type DreamCopy = Translations["ledger"]["dream"];
@@ -283,6 +283,10 @@ export function runFailureText(w: DreamWords, failure: CommandFailure): string {
   }
   if (failure.kind === "refused" && failure.code === "dream_run_by_owner") {
     return r.runOwner;
+  }
+  if (failure.kind === "refused" && failure.code === "dream_cadence") {
+    // The space's plan's cap: a week on a weekly plan, a day on a nightly one.
+    return planLimitText(w.rc, failure, {}, w.locale) ?? r.runCap;
   }
   return failure.kind === "unreachable" ? r.unreachable : r.failed;
 }

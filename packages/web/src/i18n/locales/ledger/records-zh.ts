@@ -145,13 +145,39 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     refusedSpace: {
       personal_exists: "你已经有个人空间了，每个人只有一个。",
       space_kind: "团队空间随 Team 推出。现在先建一个项目空间。",
-      space_limit: "你已经有 50 个项目空间，这是内测期间一个人能拥有的上限。",
+      space_limit: "你已经有 50 个项目空间，这是一个人能拥有的上限。",
       space_by_person: "只有本人登录后才能建空间，Agent 的密钥不行。",
       other: "Memax 拒绝了：{message}",
       otherBare: "Memax 拒绝了。",
     },
+    planLimit: {
+      space_limit: "{plan} 套餐的 {allowed} 个项目空间你都在用了。",
+      space_limitOne: "{plan} 套餐的项目空间你已经在用了。",
+      agent_kind_limit:
+        "{plan} 套餐可以连接 {allowed} 种 Agent，你已经连满了。",
+      agent_kind_limitOne: "{plan} 套餐可以连接 1 种 Agent，你已经连上了。",
+      ask_limit:
+        "{plan} 套餐本月的 {allowed} 次提问你都用完了，下月 1 日重新计数。",
+      seat_needed:
+        "在 {plan} 套餐上，{space} 里只有所有者能保留。成员需要 Team 席位才能保留。",
+      dream_cadence:
+        "{plan} 套餐本周允许的立即运行次数已经用完。Dream 仍会按计划自动运行。",
+      dream_cadenceToday:
+        "{plan} 套餐今天允许的立即运行次数已经用完。Dream 仍会按计划自动运行。",
+      upgrade: {
+        space_limit: "Pro 套餐不限项目空间数量。",
+        agent_kind_limit:
+          "Pro 套餐不限 Agent 种类；同一种 Agent 换一台电脑不算新的一种。",
+        ask_limit: "Pro 套餐每月可以提问 1,000 次。",
+        seat_needed: "在 Team 套餐上，每位成员都有席位。",
+        dream_cadence: "Pro 套餐每晚运行 Dream。",
+      },
+    },
+    plans: { free: "Free", pro: "Pro", team: "Team", enterprise: "Enterprise" },
     refused: {
       viewer: "查看者可以提议和评论，保留要由成员来。",
+      seat_needed:
+        "在这个套餐上，{space} 里只有所有者能保留。成员需要 Team 席位才能保留。",
       owners_keep: "在 {space} 里只有所有者能保留。请所有者来保留吧。",
       external_needs_review:
         "它引用了外部来源，只有在网页上登录才能保留。退出后在这个页面重新登录，再来保留。",

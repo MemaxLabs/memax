@@ -336,7 +336,7 @@ func (l *Ledger) StartSession(ctx context.Context, s SessionStart) (*SessionStar
 	// Whether this start counts: ActionRead on the grant, as Ask decides
 	// before its transaction (the space's rules don't bear on a read).
 	counts := s.Source != StartCompact &&
-		policy.Decide(toPolicyActor(s.Actor, s.Via, grant), policy.ActionRead, policy.Object{},
+		policy.Decide(toPolicyActor(s.Actor, s.Via, grant, l.plans), policy.ActionRead, policy.Object{},
 			policy.Space{Name: grant.Name, Kind: grant.Kind, OnV2: grant.OnV2}).Effect == policy.EffectApply
 	if counts {
 		s.IdempotencyKey = strings.TrimSpace(s.IdempotencyKey)

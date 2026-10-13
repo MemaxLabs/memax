@@ -595,6 +595,8 @@ describe("toAgentCommandError", () => {
     ["not_your_agent", "not_your_agent"],
     ["autonomy_not_allowed", "not_allowed"],
     ["person_must_manage", "person_must_manage"],
+    ["agent_kind_limit", "agent_kind_limit"],
+    ["seat_needed", "seat_needed"],
     ["something_new", "failed"],
   ])("refused %s → %s", (code, refusal) => {
     expect(toAgentCommandError(refused(code)).refusal).toBe(refusal);

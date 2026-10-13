@@ -292,8 +292,12 @@ func (l *Ledger) SpaceScope(ctx context.Context, spaceID uuid.UUID) (Scope, erro
 	}
 	var g SpaceGrant
 	var kind string
-	err := l.pool.QueryRow(ctx, `SELECT id, tenant_id, space_kind, slug, name, v2_enabled_at IS NOT NULL FROM public.hubs WHERE id = $1`, spaceID).
-		Scan(&g.SpaceID, &g.TenantID, &kind, &g.Slug, &g.Name, &g.OnV2)
+	// With the space's plan rows (its team's subscription and its owner's
+	// plan): what Dream runs it at.
+	err := l.pool.QueryRow(ctx, `SELECT h.id, h.tenant_id, h.space_kind, h.slug, h.name, h.v2_enabled_at IS NOT NULL,
+		       `+spacePlansSQL+`
+		  FROM public.hubs h WHERE h.id = $1`, spaceID).
+		Scan(&g.SpaceID, &g.TenantID, &kind, &g.Slug, &g.Name, &g.OnV2, &g.HubPlanID, &g.OwnerPlanID)
 	if errNoRows(err) {
 		// A retired space: its hub is gone, its receipts and seals stay
 		// (migration 044), and the sealer and the verifier still need its

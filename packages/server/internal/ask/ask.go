@@ -47,9 +47,10 @@ type Searcher interface {
 	Search(ctx context.Context, scope ledger.Scope, q v2recall.Query) (v2recall.Result, error)
 }
 
-// Plans says a person's plan's monthly Ask limit in a space (0: none).
-// Until V2 billing exists (Phase 3.4), the API passes a fixed limit
-// (Config.MonthlyLimit), which is none during the free alpha.
+// Plans says the server's monthly Ask limit for a person in a space (0:
+// none) while plan limits aren't enforced: a fixed limit
+// (Config.MonthlyLimit), none during the free alpha. With V2_PLAN_LIMITS
+// the person's own plan decides instead (the ledger's Plans, D9).
 type Plans interface {
 	AskLimit(ctx context.Context, person uuid.UUID, space ledger.SpaceGrant) int
 }
@@ -219,7 +220,7 @@ func (p *Prepared) Sources() []Source { return p.sources }
 
 func (s *Service) policyActor(r Request) policy.Actor {
 	return policy.Actor{Kind: r.Actor.Kind, Name: r.Actor.Name, Role: r.Space.Role, CanForget: r.Space.CanForget,
-		Credential: r.Actor.Credential, Via: r.Via}
+		Credential: r.Actor.Credential, Via: r.Via, Plan: s.ledger.PersonPlan(r.Space)}
 }
 
 // Prepare decides the question (who may ask, the plan's limit), counts it
@@ -249,10 +250,10 @@ func (s *Service) Prepare(ctx context.Context, r Request) (*Prepared, error) {
 			return nil, err
 		}
 		p.counted, p.countedAt = true, at
-		limit := s.plans.AskLimit(ctx, r.Scope.PersonID, r.Space)
-		if d := policy.Decide(actor, policy.ActionAsk, policy.Object{AsksBefore: n - 1, AskLimit: limit}, space); d.Effect == policy.EffectRefuse {
+		o := policy.Object{AsksBefore: n - 1, AskLimit: s.plans.AskLimit(ctx, r.Scope.PersonID, r.Space)}
+		if d := policy.Decide(actor, policy.ActionAsk, o, space); d.Effect == policy.EffectRefuse {
 			s.uncount(r, at)
-			return nil, &Refusal{Decision: d, Limit: limit, ResetsAt: ledger.AskPeriod(at).AddDate(0, 1, 0)}
+			return nil, &Refusal{Decision: d, Limit: policy.AskLimit(actor, o), ResetsAt: ledger.AskPeriod(at).AddDate(0, 1, 0)}
 		}
 	}
 

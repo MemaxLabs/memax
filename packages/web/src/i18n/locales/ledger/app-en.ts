@@ -350,7 +350,9 @@ export const ledgerAppEn = {
     },
     limit: {
       title: "You've asked {n} questions this month, all your plan answers.",
-      detail: "Asks start again on {date}. Pro answers as many as you like.",
+      detail: "Asks start again on {date}.",
+      // When Pro lifts the limit (policy limit.upgrade, D9).
+      upgrade: "Pro answers 1,000 a month.",
     },
     rememberInstead: "Remember it instead",
     failed: "Ask didn't answer. Nothing was kept. Try again.",

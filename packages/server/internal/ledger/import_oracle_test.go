@@ -127,7 +127,7 @@ func (l *Ledger) openImportAlone(ctx context.Context, meta Meta, req *ImportRequ
 		return nil, false, nil, err
 	}
 	grant, _ := meta.Scope.Grant(sp.ID)
-	if d := policy.Decide(toPolicyActor(meta.Actor, meta.Via, grant), policy.ActionPropose, policy.Object{}, sp.policy()); d.Effect == policy.EffectRefuse {
+	if d := policy.Decide(toPolicyActor(meta.Actor, meta.Via, grant, nil), policy.ActionPropose, policy.Object{}, sp.policy()); d.Effect == policy.EffectRefuse {
 		return nil, false, &d, nil
 	}
 	files, err := json.Marshal(nonNilSlice(req.Files))

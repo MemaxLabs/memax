@@ -117,6 +117,7 @@ export function AskPanel({
         </p>
         <p className={styles.quietDetail}>
           {interpolate(copy.limit.detail, { date })}
+          {state.upgrade === "pro" ? ` ${copy.limit.upgrade}` : null}
         </p>
       </div>
     );

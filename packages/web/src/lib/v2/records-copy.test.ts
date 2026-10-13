@@ -7,6 +7,7 @@ import {
   expiryText,
   failureText,
   noteText,
+  planLimitText,
   spaceFailureText,
   undoFailureText,
   undoneText,
@@ -474,7 +475,7 @@ describe("why NewSpace didn't make a space", () => {
     ],
     [
       { kind: "refused", code: "space_limit", message: null } as const,
-      "acme wasn't made. You own 50 project spaces, the most one person can during the alpha.",
+      "acme wasn't made. You own 50 project spaces, the most one person can.",
     ],
     [
       {
@@ -483,6 +484,15 @@ describe("why NewSpace didn't make a space", () => {
         message: "Not today.",
       } as const,
       "acme wasn't made. Memax refused it: Not today.",
+    ],
+    [
+      {
+        kind: "refused",
+        code: "space_limit",
+        message: null,
+        limit: { plan: "free", allowed: 1, used: 1, upgrade: "pro" },
+      } as const,
+      "acme wasn't made. You own the project space Free has. Pro has as many as you like.",
     ],
     [
       { kind: "rate-limited", retryAfter: 3 } as const,
@@ -502,5 +512,94 @@ describe("why NewSpace didn't make a space", () => {
     });
     expect(chinese).not.toBe(english);
     expect(chinese).toMatch(/[一-鿿]/);
+  });
+});
+
+describe("why a plan limit refused a command", () => {
+  const refused = (code: string, limit: Record<string, unknown> | null) =>
+    ({ kind: "refused", code, message: null, limit }) as never;
+  it.each([
+    [
+      "space_limit",
+      { plan: "free", allowed: 1, used: 1, upgrade: "pro" },
+      "You own the project space Free has. Pro has as many as you like.",
+    ],
+    [
+      "space_limit",
+      { plan: "free", allowed: 3, used: 3, upgrade: "pro" },
+      "You own the 3 project spaces Free has. Pro has as many as you like.",
+    ],
+    [
+      "agent_kind_limit",
+      { plan: "free", allowed: 3, used: 3, upgrade: "pro" },
+      "You've connected the 3 kinds of agent Free has. Pro connects as many as you like, and another machine running one you have doesn't count.",
+    ],
+    [
+      "ask_limit",
+      { plan: "pro", allowed: 1000, used: 1000 },
+      "You've asked the 1,000 questions Pro answers this month. Asks start again on the 1st.",
+    ],
+    [
+      "seat_needed",
+      { plan: "pro", upgrade: "team" },
+      "Only the owner keeps in acme-web on Pro. Members need a Team seat to keep. On Team, every member holds a seat.",
+    ],
+    [
+      "dream_cadence",
+      { plan: "free", allowed: 1, used: 1, upgrade: "pro" },
+      "Dream has run now as often as Free allows this week. It still runs on its own. Pro runs it nightly.",
+    ],
+    [
+      "dream_cadence",
+      { plan: "pro", allowed: 3, used: 3 },
+      "Dream has run now as often as Pro allows today. It still runs on its own.",
+    ],
+  ])("%s %j", (code, limit, english) => {
+    const failure = refused(code, limit);
+    expect(planLimitText(EN, failure, { space: "acme-web" }, "en")).toBe(
+      english,
+    );
+    const chinese = planLimitText(ZH, failure, { space: "acme-web" }, "zh");
+    expect(chinese).toMatch(/[一-鿿]/);
+    expect(chinese).not.toContain("{");
+  });
+
+  it("leaves a refusal without a plan limit to its code's words", () => {
+    expect(
+      planLimitText(EN, refused("space_limit", null), {}, "en"),
+    ).toBeNull();
+    expect(
+      planLimitText(
+        EN,
+        refused("viewer", { plan: "pro", upgrade: "team" }),
+        {},
+        "en",
+      ),
+    ).toBeNull();
+  });
+
+  it("words a Keep a member can't make for the seat, before the code's words", () => {
+    const failure = refused("seat_needed", { plan: "pro", upgrade: "team" });
+    expect(
+      failureText(EN, failure, {
+        command: "keep",
+        ref: "M-0219",
+        space: "acme-web",
+        locale: "en",
+      }),
+    ).toBe(
+      "M-0219 wasn't kept. Only the owner keeps in acme-web on Pro. Members need a Team seat to keep. On Team, every member holds a seat.",
+    );
+    // Without the limit (an older server), the code still says why.
+    expect(
+      failureText(EN, refused("seat_needed", null), {
+        command: "keep",
+        ref: "M-0219",
+        space: "acme-web",
+        locale: "en",
+      }),
+    ).toBe(
+      "M-0219 wasn't kept. Only the owner keeps in acme-web on this plan. Members need a Team seat to keep.",
+    );
   });
 });

@@ -62,6 +62,10 @@ export function refusalText(
       return say(r.notYours);
     case "not_allowed":
       return say(role === "viewer" ? r.viewer : r.notAllowed);
+    case "agent_kind_limit":
+      return say(r.agentKindLimit);
+    case "seat_needed":
+      return say(r.seatNeeded);
     case "person_must_manage":
       return say(r.personMustManage);
     case "not_member":

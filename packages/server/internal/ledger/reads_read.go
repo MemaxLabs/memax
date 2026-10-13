@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
 
 // Reading reads back: Activity's R- list, a memory's "read by", an agent's
@@ -67,12 +69,14 @@ type ReadQuery struct {
 }
 
 // ReadPage is one page of reads, newest first, with the space's reads in
-// the last 7 days.
+// the last 7 days. RetentionDays is how far back the space's plan lists
+// them (0: as far as they are kept).
 type ReadPage struct {
-	Reads      []Read
-	NextCursor string
-	HasMore    bool
-	Week       int
+	Reads         []Read
+	NextCursor    string
+	HasMore       bool
+	Week          int
+	RetentionDays int
 }
 
 // ListReads pages through a space's reads (Activity's R- rows).
@@ -80,7 +84,8 @@ func (l *Ledger) ListReads(ctx context.Context, scope Scope, q ReadQuery) (ReadP
 	if l == nil {
 		return ReadPage{}, ErrDisabled
 	}
-	if _, ok := scope.Grant(q.SpaceID); !ok {
+	g, ok := scope.Grant(q.SpaceID)
+	if !ok {
 		return ReadPage{}, ErrNotFound
 	}
 	limit, err := pageLimit(q.Limit)
@@ -91,12 +96,16 @@ func (l *Ledger) ListReads(ctx context.Context, scope Scope, q ReadQuery) (ReadP
 	if err != nil {
 		return ReadPage{}, err
 	}
-	var page ReadPage
+	// The space's plan says how far back Activity goes (D9); older reads
+	// stay, for fading, and aren't listed.
+	plan := l.SpacePlan(g)
+	since := activitySince(plan, l.now())
+	page := ReadPage{RetentionDays: policy.ActivityDays(plan)}
 	err = l.Read(ctx, scope.Narrow(q.SpaceID), func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, readSelect+`
-			 WHERE r.space_id = $1 AND ($2::bigint = 0 OR r.seq < $2)
+			 WHERE r.space_id = $1 AND ($2::bigint = 0 OR r.seq < $2) AND ($4::timestamptz IS NULL OR r.read_at >= $4)
 			 ORDER BY r.seq DESC
-			 LIMIT $3`, q.SpaceID, before, limit+1)
+			 LIMIT $3`, q.SpaceID, before, limit+1, since)
 		if err != nil {
 			return fmt.Errorf("ledger: list reads: %w", err)
 		}

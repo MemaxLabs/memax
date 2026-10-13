@@ -39,8 +39,9 @@ type checkRunRequest struct {
 }
 
 type checkRunResult struct {
-	Run     *ledger.CheckRun `json:"run"`
-	Flagged []string         `json:"flagged"`
+	Run       *ledger.CheckRun `json:"run"`
+	Flagged   []string         `json:"flagged"`
+	Unflagged []string         `json:"unflagged"`
 }
 
 // GET /v2/spaces/{space}/conditions
@@ -106,5 +107,5 @@ func (h *Handler) reportChecks(w http.ResponseWriter, r *http.Request) {
 	if res.Replayed {
 		w.Header().Set("Idempotent-Replayed", "true")
 	}
-	writeData(w, http.StatusCreated, checkRunResult{Run: res.Run, Flagged: res.Flagged})
+	writeData(w, http.StatusCreated, checkRunResult{Run: res.Run, Flagged: res.Flagged, Unflagged: nonNil(res.Unflagged)})
 }

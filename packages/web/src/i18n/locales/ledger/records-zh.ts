@@ -22,6 +22,7 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     answered: "回答",
     undid: "撤销",
     returned: "退回审阅",
+    unflagged: "不再过时",
     asked: "提问",
     withdrawn: "撤回",
     updated: "更新",

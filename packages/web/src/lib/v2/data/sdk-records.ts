@@ -65,6 +65,7 @@ const RECORD_ACTIONS = new Set<string>([
   "answered",
   "undid",
   "returned",
+  "unflagged",
 ]);
 
 export function isRecordAction(action: string): action is RecordAction {

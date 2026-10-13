@@ -63,6 +63,10 @@ const (
 	CommandFlagStale CommandName = "flag_stale"
 )
 
+// ActionUnflagged is Memax clearing its own stale flag when a check finds
+// what failed holding again (a revert): via system, its source the run.
+const ActionUnflagged Action = "unflagged"
+
 // Check outcomes.
 const (
 	CheckHolds   = string(stale.Holds)
@@ -212,7 +216,10 @@ type CheckReportResult struct {
 	Run *CheckRun
 	// Flagged are the memories the run marked stale (display IDs).
 	Flagged []string
-	Policy  policy.Decision
+	// Unflagged are the memories whose stale flag (Memax's, from a check)
+	// the run cleared: what failed holds again.
+	Unflagged []string
+	Policy    policy.Decision
 	// Replayed: the idempotency key was already used for this report.
 	Replayed bool
 }
@@ -462,10 +469,14 @@ func (l *Ledger) reportOnce(ctx context.Context, c *CheckReport, scope Scope, gr
 	changed, decided := st.apply(c.Results, run, now)
 	out := stale.Decide(stale.Input{Memories: decided, Armed: st.armed, Authoritative: true})
 	run.Capped = out.Capped
-	var flags []pendingFlag
+	var flags, unflags []pendingFlag
 	for _, f := range out.Flags {
 		m := st.memories[f.Memory]
 		flags = append(flags, pendingFlag{mem: m, reason: st.reason(m, f.Conditions, run)})
+	}
+	for _, id := range out.Unflags {
+		unflags = append(unflags, pendingFlag{mem: st.memories[id], reason: fmt.Sprintf(
+			"Every condition that stopped holding holds again on %s at %s.", run.Branch, shortCommit(run.Commit))})
 	}
 
 	// 3. The run, its changed results and its flags, together.
@@ -481,7 +492,7 @@ func (l *Ledger) reportOnce(ctx context.Context, c *CheckReport, scope Scope, gr
 		run.ID, sp.TenantID, sp.ID, c.Actor.ID, c.Device, run.Repository, run.Branch, run.Commit, run.CommitAt,
 		string(run.Trigger), run.Agent, run.CheckedAt, run.RecordedAt, run.Complete, counts, run.Capped)
 	queueCheckRows(b, sp, changed)
-	receipts := w.queueFlags(b, sp, flags, policy.ViaSystem, ReceiptSource{Kind: StaleSourceCheck, Ref: run.ID.String()})
+	receipts := w.queueFlags(b, sp, flags, unflags, policy.ViaSystem, ReceiptSource{Kind: StaleSourceCheck, Ref: run.ID.String()})
 	if err := w.record(ctx, Result{Outcome: OutcomeApplied, Policy: dec, Receipts: receipts}, run.ID); err != nil {
 		return CheckReportResult{}, err
 	}
@@ -494,9 +505,13 @@ func (l *Ledger) reportOnce(ctx context.Context, c *CheckReport, scope Scope, gr
 	if err := tx.Commit(ctx); err != nil {
 		return CheckReportResult{}, fmt.Errorf("ledger: record check run: commit: %w", err)
 	}
-	res := CheckReportResult{Run: run, Policy: dec, Flagged: []string{}}
+	res := CheckReportResult{Run: run, Policy: dec, Flagged: []string{}, Unflagged: []string{}}
 	for _, rc := range receipts {
-		res.Flagged = append(res.Flagged, rc.ObjectRef)
+		if rc.Action == ActionUnflagged {
+			res.Unflagged = append(res.Unflagged, rc.ObjectRef)
+		} else {
+			res.Flagged = append(res.Flagged, rc.ObjectRef)
+		}
 	}
 	return res, nil
 }
@@ -518,9 +533,13 @@ func (l *Ledger) replayReport(ctx context.Context, w *writer, claim *claimed, de
 	if err := w.tx.Commit(ctx); err != nil {
 		return CheckReportResult{}, err
 	}
-	res := CheckReportResult{Run: run, Policy: dec, Replayed: true, Flagged: []string{}}
+	res := CheckReportResult{Run: run, Policy: dec, Replayed: true, Flagged: []string{}, Unflagged: []string{}}
 	for _, rc := range receipts {
-		res.Flagged = append(res.Flagged, rc.ObjectRef)
+		if rc.Action == ActionUnflagged {
+			res.Unflagged = append(res.Unflagged, rc.ObjectRef)
+		} else {
+			res.Flagged = append(res.Flagged, rc.ObjectRef)
+		}
 	}
 	return res, nil
 }
@@ -595,15 +614,18 @@ type checkState struct {
 	conds    map[uuid.UUID][]conditions.Condition
 	rows     map[uuid.UUID]map[string]*checkRow
 	acted    map[uuid.UUID]time.Time
-	armed    int
-	counts   *CheckCounts
+	// byCheck: the memory's stale flag is Memax's, from a check.
+	byCheck map[uuid.UUID]bool
+	armed   int
+	counts  *CheckCounts
 }
 
 // checkState reads it in one round trip, locking the memories first (the
 // lock order: memories in one statement, in id order).
 func (w *writer) checkState(ctx context.Context, sp spaceRow, results []CheckResult) (*checkState, error) {
 	st := &checkState{sp: sp, memories: map[uuid.UUID]*Memory{}, bySeq: map[int64]*Memory{},
-		conds: map[uuid.UUID][]conditions.Condition{}, rows: map[uuid.UUID]map[string]*checkRow{}, acted: map[uuid.UUID]time.Time{}}
+		conds: map[uuid.UUID][]conditions.Condition{}, rows: map[uuid.UUID]map[string]*checkRow{}, acted: map[uuid.UUID]time.Time{},
+		byCheck: map[uuid.UUID]bool{}}
 	seqs := []int64{}
 	for _, r := range results {
 		n, _ := memorySeq(r.Memory)
@@ -687,6 +709,24 @@ func (w *writer) checkState(ctx context.Context, sp spaceRow, results []CheckRes
 		 WHERE c.space_id = $1 AND c.context = 'default' AND c.armed_at IS NOT NULL`, sp.ID).QueryRow(func(row pgx.Row) error {
 		return row.Scan(&st.armed)
 	})
+	// Who set each one's stale flag: only Memax's, from a check, is a
+	// check's to clear (stale.Decide).
+	b.Queue(`
+		SELECT DISTINCT ON (r.stream_id) r.stream_id, r.actor_kind = 'memax' AND r.source ->> 'kind' = 'check'
+		  FROM v2.receipts r
+		 WHERE r.space_id = $1 AND `+staleFlagCond+`
+		   AND r.stream_id IN (SELECT id FROM v2.memories WHERE space_id = $1 AND seq = ANY ($2) AND 'stale' = ANY (flags))
+		 ORDER BY r.stream_id, r.stream_version DESC`, sp.ID, seqs).Query(func(rows pgx.Rows) error {
+		for rows.Next() {
+			var id uuid.UUID
+			var byCheck bool
+			if err := rows.Scan(&id, &byCheck); err != nil {
+				return err
+			}
+			st.byCheck[id] = byCheck
+		}
+		return rows.Err()
+	})
 	if err := w.tx.SendBatch(ctx, b).Close(); err != nil {
 		return nil, fmt.Errorf("ledger: read check state: %w", lockSetError(err))
 	}
@@ -754,11 +794,24 @@ func (st *checkState) apply(results []CheckResult, run *CheckRun, now time.Time)
 			decided = append(decided, sm)
 		}
 		c := stale.Check{Condition: r.Condition, Origin: cond.Origin, From: cond.From, Outcome: stale.Outcome(row.outcome),
-			Armed: row.armedAt != nil, HeldCommitAt: row.heldCommitAt, FailedCommitAt: row.failedCommitAt, FailedAt: row.failedAt}
+			Armed: row.armedAt != nil, HeldCommitAt: row.heldCommitAt, FailedCommitAt: row.failedCommitAt, FailedAt: row.failedAt,
+			Recovered: old != nil && old.outcome == CheckFails && row.outcome == CheckHolds}
 		if row.evidence != nil {
 			c.Change = string(row.evidence.Change)
 		}
 		decided[i].Checks = append(decided[i].Checks, c)
+	}
+	// What a flag's clearing needs: whose flag it is, and what of it still
+	// fails, this run's results or not.
+	for i := range decided {
+		id := decided[i].ID
+		decided[i].FlaggedByCheck = st.byCheck[id]
+		for _, cond := range st.conds[id] {
+			if row := st.rows[id][cond.ID]; row != nil && row.hash == conditions.Hash(cond) &&
+				row.armedAt != nil && row.outcome == CheckFails {
+				decided[i].StillFailing++
+			}
+		}
 	}
 	return changed, decided
 }
@@ -928,29 +981,38 @@ type pendingFlag struct {
 	reason string
 }
 
-// queueFlags queues Memax's stale flags on locked memories: a `flagged`
-// receipt each, by Memax (source and via as given), the flag itself, and
-// every target of the space marked dirty, in id order after the memories
-// (the lock order), so every compiled file says "(Being verified)".
-func (w *writer) queueFlags(b *pgx.Batch, sp spaceRow, flags []pendingFlag, via policy.Via, source ReceiptSource) []Receipt {
-	if len(flags) == 0 {
+// queueFlags queues Memax's stale flags on locked memories, and the
+// clearing of its own flags (unflags): a `flagged` or `unflagged` receipt
+// each, by Memax (source and via as given), the flag itself, and every
+// target recompiling once.
+func (w *writer) queueFlags(b *pgx.Batch, sp spaceRow, flags, unflags []pendingFlag, via policy.Via, source ReceiptSource) []Receipt {
+	n := len(flags) + len(unflags)
+	if n == 0 {
 		return nil
 	}
-	receipts := make([]Receipt, len(flags))
-	ids, fl, versions, rcs := make([]uuid.UUID, len(flags)), make([]string, len(flags)), make([]int, len(flags)), make([]uuid.UUID, len(flags))
-	for i, f := range flags {
-		next, _ := lifecycle.Transition(f.mem.state(), lifecycle.VerbFlagStale)
+	receipts := make([]Receipt, 0, n)
+	ids, fl, versions, rcs := make([]uuid.UUID, 0, n), make([]string, 0, n), make([]int, 0, n), make([]uuid.UUID, 0, n)
+	add := func(f pendingFlag, verb lifecycle.Verb, action Action) {
+		next, _ := lifecycle.Transition(f.mem.state(), verb)
 		src := source
-		receipts[i] = Receipt{ID: newID(), TenantID: sp.TenantID, SpaceID: sp.ID, ObjectKind: ObjectMemory,
-			ObjectID: f.mem.ID, ObjectRef: f.mem.Ref, Action: ActionFlagged, ActorKind: policy.ActorMemax, Via: via,
+		rc := Receipt{ID: newID(), TenantID: sp.TenantID, SpaceID: sp.ID, ObjectKind: ObjectMemory,
+			ObjectID: f.mem.ID, ObjectRef: f.mem.Ref, Action: action, ActorKind: policy.ActorMemax, Via: via,
 			Source: &src, Reason: f.reason, OccurredAt: w.now, StreamID: f.mem.ID, StreamVersion: f.mem.streamVersion + 1}
-		queueReceipt(b, &receipts[i])
-		ids[i], fl[i], versions[i], rcs[i] = f.mem.ID, strings.Join(next.Flags.Strings(), ","), receipts[i].StreamVersion, receipts[i].ID
+		receipts = append(receipts, rc)
+		queueReceipt(b, &receipts[len(receipts)-1])
+		ids, fl = append(ids, f.mem.ID), append(fl, strings.Join(next.Flags.Strings(), ","))
+		versions, rcs = append(versions, rc.StreamVersion), append(rcs, rc.ID)
+	}
+	for _, f := range flags {
+		add(f, lifecycle.VerbFlagStale, ActionFlagged)
+	}
+	for _, f := range unflags {
+		add(f, lifecycle.VerbClearStale, ActionUnflagged)
 	}
 	b.Queue(`
 		UPDATE v2.memories m
-		   SET flags = string_to_array(NULLIF(u.flags, ''), ','), stream_version = u.version, last_receipt_id = u.receipt,
-		       updated_at = now()
+		   SET flags = COALESCE(string_to_array(NULLIF(u.flags, ''), ','), '{}'), stream_version = u.version,
+		       last_receipt_id = u.receipt, updated_at = now()
 		  FROM unnest($1::uuid[], $2::text[], $3::int[], $4::uuid[]) AS u(id, flags, version, receipt)
 		 WHERE m.id = u.id AND m.space_id = $5`, ids, fl, versions, rcs, sp.ID)
 	b.Queue(dirtySQL, sp.ID, nil).Query(func(rows pgx.Rows) error {
@@ -1049,7 +1111,7 @@ func (w *writer) flagStale(ctx context.Context, c *FlagStale) (Result, error) {
 		return Result{Outcome: OutcomeApplied, Policy: dec, Unchanged: true}, nil
 	}
 	b := &pgx.Batch{}
-	receipts := w.queueFlags(b, sp, flags, w.meta.Via, c.Source)
+	receipts := w.queueFlags(b, sp, flags, nil, w.meta.Via, c.Source)
 	if err := w.record(ctx, Result{Outcome: OutcomeApplied, Policy: dec, Receipts: receipts}, uuid.Nil); err != nil {
 		return Result{}, err
 	}

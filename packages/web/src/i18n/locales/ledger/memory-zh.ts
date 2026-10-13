@@ -120,6 +120,7 @@ export const ledgerMemoryZh: Translations["ledger"]["memory"] = {
       answered: "{name} 回答了",
       undid: "{name} 撤销了",
       returned: "{name} 退回了审阅",
+      unflagged: "不再过时：它依赖的前提又成立了（{name}）",
     },
     mergedInto: "合并进来的",
     unfold: "撤销",

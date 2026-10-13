@@ -241,6 +241,8 @@ export interface CheckRunSummary {
   sent?: number;
   /** The memories the report marked stale, when it went out at once. */
   flagged?: string[];
+  /** Those whose stale mark (Memax's, from a check) it took off: a revert. */
+  unflagged?: string[];
   cost?: GitCost;
   ms?: number;
 }
@@ -683,6 +685,7 @@ export class RepoChecker {
         now[c.key] && (full || !sameResult(state.results[c.key], now[c.key])),
     );
     let flagged: string[] | undefined;
+    let unflagged: string[] | undefined;
     // A session start's run reports even with nothing new: it says this
     // machine checked when that agent started.
     const confirm = this.heard || asked;
@@ -702,7 +705,9 @@ export class RepoChecker {
           everyKind && checks.every((c) => now[c.key]?.outcome !== "unknown"),
         results: send.map((c) => resultOf(c, now[c.key])),
       };
-      flagged = await this.o.reporter.report(this.o.link.space_id, input);
+      const sent = await this.o.reporter.report(this.o.link.space_id, input);
+      flagged = sent?.flagged;
+      unflagged = sent?.unflagged;
       this.heard = false;
     }
     // Written when something moved: the commit, the conditions or a result.
@@ -726,6 +731,7 @@ export class RepoChecker {
       results: checks.length,
       sent: send.length,
       ...(flagged ? { flagged } : {}),
+      ...(unflagged?.length ? { unflagged } : {}),
       cost,
       ms: Date.now() - started,
     };
@@ -1200,6 +1206,12 @@ function retryable(err: unknown): boolean {
   );
 }
 
+/** What a report sent at once marked stale, and whose mark it took off. */
+export interface Sent {
+  flagged: string[];
+  unflagged: string[];
+}
+
 /**
  * Check reports, queued on disk before they're sent, so one made offline
  * or signed out goes out later (with its original checked_at) and a crash
@@ -1269,7 +1281,7 @@ export class CheckReporter {
   async report(
     space: string,
     input: V2.CheckRunInput,
-  ): Promise<string[] | undefined> {
+  ): Promise<Sent | undefined> {
     const q: QueuedReport = { space, key: reportKey(space, input), input };
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     writeJsonAtomic(join(this.dir, `${q.key}.json`), q);
@@ -1278,7 +1290,7 @@ export class CheckReporter {
   }
 
   /** Sends one report; deletes it unless it should be tried again. */
-  private async send(q: QueuedReport): Promise<string[] | undefined> {
+  private async send(q: QueuedReport): Promise<Sent | undefined> {
     const file = join(this.dir, `${q.key}.json`);
     const age = Date.now() - Date.parse(q.input.checked_at ?? "");
     if (!(age < REPORT_WINDOW_MS)) {
@@ -1293,7 +1305,14 @@ export class CheckReporter {
           flagged: r.flagged.join(" "),
           run: r.run.id,
         });
-      return r.flagged;
+      // An older server answers without it.
+      const unflagged = r.unflagged ?? [];
+      if (unflagged.length)
+        this.o.log.info("a check took memories' stale mark off", {
+          unflagged: unflagged.join(" "),
+          run: r.run.id,
+        });
+      return { flagged: r.flagged, unflagged };
     } catch (err) {
       if (retryable(err)) return undefined;
       remove(file);

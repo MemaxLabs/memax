@@ -6106,7 +6106,9 @@ components:
         written before they were typed). Memax's derived conditions ride on
         the command that wrote the version, with no receipt of their own.
         A cloud agent's new start key, under the same connection, is
-        rekeyed (`object_kind: agent`).
+        rekeyed (`object_kind: agent`). Memax clearing its own stale flag,
+        when a check finds what failed holding again (a revert), is
+        unflagged (via system, its source the run).
       type: string
       enum:
         - proposed
@@ -6158,6 +6160,7 @@ components:
         - scoped
         - conditions_changed
         - rekeyed
+        - unflagged
     ObjectKind:
       type: string
       enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space, machine]
@@ -10664,12 +10667,20 @@ components:
     CheckRunResult:
       type: object
       additionalProperties: false
-      required: [run, flagged]
+      required: [run, flagged, unflagged]
       properties:
         run:
           $ref: '#/components/schemas/CheckRun'
         flagged:
           description: The memories this run marked stale.
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        unflagged:
+          description: |
+            The memories whose stale flag this run cleared: Memax's own flag,
+            from a check, now that every condition that stopped holding holds
+            again (a revert). A flag Dream or a date set is never cleared here.
           type: array
           items:
             $ref: '#/components/schemas/DisplayRef'

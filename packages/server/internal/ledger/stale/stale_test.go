@@ -107,3 +107,63 @@ func TestBulkCap(t *testing.T) {
 		}
 	}
 }
+
+// Memax clears its own flag when the change is undone (a revert): its flag
+// came from a check, a failure recovered in this run, and nothing else of
+// it fails. Never a flag Dream or a date set, never while something still
+// fails, never for an observer that isn't the repository's authority.
+func TestDecideUnflags(t *testing.T) {
+	t.Parallel()
+	recovered := func(edit func(*Check)) Check {
+		c := failing(func(c *Check) { c.Outcome, c.Recovered, c.Change = Holds, true, "" })
+		if edit != nil {
+			edit(&c)
+		}
+		return c
+	}
+	stale := func(edit func(*Memory), checks ...Check) Memory {
+		m := kept(checks...)
+		m.Stale, m.FlaggedByCheck = true, true
+		if edit != nil {
+			edit(&m)
+		}
+		return m
+	}
+	cases := []struct {
+		name string
+		m    Memory
+		want bool
+	}{
+		{"its failure undone", stale(nil, recovered(nil)), true},
+		{"a flag Dream or a date set", stale(func(m *Memory) { m.FlaggedByCheck = false }, recovered(nil)), false},
+		{"another condition still fails", stale(func(m *Memory) { m.StillFailing = 1 }, recovered(nil)), false},
+		{"it held all along in this run (nothing recovered)", stale(nil, recovered(func(c *Check) { c.Recovered = false })), false},
+		{"unknown now, not holds", stale(nil, recovered(func(c *Check) { c.Outcome = Unknown })), false},
+		{"not stale", stale(func(m *Memory) { m.Stale = false }, recovered(nil)), false},
+		{"not kept", stale(func(m *Memory) { m.Kept = false }, recovered(nil)), false},
+	}
+	for _, c := range cases {
+		out := Decide(Input{Memories: []Memory{c.m}, Armed: 40, Authoritative: true})
+		if got := len(out.Unflags) == 1 && out.Unflags[0] == m1; got != c.want {
+			t.Errorf("%s: unflags %v, want %v", c.name, out.Unflags, c.want)
+		}
+		if len(out.Flags) != 0 {
+			t.Errorf("%s: flagged %+v", c.name, out.Flags)
+		}
+	}
+	if out := Decide(Input{Memories: []Memory{stale(nil, recovered(nil))}, Armed: 40}); len(out.Unflags) != 0 {
+		t.Errorf("an observer that isn't the repository's authority cleared a flag: %v", out.Unflags)
+	}
+	// A run that trips the bulk cap still clears what it undid.
+	var ms []Memory
+	for i := range 12 {
+		m := kept(failing(nil))
+		m.ID = uuid.New()
+		_ = i
+		ms = append(ms, m)
+	}
+	ms = append(ms, stale(nil, recovered(nil)))
+	if out := Decide(Input{Memories: ms, Armed: 40, Authoritative: true}); !out.Capped || len(out.Unflags) != 1 {
+		t.Errorf("capped run: %+v", out)
+	}
+}

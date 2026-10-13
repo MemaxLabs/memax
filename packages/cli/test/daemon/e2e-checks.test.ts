@@ -231,17 +231,21 @@ describe.skipIf(!enabled)("stale detection, end to end", () => {
     );
     console.log(`AGENTS.md marked ${marked.ms} ms after the flag`);
 
-    // Verify's update: new words, the flag clears, the moved path is
-    // what it now relies on.
-    const verified = await memax.v2.memories.verify(
+    // memax verify here: why, the rename from this clone, then the
+    // update. New words, the flag clears, and the moved path is what it
+    // now relies on.
+    const shown = cli("verify", ref);
+    expect(shown).toContain(`${CITED} was renamed to ${MOVED} on main.`);
+    expect(shown).toContain(`The change here: ${moved.slice(0, 7)}`);
+    expect(shown).toContain(`rename to ${MOVED}`);
+    const answered = cli(
+      "verify",
       ref,
-      { answer: "update", statement: `Ask's tiers are set in \`${MOVED}\`.` },
-      {
-        space: "memax-v2",
-        ifMatch: stale.value.memory.version,
-        idempotencyKey: randomUUID(),
-      },
+      "--update",
+      `Ask's tiers are set in \`${MOVED}\`.`,
     );
+    expect(answered).toContain(`Updated ${ref} and verified it.`);
+    const verified = await memax.v2.memories.get(ref, { space: "memax-v2" });
     expect(verified.memory.state).toBe("kept");
     const after = (await memax.v2.checks.conditions("memax-v2")).items.find(
       (i) => i.memory === ref,

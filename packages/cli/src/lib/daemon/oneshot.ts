@@ -44,6 +44,11 @@ export class OneShotDelivery {
     return this.daemon.syncOnce(spaceId);
   }
 
+  /** Runs a linked repository's checks now, as the daemon would. */
+  check(root: string): ReturnType<Daemon["checkNow"]> {
+    return this.daemon.checkNow(root);
+  }
+
   /** Takes the Personal layer off this machine, as the daemon would. */
   homeOff(reason: HomeOffReason): Promise<HomeSnapshot | null> {
     return this.daemon.homeOff(reason);

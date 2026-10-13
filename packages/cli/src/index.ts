@@ -31,6 +31,8 @@ import { registerInitCommand } from "./commands/init.js";
 import { registerConnectCommand } from "./commands/connect.js";
 import { registerSwitchCommand } from "./commands/switch.js";
 import { registerCompileCommand } from "./commands/compile.js";
+import { registerCheckCommand } from "./commands/check.js";
+import { registerVerifyCommand } from "./commands/verify.js";
 import { registerExportCommands } from "./commands/export.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -52,6 +54,8 @@ registerConnectCommand(program);
 registerSwitchCommand(program);
 registerStatusCommand(program);
 registerCompileCommand(program);
+registerCheckCommand(program);
+registerVerifyCommand(program);
 registerLinkCommands(program);
 registerDaemonCommands(program);
 registerPushCommand(program);

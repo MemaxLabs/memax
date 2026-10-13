@@ -23,6 +23,8 @@ export type ControlRequest =
   | { cmd: "stop" }
   | { cmd: "reload" }
   | { cmd: "wake"; space?: string }
+  /** Run a linked repository's checks now (memax check). */
+  | { cmd: "check"; root: string }
   /** Take the Personal layer off this machine now (HomeOffReason says why). */
   | { cmd: "home_off"; reason: HomeOffReason };
 

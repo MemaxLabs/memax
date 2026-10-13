@@ -6,7 +6,13 @@ import { watch, type FSWatcher } from "node:fs";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { failureOf, type DaemonApi, type TargetPoll } from "./api.js";
-import { CheckReporter, RepoChecker, type CheckTiming } from "./checks.js";
+import {
+  CheckReporter,
+  RepoChecker,
+  type CheckRunSummary,
+  type CheckTiming,
+  type CheckView,
+} from "./checks.js";
 import { LoadReporter } from "./loads.js";
 import {
   ControlServer,
@@ -209,6 +215,8 @@ export class Daemon {
       case "wake":
         this.wake(req.space);
         return {};
+      case "check":
+        return this.checkNow(req.root);
       case "home_off":
         return this.homeOff(req.reason);
       case "stop":
@@ -642,6 +650,31 @@ export class Daemon {
     for (const root of space?.roots ?? [])
       this.repos.get(root)?.checker.forget(refs);
     this.reports.forget(spaceId, refs);
+  }
+
+  /**
+   * Runs a linked repository's checks now, whatever ran last (memax check),
+   * and what they found; null for a repository that isn't linked. A space
+   * not polled yet (a one-shot) is asked first whether it is on V2.
+   */
+  async checkNow(
+    root: string,
+  ): Promise<{ run: CheckRunSummary; view: CheckView } | null> {
+    this.reload();
+    const repo = this.repos.get(root);
+    if (!repo) return null;
+    const space = this.spaces.get(repo.link.space_id);
+    if (space && space.onV1 === undefined) {
+      try {
+        const poll = await this.o.api.listTargets(repo.link.space_id);
+        space.onV1 = !poll.onV2;
+        repo.checker.setOnV1(space.onV1);
+      } catch {
+        // The run's own requests say what's wrong.
+      }
+    }
+    const run = await repo.checker.run("verify");
+    return { run, view: repo.checker.view() };
   }
 
   /** Runs a repository's checks now (tests, and `memax status`'s view of them). */

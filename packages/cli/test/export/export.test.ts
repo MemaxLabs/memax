@@ -276,6 +276,48 @@ describe("memax export", () => {
   });
 });
 
+describe("memax export --okf", () => {
+  it("writes each space as an OKF bundle, and replaces only a bundle", async () => {
+    const cwd = tmp();
+    const { memax } = fakeMemax();
+    const c = capture();
+    expect(await exportSpaces({ okf: true }, { memax, cwd, out: c.out })).toBe(
+      0,
+    );
+    const dir = join(cwd, "memax-export", "memax-v2");
+    const got = load(dir);
+    expect([...got.keys()].sort()).toEqual([
+      "index.md",
+      "log.md",
+      "memories/M-0001.md",
+      "memories/M-0002.md",
+      "memories/M-0003.md",
+      "memories/M-0005.md",
+      "tombstones/M-0004.md",
+    ]);
+    const dec = new TextDecoder();
+    expect(dec.decode(got.get("index.md"))).toMatch(
+      /^---\nokf_version: "0\.2"\n---\n/,
+    );
+    expect(dec.decode(got.get("memories/M-0001.md"))).toContain(
+      'type: "decision"',
+    );
+    expect(c.text()).toContain("Exported memax-v2 as an OKF bundle");
+    expect(c.text()).toContain("it carries no signatures");
+    // --force replaces a bundle, and only a bundle.
+    expect(
+      await exportSpaces(
+        { okf: true, force: true },
+        { memax, cwd, out: c.out },
+      ),
+    ).toBe(0);
+    rmSync(join(dir, "index.md"));
+    await expect(
+      exportSpaces({ okf: true, force: true }, { memax, cwd, out: c.out }),
+    ).rejects.toThrow(/doesn't hold a Memax export/);
+  });
+});
+
 describe("memax verify-export", () => {
   async function written(): Promise<string> {
     const cwd = tmp();

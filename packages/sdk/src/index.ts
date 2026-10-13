@@ -92,6 +92,7 @@ export {
   splitDocument,
   verifyExport,
 } from "./v2/export.js";
+export { OKF_VERSION, toOkf } from "./v2/okf.js";
 export type {
   ExportFiles,
   ExportManifest,

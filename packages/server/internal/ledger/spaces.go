@@ -58,7 +58,8 @@ func init() {
 		settings signup support topic topics waitlist memax memaxlabs root test demo staging prod production
 		null undefined true false
 		setup signin device join oauth pricing security h agents brain discover dreams invite privacy pulse
-		share terms images assets static account billing blog changelog download legal mcp signout status v1 v2`) {
+		share terms images assets static account billing blog changelog download legal mcp signout status v1 v2
+		unsubscribe welcome`) {
 		reservedSlugs[s] = true
 	}
 }

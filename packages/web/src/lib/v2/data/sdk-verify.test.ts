@@ -133,6 +133,62 @@ describe("VerifyStale through memax.v2", () => {
     ]);
   });
 
+  it("suggests a rename's new words, from Memax, and nothing it can't place", () => {
+    const renamed = (statement: string): V2.StaleReport => ({
+      ...report,
+      statement,
+      stale_after: undefined,
+      causes: [
+        {
+          kind: "check",
+          condition: {
+            id: "c1",
+            kind: "path_exists",
+            path: "packages/server/internal/ask/config.go",
+            origin: "derived",
+            from: "statement",
+          },
+          evidence: {
+            change: "renamed",
+            path: "packages/server/internal/ask/config.go",
+            renamed_to: "packages/server/internal/ask/tiers.go",
+          },
+          branch: "main",
+          commit: "a1b2c3d".padEnd(40, "0"),
+          commit_at: "2026-10-11T08:58:00Z",
+          observer: "device",
+        },
+      ],
+    });
+    expect(
+      staleWhyOf(
+        renamed(
+          "Ask's tiers live in `packages/server/internal/ask/config.go`.",
+        ),
+        ME,
+      ).suggestion,
+    ).toEqual({
+      statement: "Ask's tiers live in `packages/server/internal/ask/tiers.go`.",
+      by: { kind: "memax" },
+      from: "a1b2c3d",
+    });
+    // The words don't name the file: nothing to suggest without a model.
+    expect(
+      staleWhyOf(renamed("Ask memax answers with the Haiku tier."), ME)
+        .suggestion,
+    ).toBeNull();
+    // Answered since: no suggestion either.
+    expect(
+      staleWhyOf(
+        {
+          ...renamed("See packages/server/internal/ask/config.go."),
+          stale: false,
+        },
+        ME,
+      ).suggestion,
+    ).toBeNull();
+  });
+
   it("leaves out what it isn't stale for any more", () => {
     const why = staleWhyOf(
       { ...report, stale: false, causes: [], flagged: undefined },

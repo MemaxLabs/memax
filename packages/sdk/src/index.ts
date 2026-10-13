@@ -93,6 +93,7 @@ export {
   verifyExport,
 } from "./v2/export.js";
 export { OKF_VERSION, toOkf } from "./v2/okf.js";
+export { renameSuggestion } from "./v2/suggest.js";
 export type {
   ExportFiles,
   ExportManifest,

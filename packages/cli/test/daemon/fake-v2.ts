@@ -104,6 +104,8 @@ export class FakeV2 {
   keptCount = 0;
   /** Receipts written, as the server writes them (compile runs write none). */
   receipts = 0;
+  /** Spaces switched back to V1: their targets list answers `on_v2: false`. */
+  readonly onV1 = new Set<string>();
   private server: Server | null = null;
   private seq = 880;
   private keys = new Map<string, { status: number; body: unknown }>();
@@ -159,6 +161,16 @@ export class FakeV2 {
     };
     this.spaces.push(space);
     return space;
+  }
+
+  /**
+   * Switches a space back to V1 (`false`), or to V2 again: its targets
+   * stay, and the switch's receipt moves the space's change token.
+   */
+  switchSpace(space: V2.Space, onV2: boolean): void {
+    if (onV2) this.onV1.delete(space.id);
+    else this.onV1.add(space.id);
+    this.receipts++;
   }
 
   /** The person's Personal space, on the V2 record. */
@@ -566,7 +578,10 @@ export class FakeV2 {
           .filter((e) => e.target.space_id === sp.id)
           .filter((e) => !machine || e.target.machine?.id === machine)
           .map((e) => e.target);
-        return { status: 200, data: { items } };
+        return {
+          status: 200,
+          data: { items, on_v2: !this.onV1.has(sp.id) },
+        };
       }
       if (m[2] === "review")
         return {

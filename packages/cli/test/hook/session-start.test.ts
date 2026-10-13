@@ -63,6 +63,32 @@ describe("nothing changed", () => {
   });
 });
 
+describe("a space switched back to V1", () => {
+  it("says nothing and counts no load while V1 writes its files, then picks up again", () => {
+    m.compiled("C-0881", lines881);
+    m.warm({ targets: [m.target("C-0881", ["M-0219", "M-0098", "M-0102"])] });
+    m.run();
+    // Back on V1: the file on disk isn't Memax's to speak for, even with a
+    // compile header still in it.
+    m.compiled("C-0882", lines882);
+    m.warm({
+      targets: [m.target("C-0882", ["M-0219", "M-0098", "M-0071"])],
+      on_v1: true,
+    });
+    const quiet = m.run();
+    expect(quiet.output).toBe("");
+    expect(quiet.loads).toEqual([]);
+    expect(quiet.skipped).toBe("the space is on V1 again");
+    // On V2 again: the news since the last session it spoke in.
+    m.warm({ targets: [m.target("C-0882", ["M-0219", "M-0098", "M-0071"])] });
+    const back = m.run();
+    expect(back.output).toContain(
+      "AGENTS.md is now C-0882 (your last session saw C-0881).",
+    );
+    expect(back.loads.map((l) => l.compile)).toEqual(["C-0882"]);
+  });
+});
+
 describe("a new compile", () => {
   it("prints the lines added and changed, and the memories gone", () => {
     m.compiled("C-0881", lines881);

@@ -121,7 +121,8 @@ export type NotChecked =
   | "other_branch"
   | "unpushed"
   | "no_repository"
-  | "fork";
+  | "fork"
+  | "on_v1";
 
 const NOT_CHECKED: Record<NotChecked, string> = {
   not_git: "not a git repository",
@@ -132,6 +133,7 @@ const NOT_CHECKED: Record<NotChecked, string> = {
   unpushed: "the default branch has commits that aren't pushed",
   no_repository: "the space has no repository to check against",
   fork: "origin isn't the space's repository",
+  on_v1: "the space is on V1 again, and Memax checks only spaces on V2",
 };
 
 export type CheckTrigger = "head_moved" | "schedule" | "conditions" | "verify";
@@ -264,6 +266,8 @@ export class RepoChecker {
    * space since (the tombstone's checks step).
    */
   private heard = false;
+  /** The space is on V1 again, which takes no check reports. */
+  private onV1 = false;
   lastRun: CheckRunSummary | null = null;
 
   constructor(private readonly o: RepoCheckerOptions) {
@@ -320,6 +324,16 @@ export class RepoChecker {
   discard(): void {
     this.state = null;
     remove(this.file);
+  }
+
+  /**
+   * The space was switched back to V1, or is on V2 again (a run soon, with
+   * the conditions read again). A Forget reaches the state file either way.
+   */
+  setOnV1(on: boolean): void {
+    if (on === this.onV1) return;
+    this.onV1 = on;
+    if (!on) this.conditionsChanged();
   }
 
   /** The space moved: its conditions may have changed. */
@@ -435,6 +449,7 @@ export class RepoChecker {
       });
     };
 
+    if (this.onV1) return skip("on_v1");
     // Where HEAD is, from files; then the tips, in one process.
     const d = gitDirs(root);
     if (!d) return skip("not_git");

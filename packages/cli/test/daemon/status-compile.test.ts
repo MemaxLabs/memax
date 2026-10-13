@@ -165,6 +165,28 @@ describe("memax status", () => {
     expect(text).toContain("No targets yet");
   });
 
+  it("says a space switched back to V1 is V1's to write, and how its owner switches it", async () => {
+    const { space } = await board();
+    h.fake.switchSpace(space, false);
+    const { report, targets } = await buildStatus(h.memax, {
+      cwd: h.repo,
+      paths: h.paths,
+    });
+    expect(report.space.on_v2).toBe(false);
+    const text = plain(renderStatus(report, targets));
+    expect(text).toContain(
+      "memax-v2 is on V1, so V1 writes its agent files and Memax leaves them as they are. Switch it to V2: memax switch --space memax-v2",
+    );
+    // Neither its files' V2 states nor a daemon to start.
+    expect(text).not.toContain("in sync");
+    expect(text).not.toContain("memax daemon start");
+    space.role = "member";
+    const member = await buildStatus(h.memax, { cwd: h.repo, paths: h.paths });
+    expect(plain(renderStatus(member.report, member.targets))).toContain(
+      "Memax leaves them as they are. Its owner can switch it to V2.",
+    );
+  });
+
   it("says how to pick a space outside a linked repository", async () => {
     h.fake.addSpace("memax-v2");
     await expect(
@@ -311,6 +333,19 @@ describe("memax compile", () => {
     const out: string[] = [];
     expect(await compile({ via: "pr" }, deps(out))).toBe(1);
     expect(plain(out)).toContain("not available yet (Phase 4)");
+    expect(h.fake.calls("POST", /:compile$/)).toHaveLength(0);
+  });
+
+  it("asks nothing to compile in a space switched back to V1, and says why", async () => {
+    const space = h.fake.addSpace("memax-v2");
+    h.fake.addTarget(space, "agents_md");
+    h.link(space);
+    h.fake.switchSpace(space, false);
+    const out: string[] = [];
+    expect(await compile({ space: "memax-v2" }, deps(out))).toBe(1);
+    expect(plain(out)).toContain(
+      "memax-v2 is on V1, so V1 writes its agent files and Memax leaves them as they are. Switch it to V2: memax switch --space memax-v2",
+    );
     expect(h.fake.calls("POST", /:compile$/)).toHaveLength(0);
   });
 

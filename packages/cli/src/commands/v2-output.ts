@@ -15,6 +15,19 @@ export const MARK = {
   off: "-",
 } as const;
 
+/**
+ * A space on V1 (never switched, or switched back): V1's sync writes its
+ * agent files, so Memax neither compiles nor writes them. The way back is
+ * its owner's.
+ */
+export function onV1Line(space: Pick<V2.Space, "slug" | "role">): string {
+  const back =
+    space.role === "owner"
+      ? `Switch it to V2: ${chalk.bold(`memax switch --space ${space.slug}`)}`
+      : "Its owner can switch it to V2.";
+  return `  ${chalk.yellow(MARK.waiting)} ${space.slug} is on V1, so V1 writes its agent files and Memax leaves them as they are. ${back}`;
+}
+
 export function syncMark(state: V2.SyncState): string {
   switch (state) {
     case "in_sync":

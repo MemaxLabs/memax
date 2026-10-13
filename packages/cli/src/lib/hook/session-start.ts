@@ -378,6 +378,8 @@ function repoPart(
   warmFile: ReturnType<typeof readWarm>,
 ): Part | string {
   const warm = repo.link ? warmFile.spaces[repo.link.space_id] : undefined;
+  // V1 writes its files again: they aren't Memax's to speak for.
+  if (warm?.on_v1) return "the space is on V1 again";
   const files: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
   for (const f of loadedFiles(i.agent, warm)) {
     const file = readCompiled(join(repo.root, f.path), f.path);
@@ -406,6 +408,7 @@ function homePart(
   if (!home) return null;
   const warm =
     warmFile.home?.space_id === home.space_id ? warmFile.home : undefined;
+  if (warm?.on_v1) return null;
   const files: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
   for (const f of home.files) {
     if (!i.agent.home.includes(f.kind)) continue;

@@ -23,7 +23,7 @@ import {
 import { findLinkedRepo } from "../lib/daemon/registry.js";
 import { resolveSpace, SpaceChoiceError } from "../lib/v2-space.js";
 import { cliVersion } from "../lib/version.js";
-import { apiFailureMessage, MARK, targetRows } from "./v2-output.js";
+import { apiFailureMessage, MARK, onV1Line, targetRows } from "./v2-output.js";
 
 export interface CompileOptions {
   space?: string;
@@ -125,13 +125,22 @@ export async function compile(
   // The repository's targets, and this machine's home files: never
   // another machine's.
   const list = async () => {
-    const all = (await d.memax.v2.targets.list(space.id)).items;
-    return [
-      ...(d.onlyHome ? [] : repoTargets(all)),
-      ...(homeHere ? homeTargets(all, homeLink.machine_id) : []),
-    ];
+    const all = await d.memax.v2.targets.list(space.id);
+    return {
+      onV2: all.on_v2 !== false,
+      targets: [
+        ...(d.onlyHome ? [] : repoTargets(all.items)),
+        ...(homeHere ? homeTargets(all.items, homeLink.machine_id) : []),
+      ],
+    };
   };
-  let targets = await list();
+  const first = await list();
+  // V1's sync writes its files, and the space takes no compile.
+  if (!first.onV2) {
+    d.out(onV1Line(space));
+    return 1;
+  }
+  let targets = first.targets;
   if (targets.length === 0) {
     d.out(
       chalk.yellow(
@@ -187,7 +196,7 @@ export async function compile(
   try {
     for (;;) {
       if (local) await local.sync(space.id);
-      targets = await list();
+      targets = (await list()).targets;
       const delivering = (t: V2.Target) =>
         writer !== null && (t.root === "home" ? homeHere : linkedHere);
       if (

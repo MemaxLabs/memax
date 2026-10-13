@@ -53,6 +53,11 @@ export interface WarmSpace {
   forgotten: WarmForget[];
   /** Waiting for a person, newest first. */
   gates: WarmGate[];
+  /**
+   * Switched back to V1: its files are V1's again, so the hook says
+   * nothing about them. Absent while the space is on V2.
+   */
+  on_v1?: true;
 }
 
 /**

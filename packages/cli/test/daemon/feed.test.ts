@@ -33,7 +33,7 @@ function rig(
       calls.push("fetch");
       const err = opts.fail?.();
       if (err) throw err;
-      return [target(opts.state?.() ?? "in_sync")];
+      return { targets: [target(opts.state?.() ?? "in_sync")], onV2: true };
     },
     async probe() {
       calls.push("probe");
@@ -141,7 +141,10 @@ describe("PollingFeed", () => {
   it("spreads its polls with jitter", async () => {
     const at: number[] = [];
     const h: FeedHandlers = {
-      fetch: async () => (at.push(Date.now()), [target("compiling")]),
+      fetch: async () => (
+        at.push(Date.now()),
+        { targets: [target("compiling")], onV2: true }
+      ),
       onTargets: async () => ({ busy: true }),
       onError: () => {},
     };

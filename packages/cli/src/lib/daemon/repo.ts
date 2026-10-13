@@ -52,6 +52,8 @@ export class RepoDelivery {
   private goodOf = new Map<string, { failed: string; good: string }>();
   private polledAt?: string;
   private error?: string;
+  /** On V1 again: nothing written, checked or reported until it is back. */
+  private onV1 = false;
 
   constructor(link: LinkedRepo, deps: RepoDeps) {
     this.link = link;
@@ -83,8 +85,14 @@ export class RepoDelivery {
     return next;
   }
 
-  /** Handles a fresh list of the space's targets; busy asks to poll soon. */
-  sync(targets: V2.Target[]): Promise<{ busy: boolean }> {
+  /**
+   * Handles a fresh list of the space's targets; busy asks to poll soon.
+   * A space switched back to V1 (`onV2` false) keeps its targets and what
+   * this device delivered, so it picks up where it was once it is on V2
+   * again, and anything V1 wrote meanwhile is a hand edit, never written
+   * over.
+   */
+  sync(targets: V2.Target[], onV2 = true): Promise<{ busy: boolean }> {
     return this.serial(async () => {
       this.polledAt = new Date().toISOString();
       if (this.place.kind === "repo" && !existsSync(this.link.root)) {
@@ -96,6 +104,14 @@ export class RepoDelivery {
       this.d.state.retainTargets(this.link.root, new Set(this.targets.keys()));
       for (const id of this.snaps.keys())
         if (!this.targets.has(id)) this.snaps.delete(id);
+      this.onV1 = !onV2;
+      if (this.onV1) {
+        this.fileNotes.clear();
+        this.retryAt.clear();
+        for (const t of targets)
+          this.note(t, isLocal(t) ? { state: "on_v1" } : { state: "remote" });
+        return { busy: false };
+      }
       let busy = false;
       for (const t of targets) {
         try {
@@ -206,6 +222,7 @@ export class RepoDelivery {
   /** Checks one file after a watcher event or a rescan. */
   check(path: string): Promise<void> {
     return this.serial(async () => {
+      if (this.onV1) return;
       const t = [...this.targets.values()].find(
         (x) => isLocal(x) && !this.place.refusal(x, path),
       );
@@ -267,6 +284,7 @@ export class RepoDelivery {
 
   /** Every file the watcher should look at. */
   trackedPaths(): string[] {
+    if (this.onV1) return [];
     const out = new Set<string>();
     for (const t of this.targets.values()) {
       if (!isLocal(t) || t.sync_state === "off") continue;
@@ -333,6 +351,7 @@ export class RepoDelivery {
       space_slug: this.link.space_slug,
       polled_at: this.polledAt,
       error: this.error,
+      ...(this.onV1 ? { on_v1: true } : {}),
       targets: [...this.snaps.values()].sort((a, b) =>
         a.label.localeCompare(b.label),
       ),

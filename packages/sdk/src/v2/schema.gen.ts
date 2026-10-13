@@ -4599,6 +4599,14 @@ export interface components {
         };
         TargetList: {
             items: components["schemas"]["Target"][];
+            /**
+             * @description Whether the V2 record serves the space. A space switched back to
+             *     V1 still lists its targets, but its agent files are V1's again
+             *     (its two-way sync writes them): a daemon leaves them as they are
+             *     and reports nothing for them (no deliveries, hand edits or
+             *     checks) until the space is on V2 again.
+             */
+            on_v2: boolean;
         };
         TargetResult: {
             outcome: components["schemas"]["Outcome"];

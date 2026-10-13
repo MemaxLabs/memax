@@ -114,6 +114,7 @@ const WORD: Record<LocalState, string> = {
   off_block_kept: "off",
   off_file_removed: "off",
   off_file_kept: "off",
+  on_v1: "on V1",
   remote: "",
   waiting: "waiting",
   error: "error",
@@ -134,6 +135,7 @@ function mark(t: TargetSnapshot): string {
     case "off_block_removed":
     case "off_file_kept":
     case "off_file_removed":
+    case "on_v1":
       return chalk.gray(MARK.off);
     case "remote":
       return syncMark(t.sync_state);
@@ -199,6 +201,12 @@ export function renderDaemonStatus(
       lines.push(
         chalk.yellow(
           "    Your Personal space isn't there for this account, so its files are off this machine. Forget the link: memax unlink --home",
+        ),
+      );
+    if (r.on_v1)
+      lines.push(
+        chalk.gray(
+          `    ${r.space_slug} is on V1 again, so V1 writes these files and Memax leaves them as they are.`,
         ),
       );
     if (r.error) lines.push(chalk.yellow(`    ${r.error}`));

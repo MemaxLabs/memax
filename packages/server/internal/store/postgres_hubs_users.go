@@ -347,13 +347,23 @@ func (s *PostgresStore) PatchHubSettings(ctx context.Context, hubID string, patc
 }
 
 func (s *PostgresStore) ListUserHubs(userID string) ([]model.HubWithRole, error) {
-	ctx := context.Background()
+	return s.ListUserHubsWith(context.Background(), userID, nil)
+}
+
+// ListUserHubsWith is ListUserHubs with more statements in the same round
+// trip: extra queues them after the list, on the same connection, and
+// reads their results through its own callbacks. The request middleware
+// sends the person's V2 scope this way (handler.HubContext), so a request
+// reads the hubs and the scope in one round trip, not two.
+func (s *PostgresStore) ListUserHubsWith(ctx context.Context, userID string, extra func(*pgx.Batch)) ([]model.HubWithRole, error) {
+	var result []model.HubWithRole
+	listed := false
+	b := &pgx.Batch{}
 	// settings is included in the list response so the per-hub
 	// overrides UI (Settings → Intelligence) can render without
 	// issuing N GET /v1/hubs/{id} requests. Payload is ~5 booleans
 	// per hub; storage size is negligible.
-	rows, err := s.pool.Query(ctx,
-		`SELECT h.id, h.name, COALESCE(h.icon, ''), COALESCE(h.accent, ''), h.slug, h.hub_type, COALESCE(h.plan, ''), h.owner_id,
+	b.Queue(`SELECT h.id, h.name, COALESCE(h.icon, ''), COALESCE(h.accent, ''), h.slug, h.hub_type, COALESCE(h.plan, ''), h.owner_id,
 			h.allow_contributor_topics, h.allow_contributor_dreams,
 			COALESCE(h.contributor_delete_policy, 'own'),
 			COALESCE(h.header_aurora_mode, ''),
@@ -364,29 +374,37 @@ func (s *PostgresStore) ListUserHubs(userID string) ([]model.HubWithRole, error)
 		FROM hubs h
 		JOIN hub_members hm ON h.id = hm.hub_id
 		WHERE hm.user_id = $1
-		ORDER BY h.hub_type ASC, h.name ASC`, userID)
-	if err != nil {
+		ORDER BY h.hub_type ASC, h.name ASC`, userID).Query(func(rows pgx.Rows) error {
+		for rows.Next() {
+			var h model.Hub
+			var role string
+			var memoryCount int
+			var onV2 bool
+			if err := rows.Scan(&h.ID, &h.Name, &h.Icon, &h.Accent, &h.Slug, &h.HubType, &h.Plan, &h.OwnerID,
+				&h.AllowContributorTopics, &h.AllowContributorDreams,
+				&h.ContributorDeletePolicy,
+				&h.HeaderAuroraMode,
+				&h.Settings,
+				&h.CreatedAt, &h.UpdatedAt, &role, &memoryCount, &onV2); err != nil {
+				return fmt.Errorf("scan hub row: %w", err)
+			}
+			result = append(result, model.HubWithRole{Hub: h, Role: role, MemoryCount: memoryCount, OnV2: onV2})
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		listed = true
+		return nil
+	})
+	if extra != nil {
+		extra(b)
+	}
+	// A statement extra queued may fail after the list came back: the list
+	// stands (extra's own callbacks say what failed).
+	if err := s.pool.SendBatch(ctx, b).Close(); err != nil && !listed {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var result []model.HubWithRole
-	for rows.Next() {
-		var h model.Hub
-		var role string
-		var memoryCount int
-		var onV2 bool
-		if err := rows.Scan(&h.ID, &h.Name, &h.Icon, &h.Accent, &h.Slug, &h.HubType, &h.Plan, &h.OwnerID,
-			&h.AllowContributorTopics, &h.AllowContributorDreams,
-			&h.ContributorDeletePolicy,
-			&h.HeaderAuroraMode,
-			&h.Settings,
-			&h.CreatedAt, &h.UpdatedAt, &role, &memoryCount, &onV2); err != nil {
-			return nil, fmt.Errorf("scan hub row: %w", err)
-		}
-		result = append(result, model.HubWithRole{Hub: h, Role: role, MemoryCount: memoryCount, OnV2: onV2})
-	}
-	return result, rows.Err()
+	return result, nil
 }
 
 // HubMembershipIDs returns just the hub-id list a user belongs to.

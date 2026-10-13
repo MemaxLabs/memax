@@ -76,11 +76,11 @@ func TestLinkMachineRoundTrips(t *testing.T) {
 		})
 	}
 	var first wireMachineResult
-	check("the first machine (+ Brief, + 3 files)", 8, measure("first link", func(ctx context.Context) { first = link(ctx) }))
+	check("the first machine (+ Brief, + 3 files)", 7, measure("first link", func(ctx context.Context) { first = link(ctx) }))
 	// It wrote the space's first Brief (read through the API: the audit
 	// refuses any read of the record outside a scoped transaction).
 	e.do(call{method: "GET", path: "/v2/spaces/" + personal.slug + "/brief", token: tok}).ok(http.StatusOK, nil)
-	check("another machine (+ 3 files)", 8, measure("link", func(ctx context.Context) { link(ctx) }))
+	check("another machine (+ 3 files)", 7, measure("link", func(ctx context.Context) { link(ctx) }))
 
 	poll := func(ctx context.Context) {
 		e.do(call{method: "GET", path: "/v2/spaces/" + personal.slug + "/targets?machine=" + first.Machine.ID.String(),
@@ -89,7 +89,7 @@ func TestLinkMachineRoundTrips(t *testing.T) {
 	for range 2 {
 		measure("warm", poll)
 	}
-	check("a daemon's poll (?machine=)", 5, measure("poll", poll))
+	check("a daemon's poll (?machine=)", 3, measure("poll", poll))
 
 	// A Keep in Personal bumps every machine's home files in one statement.
 	var proposals []string
@@ -105,5 +105,5 @@ func TestLinkMachineRoundTrips(t *testing.T) {
 	for range 2 {
 		measure("warm", keep)
 	}
-	check("a Keep in Personal (+ 12 home jobs)", 13, measure("keep", keep))
+	check("a Keep in Personal (+ 12 home jobs)", 12, measure("keep", keep))
 }

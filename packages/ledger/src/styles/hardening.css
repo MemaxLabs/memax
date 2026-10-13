@@ -106,6 +106,14 @@
 @media (min-width: 1024px) and (max-width: 1180px) {
   .mx-row { --receipt-rail: 176px; }
 }
+/* Below 640px there's no room for the rail beside the statement: every row stacks, the
+ * receipt under the words, as `stacked` does (MobileToday.png). */
+@media (max-width: 639px) {
+  .mx-row { grid-template-columns: 16px minmax(0, 1fr); }
+  .mx-row::after { display: none; }
+  .mx-row-rail { grid-column: 2; grid-row: 2; padding: 6px 0 0; grid-template-columns: 24px minmax(0, 1fr); }
+  .mx-row-rail-lines { flex-direction: row; flex-wrap: wrap; column-gap: 10px; }
+}
 
 /* ---------- memory text ---------- */
 /* MemoryText applies the state typography to a statement outside a row (design review §4),
@@ -157,6 +165,16 @@
   .mx-btn, .mx-seg-opt, .mx-cite, .mx-rail-ask, .mx-rail-space { position: relative; }
   .mx-btn::after, .mx-seg-opt::after, .mx-cite::after, .mx-rail-ask::after, .mx-rail-space::after { content: ""; position: absolute; top: 50%; left: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
   .mx-rail-item, .mx-field-box { height: 44px; }
+  /* A target row is a link as tall as its text: a finger's row at least. */
+  .mx-target { min-height: 44px; box-sizing: border-box; }
+}
+
+/* ---------- no hover (touch) ---------- */
+/* A row's actions show on hover and on focus, and touch has neither: there they're always
+ * on the row, under its statement, rather than floating over the receipt rail. */
+@media (hover: none) {
+  .mx-row .mx-row-actions { position: relative; grid-column: 2 / -1; justify-self: start; padding: 8px 0 0; background: none; box-shadow: none; opacity: 1; pointer-events: auto; }
+  .mx-row.is-selected .mx-row-actions { background: none; box-shadow: none; }
 }
 
 /* ---------- reduced motion ---------- */

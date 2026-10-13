@@ -8,12 +8,14 @@ import { toFailure } from "@/lib/v2/data/command-error";
 import { IntentKeys } from "@/lib/v2/intent-keys";
 import type { KeepResult, SpaceSummary } from "@/lib/v2/data/types";
 import { KeyScopeBoundary, useHotkey, useKeycap } from "@/lib/v2/keymap/react";
+import type { PlaceRoute } from "@/lib/v2/places";
 import { useSource, useViewer } from "../_lib/data";
 import { useOverlays } from "../_lib/overlays";
 import { useUndo } from "../_lib/undo";
 import { answerText, useAsk } from "../_lib/use-ask";
 import { useRemember } from "../_lib/use-remember";
 import { AskPanel } from "./ask-panel";
+import { MobileTabBar } from "./mobile-bars";
 import { isOnV1, OnV1Notice } from "./on-v1-notice";
 import { RememberPanel } from "./remember-panel";
 import { useToast, type ShowToast } from "./toasts";
@@ -34,11 +36,17 @@ const SEAL_MS = 700;
 export function CommandCenter({
   space,
   spaces,
+  route,
+  waiting = 0,
 }: {
   space: SpaceSummary;
   spaces: SpaceSummary[];
+  /** The page under it, and what waits on the person: for the phone's tab bar. */
+  route?: PlaceRoute;
+  waiting?: number;
 }) {
   const { command, setCommandOpen } = useOverlays();
+  const close = () => setCommandOpen(false);
   return (
     <CommandDialog open={command.open} onOpenChange={setCommandOpen}>
       {/* Keyed by session: every open starts clean. */}
@@ -51,6 +59,17 @@ export function CommandCenter({
           initialQuery={command.query}
         />
       </KeyScopeBoundary>
+      {/* A phone's Ask fills the screen above the tab bar (MobileAsk.png),
+          with Ask the current tab; the page's own bar is behind the
+          dialog, so this one is in it. Not shown above 640px. */}
+      <MobileTabBar
+        space={space}
+        route={route}
+        waiting={waiting}
+        asking
+        onAsk={close}
+        onNavigate={close}
+      />
     </CommandDialog>
   );
 }
@@ -253,25 +272,38 @@ function CommandBody({
     if (ask.state.status !== "idle") setQuery(ask.state.question);
   };
 
+  const p = t.ledger.app.phone;
+  // A phone's full-screen Ask names the space it asks (MobileAsk.png).
+  const phoneTitle = (
+    <h2 className={styles.phoneTitle}>
+      {interpolate(mode === "ask" ? p.askTitle : p.rememberTitle, {
+        space: space.name,
+      })}
+    </h2>
+  );
+
   if (onV1) {
     // Neither Ask nor Remember: the field is read-only, Enter and Tab do
     // nothing, and the one way on is the space's Today.
     return (
-      <CommandBar
-        className={styles.bar}
-        query={query}
-        onQueryChange={setQuery}
-        mode={mode}
-        onModeChange={setMode}
-        tabSwitchesMode={false}
-        footer={false}
-        placeholder={interpolate(t.ledger.app.command.onV1.title, {
-          space: space.name,
-        })}
-        inputProps={{ readOnly: true }}
-      >
-        <OnV1Notice space={space} onOpen={close} />
-      </CommandBar>
+      <>
+        {phoneTitle}
+        <CommandBar
+          className={styles.bar}
+          query={query}
+          onQueryChange={setQuery}
+          mode={mode}
+          onModeChange={setMode}
+          tabSwitchesMode={false}
+          footer={false}
+          placeholder={interpolate(t.ledger.app.command.onV1.title, {
+            space: space.name,
+          })}
+          inputProps={{ readOnly: true }}
+        >
+          <OnV1Notice space={space} onOpen={close} />
+        </CommandBar>
+      </>
     );
   }
 
@@ -307,19 +339,22 @@ function CommandBody({
     );
 
   return (
-    <CommandBar
-      className={styles.bar}
-      keepShortcut={keepKey}
-      query={query}
-      onQueryChange={setQuery}
-      mode={mode}
-      onModeChange={setMode}
-      onSubmit={(text, current) => {
-        if (current === "ask") askFresh(text);
-        else void keepDraft();
-      }}
-    >
-      {body}
-    </CommandBar>
+    <>
+      {phoneTitle}
+      <CommandBar
+        className={styles.bar}
+        keepShortcut={keepKey}
+        query={query}
+        onQueryChange={setQuery}
+        mode={mode}
+        onModeChange={setMode}
+        onSubmit={(text, current) => {
+          if (current === "ask") askFresh(text);
+          else void keepDraft();
+        }}
+      >
+        {body}
+      </CommandBar>
+    </>
   );
 }

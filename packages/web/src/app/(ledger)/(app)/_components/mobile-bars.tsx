@@ -72,11 +72,21 @@ export function MobileTabBar({
   route,
   waiting,
   onAsk,
+  asking = false,
+  onNavigate,
 }: {
   space: SpaceSummary;
   route: PlaceRoute | undefined;
   waiting: number;
+  /** The Ask tab: opens Ask, or (while `asking`) closes it. */
   onAsk: () => void;
+  /**
+   * The bar inside the full-screen Ask (MobileAsk.png), where Ask is the
+   * current tab; the page's own bar is behind the dialog.
+   */
+  asking?: boolean;
+  /** A tab that goes somewhere was pressed (Ask closes on the way). */
+  onNavigate?: () => void;
 }) {
   const { t } = useLocale();
   const { strings } = useLedger();
@@ -90,23 +100,23 @@ export function MobileTabBar({
       icon: "today",
       label: strings.nav.places.today,
       href: placeHref(space.slug, "today"),
-      current: route === "today",
+      current: !asking && route === "today",
     },
     {
       id: "review",
       icon: "review",
       label: strings.nav.places.review,
       href: placeHref(space.slug, "review"),
-      current: route === "review",
+      current: !asking && route === "review",
       count: waiting,
     },
-    { id: "ask", icon: "search", label: strings.command.ask },
+    { id: "ask", icon: "search", label: strings.command.ask, current: asking },
     {
       id: "agents",
       icon: "agents",
       label: strings.nav.places.agents,
       href: placeHref(space.slug, "agents"),
-      current: route === "agents",
+      current: !asking && route === "agents",
     },
   ];
   return (
@@ -130,6 +140,7 @@ export function MobileTabBar({
             href={tab.href}
             className={styles.tab}
             aria-current={tab.current ? "page" : undefined}
+            onClick={onNavigate}
           >
             {body}
           </Link>
@@ -139,7 +150,8 @@ export function MobileTabBar({
             type="button"
             className={styles.tab}
             onClick={onAsk}
-            aria-haspopup="dialog"
+            aria-current={tab.current ? "page" : undefined}
+            aria-haspopup={asking ? undefined : "dialog"}
           >
             {body}
           </button>

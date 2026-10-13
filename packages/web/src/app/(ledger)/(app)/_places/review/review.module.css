@@ -269,6 +269,20 @@
   border-radius: var(--radius-md);
 }
 
+/* Phone only: the swipe's hint and a gate's line under its card. */
+.swipeHint,
+.phoneMeta {
+  display: none;
+  margin: 0;
+  text-align: center;
+  /* Sentences: .mx-meta's tabular figures widen "," and "." */
+  font-variant-numeric: normal;
+}
+
+.swipeHint {
+  justify-content: center;
+}
+
 @media (max-width: 1023px) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
@@ -306,8 +320,115 @@
     padding: 16px;
   }
 
-  /* A phone has no keyboard to press them with (MobileReview.png). */
+  /* A phone has no keyboard to press them with. */
   .cardColumn :global(.mx-btn-kbd) {
     display: none;
+  }
+
+  /* MobileReview.png: the deck. The page's own header (PhoneHeader)
+   * says where you are, so the queue's head and the position line go,
+   * and the sheet scrolls as one. */
+  .layout {
+    display: block;
+    height: auto;
+  }
+
+  .queue,
+  .metaRow,
+  .emptyHeading,
+  .emptyHead :global(.mx-page-title) {
+    display: none;
+  }
+
+  .cardPane {
+    overflow: visible;
+  }
+
+  .cardColumn {
+    gap: 12px;
+    padding: 16px 16px 24px;
+  }
+
+  .swipeHint {
+    display: flex;
+  }
+
+  .phoneMeta {
+    display: block;
+  }
+
+  .compare {
+    margin-top: 0;
+  }
+
+  /* The card as MobileReview.dc.html draws it. */
+  .cardColumn :global(.mx-review) {
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .cardColumn :global(.mx-review-statement) {
+    font-size: 19px;
+    line-height: 28px;
+  }
+
+  .cardColumn :global(.mx-review-foot) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .cardColumn :global(.mx-review-actions) {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.4fr;
+    gap: 8px;
+    margin-left: 0;
+  }
+
+  .cardColumn :global(.mx-review-actions .mx-btn) {
+    --_h: 48px;
+    font-size: 15px;
+  }
+
+  .cardColumn :global(.mx-review-seal) {
+    right: 10px;
+  }
+
+  /* A gate as MobileGate.dc.html draws it. */
+  .cardColumn :global(.mx-gate) {
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .cardColumn :global(.mx-gate-q) {
+    font-size: 21px;
+    line-height: 29px;
+  }
+
+  .cardColumn :global(.mx-gate-opt) {
+    min-height: 56px;
+  }
+
+  .cardColumn :global(.mx-gate-foot) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .cardColumn :global(.mx-gate-foot .mx-btn) {
+    --_h: 48px;
+    font-size: 15px;
+  }
+
+  .cardColumn :global(.mx-gate-foot .mx-meta) {
+    font-variant-numeric: normal;
+  }
+
+  /* Answer across the card, and the quiet Withdraw under it. */
+  .cardColumn :global(.mx-gate-actions) {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 4px;
+    margin-left: 0;
   }
 }

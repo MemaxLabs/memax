@@ -21,6 +21,7 @@ import { CommandCenter } from "./command-center";
 import { FrameKeys } from "./frame-keys";
 import { FrameFailed, FrameSkeleton } from "./frame-states";
 import { MobileTabBar, MobileTopBar } from "./mobile-bars";
+import { ownsPhoneHeader } from "./phone-header";
 import { NewSpaceDialog } from "./new-space";
 import { PasskeyCheckHost } from "./passkey-check";
 import { useRailProps } from "./rail-props";
@@ -124,7 +125,7 @@ function FrameReady({
   missingSlug: string | undefined;
   children: ReactNode;
 }) {
-  const { route, inSettings } = useFrameLocation();
+  const { route, detail, inSettings } = useFrameLocation();
   const viewer = useViewer();
   const overview = useOverview(space);
   const { openCommand } = useOverlays();
@@ -138,6 +139,7 @@ function FrameReady({
     viewer,
   });
   const { data, isError, refetch } = overview;
+  const waiting = data ? waitingOnYou(data) : 0;
   const view = useMemo<SpaceView>(
     () => ({
       space,
@@ -151,12 +153,16 @@ function FrameReady({
   return (
     <div className={styles.frame}>
       <FrameKeys space={space} spaces={spaces} route={route} />
-      <MobileTopBar
-        space={space}
-        spaces={spaces}
-        route={route}
-        viewer={viewer}
-      />
+      {/* On a phone, Review and a memory's page draw their own header
+          (a back link and their title) where the space's bar would be. */}
+      {missing || !ownsPhoneHeader(route, detail) ? (
+        <MobileTopBar
+          space={space}
+          spaces={spaces}
+          route={route}
+          viewer={viewer}
+        />
+      ) : null}
       {/* The rail's space name is the menu's trigger (NavRail spaceRender). */}
       <SpaceMenu
         spaces={spaces}
@@ -180,10 +186,15 @@ function FrameReady({
       <MobileTabBar
         space={space}
         route={route}
-        waiting={overview.data ? waitingOnYou(overview.data) : 0}
+        waiting={waiting}
         onAsk={() => openCommand("ask")}
       />
-      <CommandCenter space={space} spaces={spaces} />
+      <CommandCenter
+        space={space}
+        spaces={spaces}
+        route={route}
+        waiting={waiting}
+      />
       <ShortcutsSheet />
       <NewSpaceDialog />
     </div>

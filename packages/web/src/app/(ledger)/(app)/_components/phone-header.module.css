@@ -1,0 +1,120 @@
+/* A page's own phone header (MobileReview.dc.html, MobileGate.dc.html,
+ * MobileMemory.dc.html). Shown below 640px only. Tokens only. */
+
+.header {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .header {
+    /* It stays while the page scrolls under it, as the space's bar does. */
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    flex: none;
+    box-sizing: border-box;
+    min-height: 56px;
+    padding: max(6px, env(safe-area-inset-top))
+      max(16px, env(safe-area-inset-right)) 6px
+      max(16px, env(safe-area-inset-left));
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+    color: var(--ink);
+  }
+
+  /* With the deck's progress under it (MobileReview.png). */
+  .header:has(.segments, .bar) {
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: 12px;
+  }
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(44px, 1fr) auto minmax(44px, 1fr);
+  align-items: center;
+  min-height: 44px;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  width: 44px;
+  height: 44px;
+  margin-left: -12px;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+}
+
+.back:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.backIcon {
+  transform: rotate(180deg);
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* A memory's ID, which isn't the page's heading. */
+.label {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.end {
+  justify-self: end;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.segments {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 4px;
+}
+
+.segment,
+.segmentOn {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.segmentOn {
+  background: var(--ink);
+}
+
+.bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}

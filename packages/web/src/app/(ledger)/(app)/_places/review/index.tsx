@@ -8,6 +8,7 @@ import { waitingOnYou } from "@/lib/v2/data/types";
 import { KeyScopeBoundary } from "@/lib/v2/keymap/react";
 import { placeHref } from "@/lib/v2/places";
 import { EmptyState } from "../../_components/empty-state";
+import { PhoneHeader, PhoneProgress } from "../../_components/phone-header";
 import { PlaceError } from "../../_components/status";
 import { PlaceColumn } from "../place";
 import { useRecordsView, type RecordsView } from "../records-view";
@@ -35,6 +36,7 @@ export function ReviewPlace() {
   if (asked === "import") {
     return (
       <KeyScopeBoundary name="review">
+        <ReviewPhoneHeader view={view} gate={false} heading={false} />
         <ReviewImportPlace />
       </KeyScopeBoundary>
     );
@@ -80,9 +82,26 @@ function ReviewScreen({
   // queue says so).
   const gatesKnown = gates.data !== undefined || gates.isError;
 
+  // A gate opened from Today or Activity reads as its own question on a
+  // phone (MobileGate.png); the queue reads as a deck (MobileReview.png).
+  const asking = gate !== null && review.selectedGate?.ref === gate;
+  const header = (
+    <ReviewPhoneHeader
+      view={view}
+      gate={asking}
+      position={
+        loaded && !asking && review.entries.length > 0
+          ? { n: review.index + 1, total: review.entries.length }
+          : undefined
+      }
+    />
+  );
   if (!loaded && queue.isError) {
     return (
-      <PlaceError space={view.space} onRetry={() => void queue.refetch()} />
+      <>
+        {header}
+        <PlaceError space={view.space} onRetry={() => void queue.refetch()} />
+      </>
     );
   }
   const empty = loaded
@@ -92,12 +111,61 @@ function ReviewScreen({
       review.gateCards.gates.length === 0 &&
       !review.gateCards.finding
     : view.overview !== undefined && waitingOnYou(view.overview) === 0;
-  if (empty) return <ReviewEmpty view={view} />;
+  if (empty) {
+    return (
+      <>
+        {header}
+        <ReviewEmpty view={view} />
+      </>
+    );
+  }
   return (
-    <div className={styles.layout}>
-      <Queue view={view} review={review} filter={filter} onFilter={onFilter} />
-      <CardColumn view={view} review={review} />
-    </div>
+    <>
+      {header}
+      <div className={styles.layout}>
+        <Queue
+          view={view}
+          review={review}
+          filter={filter}
+          onFilter={onFilter}
+        />
+        <CardColumn view={view} review={review} />
+      </div>
+    </>
+  );
+}
+
+/**
+ * Review's header on a phone, where the space's bar would be: back to
+ * Today, "Review" and where you are in the deck with its progress
+ * (MobileReview.png), or "A question for you" for a gate opened on its
+ * own (MobileGate.png). Not shown above 640px.
+ */
+function ReviewPhoneHeader({
+  view,
+  gate,
+  position,
+  heading = true,
+}: {
+  view: RecordsView;
+  gate: boolean;
+  position?: { n: number; total: number };
+  /** ReviewImport has its own heading. */
+  heading?: boolean;
+}) {
+  const p = view.l.app.phone;
+  return (
+    <PhoneHeader
+      back={{
+        href: placeHref(view.space.slug, "today"),
+        label: interpolate(p.backTo, { place: view.l.app.titles.today }),
+      }}
+      heading={heading}
+      title={gate ? p.gateTitle : view.copy.review.title}
+      end={position ? interpolate(p.position, position) : undefined}
+    >
+      {position ? <PhoneProgress {...position} /> : null}
+    </PhoneHeader>
   );
 }
 
@@ -111,7 +179,9 @@ function ReviewEmpty({ view }: { view: RecordsView }) {
   if (hasNothing(view)) {
     return (
       <PlaceColumn>
+        {/* On a phone the header's title is the page's heading. */}
         <PageHeader
+          className={styles.emptyHead}
           eyebrow={view.eyebrow}
           title={copy.review.title}
           lede={copy.empty.review.detail}
@@ -132,7 +202,8 @@ function ReviewEmpty({ view }: { view: RecordsView }) {
       : null;
   return (
     <div className={styles.emptySheet}>
-      <h1 className="mx-sr">{copy.review.title}</h1>
+      {/* On a phone the header's title is the page's heading. */}
+      <h1 className={`mx-sr ${styles.emptyHeading}`}>{copy.review.title}</h1>
       <EmptyState
         title={copy.empty.review.title}
         detail={joinSentences([copy.empty.review.detail, inSync], locale)}

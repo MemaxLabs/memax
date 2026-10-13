@@ -222,7 +222,9 @@ export function AskPanel({
       ) : null}
       {state.status === "done" ? (
         <div className={styles.actions}>
+          {/* Not on a phone (MobileAsk.png): it isn't available yet. */}
           <Button
+            className={styles.notYet}
             variant="secondary"
             size="sm"
             icon="terminal"

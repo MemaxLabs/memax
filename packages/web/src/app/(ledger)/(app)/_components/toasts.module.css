@@ -71,6 +71,11 @@
     width: auto;
     bottom: calc(76px + env(safe-area-inset-bottom) + var(--space-3));
   }
+
+  /* A phone has no keyboard to press ⌘Z with. */
+  .toast :global(.mx-btn-kbd) {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

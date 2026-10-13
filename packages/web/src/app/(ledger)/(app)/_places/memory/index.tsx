@@ -10,6 +10,7 @@ import type { MemoryRecord } from "@/lib/v2/data/memories";
 import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
 import { placeHref, searchHref } from "@/lib/v2/places";
 import { EditClash } from "../../_components/edit-clash";
+import { PhoneHeader } from "../../_components/phone-header";
 import { HeaderSkeleton, PlaceSkeleton } from "../../_components/skeleton";
 import { StatementEditor } from "../../_components/statement-editor";
 import { StatementText } from "../../_components/statement-text";
@@ -39,56 +40,86 @@ export function MemoryPlace({ memoryRef }: { memoryRef: string }) {
   const view = useRecordsView();
   const { l, space } = view;
   const record = useMemoryRecord(space, memoryRef);
+  // On a phone the page's own header names the memory (MobileMemory.png).
+  const header = (
+    <PhoneHeader
+      back={{
+        href: placeHref(space.slug, "memories"),
+        label: interpolate(l.app.phone.backTo, {
+          place: l.app.titles.memories,
+        }),
+      }}
+      title={memoryRef}
+      heading={false}
+    />
+  );
 
   if (record.data === undefined) {
     if (record.isError) {
-      return <PlaceError space={space} onRetry={() => void record.refetch()} />;
+      return (
+        <>
+          {header}
+          <PlaceError space={space} onRetry={() => void record.refetch()} />
+        </>
+      );
     }
     return (
-      <div className={`mx-page ${styles.page}`}>
-        <HeaderSkeleton />
-        <PlaceSkeleton
-          title={l.memory.page.lineage}
-          status={view.copy.empty.loadingMeta}
-          label={l.memory.list.loading}
-        />
-      </div>
+      <>
+        {header}
+        <div className={`mx-page ${styles.page}`}>
+          <HeaderSkeleton />
+          <PlaceSkeleton
+            title={l.memory.page.lineage}
+            status={view.copy.empty.loadingMeta}
+            label={l.memory.list.loading}
+          />
+        </div>
+      </>
     );
   }
   if (record.data === null) {
     const nf = l.memory.page.notFound;
     return (
-      <StatusPage
-        variant="sheet"
-        receipt={memoryRef}
-        title={nf.title}
-        description={nf.detail}
-        actions={
-          <>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="search"
-              href={searchHref(space.slug)}
-            >
-              {nf.search}
-            </Button>
-            <Button
-              variant="quiet"
-              size="sm"
-              href={placeHref(space.slug, "activity")}
-            >
-              {nf.activity}
-            </Button>
-          </>
-        }
-      />
+      <>
+        {header}
+        <StatusPage
+          variant="sheet"
+          receipt={memoryRef}
+          title={nf.title}
+          description={nf.detail}
+          actions={
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="search"
+                href={searchHref(space.slug)}
+              >
+                {nf.search}
+              </Button>
+              <Button
+                variant="quiet"
+                size="sm"
+                href={placeHref(space.slug, "activity")}
+              >
+                {nf.activity}
+              </Button>
+            </>
+          }
+        />
+      </>
     );
   }
-  if (record.data.lifecycle === "forgotten") {
-    return <Tombstone view={view} record={record.data} />;
-  }
-  return <Memory view={view} record={record.data} />;
+  return (
+    <>
+      {header}
+      {record.data.lifecycle === "forgotten" ? (
+        <Tombstone view={view} record={record.data} />
+      ) : (
+        <Memory view={view} record={record.data} />
+      )}
+    </>
+  );
 }
 
 function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {

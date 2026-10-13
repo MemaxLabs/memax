@@ -26,12 +26,16 @@ import { KeymapProvider } from "@/lib/v2/keymap/react";
 import { createUndoStack } from "@/lib/v2/undo-stack";
 import { ToastProvider, ToastViewport } from "../../_components/toasts";
 import { LedgerDataProvider } from "../../_lib/data";
-import { OverlayProvider } from "../../_lib/overlays";
+import { OverlayProvider, useOverlays } from "../../_lib/overlays";
 import { SpaceViewContext } from "../../_lib/space-context";
 import { UndoStackProvider } from "../../_lib/undo";
 import { MemoryPlace } from "./index";
 
-const h = vi.hoisted(() => ({ source: null as LedgerDataSource | null }));
+const h = vi.hoisted(() => ({
+  source: null as LedgerDataSource | null,
+  search: "",
+  replace: null as null | ((href: string) => void),
+}));
 
 vi.mock("@/lib/v2/data/demo-source", async (load) => {
   const actual = await load<typeof import("@/lib/v2/data/demo-source")>();
@@ -47,15 +51,26 @@ vi.mock("@/lib/auth", () => ({
 }));
 vi.mock("@/lib/memax-client", () => ({ getMemaxClient: () => ({}) }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: (href: string) => h.replace?.(href),
+  }),
   usePathname: () => "/memax-v2/memories/M-0098",
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(h.search),
 }));
 
 afterEach(() => {
   cleanup();
   h.source = null;
+  h.search = "";
+  h.replace = null;
 });
+
+/** Which memory VerifyStale was opened for, as the frame would show it. */
+function VerifyProbe() {
+  const { verify } = useOverlays();
+  return <output data-testid="verify">{verify?.ref ?? ""}</output>;
+}
 
 const v2 = DEMO_SPACES.find((s) => s.slug === "memax-v2")!;
 
@@ -86,6 +101,7 @@ function renderMemory(
                       }}
                     >
                       <MemoryPlace memoryRef={ref} />
+                      <VerifyProbe />
                     </SpaceViewContext>
                     <ToastViewport />
                   </OverlayProvider>
@@ -188,6 +204,24 @@ describe("a memory's page", () => {
     expect(
       await screen.findByText("Copied [M-0219] and its link"),
     ).toBeTruthy();
+  });
+
+  it("opens VerifyStale from memax verify's link, once", async () => {
+    h.search = "overlay=verify&from=cli";
+    const replaced: string[] = [];
+    h.replace = (href) => {
+      replaced.push(href);
+      h.search = href.split("?")[1] ?? "";
+    };
+    renderMemory(
+      "M-0098",
+      createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("verify").textContent).toBe("M-0098"),
+    );
+    // The link's query is taken off, so a reload or Back doesn't open it again.
+    expect(replaced).toEqual(["/memax-v2/memories/M-0098?from=cli"]);
   });
 
   it("says when there's no memory with this ID", async () => {

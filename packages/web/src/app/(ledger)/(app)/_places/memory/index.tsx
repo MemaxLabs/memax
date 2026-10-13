@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button, Receipt, Seal, StateMark } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { formatAgo, formatShortDate } from "@/lib/v2/copy";
@@ -123,6 +125,22 @@ function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
       edit.mode.kind === "view" &&
       !forget.confirming,
   });
+  // `?overlay=verify` (memax verify's link to the web) opens VerifyStale
+  // once, which says so when someone answered it since.
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const verifyAsked = params?.get("overlay") === "verify";
+  useEffect(() => {
+    if (!verifyAsked) return;
+    openVerify(record.ref);
+    const next = new URLSearchParams(params?.toString());
+    next.delete("overlay");
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : (pathname ?? ""), {
+      scroll: false,
+    });
+  }, [verifyAsked, openVerify, record.ref, params, pathname, router]);
 
   const mode = edit.mode;
 

@@ -3,17 +3,7 @@
 // default branch of a clone of the space's repository), what each run
 // reads and sends, renames, the queue, the refs watch, and the daemon's
 // wiring through the fake server.
-import { execFileSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { V2 } from "memax-sdk";
 import { afterEach, describe, expect, it } from "vitest";
@@ -33,6 +23,7 @@ import {
 import { memoryLogger } from "../../src/lib/daemon/log.js";
 import { daemonPaths } from "../../src/lib/daemon/paths.js";
 import { installHookRoutes, tombstoneFixture } from "../hook/fake-hook.js";
+import { cleanupRepos, git, repository, tempDir, write } from "./git-repo.js";
 import { harness, type Harness } from "./harness.js";
 
 // The checks' git ignores pathspec settings it inherits: with this, a bare
@@ -40,53 +31,7 @@ import { harness, type Harness } from "./harness.js";
 // dependency would read as gone.
 process.env.GIT_LITERAL_PATHSPECS = "1";
 
-const GIT_ENV = {
-  ...process.env,
-  GIT_AUTHOR_NAME: "Test",
-  GIT_AUTHOR_EMAIL: "test@example.com",
-  GIT_COMMITTER_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com",
-  GIT_CONFIG_NOSYSTEM: "1",
-  HOME: tmpdir(),
-};
-const git = (cwd: string, ...args: string[]) =>
-  execFileSync("git", args, { cwd, env: GIT_ENV, stdio: "pipe" })
-    .toString()
-    .trim();
-
-const bases: string[] = [];
-afterEach(() => {
-  for (const b of bases.splice(0)) rmSync(b, { recursive: true, force: true });
-});
-
-/** A clone of MemaxLabs/memax (a bare origin named so), on main, pushed. */
-function repository(files: Record<string, string>): {
-  base: string;
-  root: string;
-} {
-  const base = realpathSync(mkdtempSync(join(tmpdir(), "memax-checks-")));
-  bases.push(base);
-  const root = join(base, "repo");
-  const origin = join(base, "MemaxLabs", "memax.git");
-  mkdirSync(root);
-  mkdirSync(origin, { recursive: true });
-  git(origin, "init", "-q", "--bare", "-b", "main");
-  git(root, "init", "-q", "-b", "main");
-  write(root, files);
-  git(root, "add", "-A");
-  git(root, "commit", "-q", "-m", "first");
-  git(root, "remote", "add", "origin", origin);
-  git(root, "push", "-q", "-u", "origin", "main");
-  git(root, "remote", "set-head", "origin", "main");
-  return { base, root };
-}
-
-function write(root: string, files: Record<string, string>): void {
-  for (const [p, content] of Object.entries(files)) {
-    mkdirSync(join(root, p, ".."), { recursive: true });
-    writeFileSync(join(root, p), content);
-  }
-}
+afterEach(cleanupRepos);
 
 const H = (n: number) => String(n).repeat(64).slice(0, 64);
 
@@ -188,9 +133,7 @@ const QUIET: Partial<CheckTiming> = {
 };
 
 function checker(root: string, fake: Fake, timing = QUIET) {
-  const base = realpathSync(mkdtempSync(join(tmpdir(), "memax-checks-home-")));
-  bases.push(base);
-  const paths = daemonPaths(join(base, "daemon"));
+  const paths = daemonPaths(join(tempDir("memax-checks-home-"), "daemon"));
   const log = memoryLogger();
   const reporter = new CheckReporter({ paths, api: fake.api, log });
   const c = new RepoChecker({

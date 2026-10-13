@@ -175,6 +175,30 @@ interface CheckFile {
   results: Record<string, Reported>;
 }
 
+/** One condition as `memax check` shows it, with what this machine last found. */
+export interface CheckedItem {
+  memory: string;
+  /** As the space lists it, with its id. */
+  condition: V2.Condition;
+  /** It held once on the default branch, so a failure marks the memory stale. */
+  armed: boolean;
+  /** Absent when no run here has checked it (or the daemon doesn't check its kind). */
+  outcome?: V2.CheckResultInput["outcome"];
+  evidence?: V2.CheckEvidence;
+}
+
+/** A repository's checks as the last run here left them. */
+export interface CheckView {
+  root: string;
+  space_id: string;
+  /** The default branch's commit last checked here, and when. */
+  commit: string | null;
+  checked_at: string | null;
+  /** Why the latest run checked nothing, in words, when it didn't. */
+  not_checked?: string;
+  items: CheckedItem[];
+}
+
 /** What one run did (for logs, `memax status` and tests). */
 export interface CheckRunSummary {
   ran: boolean;
@@ -791,6 +815,51 @@ export class RepoChecker {
     )
       return empty;
     return { ...empty, ...f, results: f.results ?? {} };
+  }
+
+  /**
+   * The space's conditions with what the last run here found: an outcome
+   * only for a condition as it is defined now (a redefined one starts
+   * over), and none for a memory forgotten since.
+   */
+  view(): CheckView {
+    const state = (this.state ??= this.readState());
+    const items: CheckedItem[] = [];
+    for (const it of this.conds?.conds.items ?? []) {
+      if (this.gone.has(it.memory.toUpperCase())) continue;
+      for (const c of it.conditions) {
+        const r = c.condition.id
+          ? state.results[`${it.memory}/${c.condition.id}`]
+          : undefined;
+        const item: CheckedItem = {
+          memory: it.memory,
+          condition: c.condition,
+          armed: c.armed,
+        };
+        if (r && r.hash === c.hash) {
+          item.outcome = r.outcome;
+          if (r.change)
+            item.evidence = {
+              change: r.change as V2.CheckEvidence["change"],
+              ...(r.path ? { path: r.path } : {}),
+              ...(r.renamed_to ? { renamed_to: r.renamed_to } : {}),
+              ...(r.constraint ? { constraint: r.constraint } : {}),
+            };
+        }
+        items.push(item);
+      }
+    }
+    const skipped = this.lastRun?.skipped;
+    return {
+      root: this.o.link.root,
+      space_id: this.o.link.space_id,
+      commit: state.commit,
+      checked_at: state.checked_at,
+      ...(skipped && skipped in NOT_CHECKED
+        ? { not_checked: NOT_CHECKED[skipped as NotChecked] }
+        : {}),
+      items,
+    };
   }
 
   private writeState(f: CheckFile): void {

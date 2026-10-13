@@ -1,0 +1,80 @@
+---
+title: memax verify
+description: "Answer a memory marked stale: see why, then keep it, update it or forget it."
+---
+
+When something a memory relies on changes, Memax marks it stale and every
+compiled file says "(Being verified)" beside it until a person answers.
+`memax verify` answers it from the terminal, as Verify does in the app.
+
+## Usage
+
+```bash
+memax verify <M-id> [--space <slug>] [--still-true | --update "<words>" | --forget] [--reason <why>] [--format json]
+```
+
+| Flag               | Description                                                           |
+| ------------------ | --------------------------------------------------------------------- |
+| `--space <slug>`   | The space. Defaults to this repository's, else whichever holds it.    |
+| `--still-true`     | It's still true: keep it as it is.                                    |
+| `--update <words>` | It's true with these words: keep them as a new version.               |
+| `--forget`         | It isn't true: forget it, on the web.                                 |
+| `--reason <why>`   | Why, for the receipt.                                                 |
+| `--format <fmt>`   | `text` (default) or `json`.                                           |
+
+Without an answer, it asks.
+
+```text
+› memax verify M-0187
+
+  Verify M-0187 · stale since Oct 11
+
+  Ask's model tiers are set in internal/ask/config.go, one per plan.
+  kept · Jul 14 · read 88 times since
+
+  What changed
+  ○ internal/ask/config.go was renamed to internal/ask/tiers.go on main.
+    It relies on: internal/ask/config.go exists · in a1b2c3d · checked Oct 11
+
+    The change here: a1b2c3d Split the ask tiers · Alex, 2026-10-11
+    diff --git a/internal/ask/config.go b/internal/ask/tiers.go
+    similarity index 100%
+    rename from internal/ask/config.go
+    rename to internal/ask/tiers.go
+
+  What's true now?
+    1  Still true, keep it  It's checked again when the source next changes.
+    2  Update it            Write what's true now. It's kept as a new version.
+    3  Forget it            On the web, which shows what it removes first.
+```
+
+## What it shows
+
+- **Why it's stale.** A condition that stopped holding on the default
+  branch, or a date to check again that passed.
+- **The change, from this clone.** When a check found it, and you run
+  `memax verify` in a clone of the space's repository, the commit that
+  changed the path and its diff, up to 60 lines. It's read from your
+  clone and never sent anywhere. Fetch first if the commit isn't here yet.
+- **New words for a rename.** Update it starts from the words with the
+  new path in place of the old one. Edit them, then press Enter.
+
+## Your answer
+
+- **Still true** clears the flag. The condition that failed won't mark it
+  again until it holds and fails anew.
+- **Update it** keeps your words as a new version, then verifies it.
+- **Forget it** opens the memory on the web, where Forget shows what it
+  removes before you confirm.
+
+Still true and an update are yours, from the CLI, and you can undo either
+in the app for 10 minutes. A decision in a team space needs a person on
+the web: `memax verify` gives you the link.
+
+## Exit codes
+
+| Code | Meaning                                                         |
+| ---- | --------------------------------------------------------------- |
+| 0    | Answered, sent to the web, left as it is, or not stale any more. |
+| 1    | Not found, refused, unchanged words, or a failed request.        |
+| 2    | More than one answer, or `--update` without words.               |

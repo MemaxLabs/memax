@@ -44,8 +44,38 @@ export const UI_COOKIE_V2 = "v2";
 export const UI_RECHECK_COOKIE = "memax_ui_check";
 export const UI_RECHECK_SECONDS = 60;
 
+/**
+ * The public site (plan 25 epic 3.4, §6.9): Landing, Pricing, Security
+ * and Docs, static pages in (ledger)/(public). They are anyone's to read,
+ * so they open for every browser, the hint or not (V2_OPEN_AREAS).
+ */
+export const PUBLIC_AREAS = ["welcome", "pricing", "security", "docs"] as const;
+
+/**
+ * Where the Landing lives. V1's landing keeps "/" until a founder decides
+ * otherwise; the new one is at /welcome.
+ *
+ * To serve it at "/" for signed-out visitors, set LANDING_AT_ROOT to
+ * true. That one line is the whole switch: the proxy then rewrites a
+ * signed-out "/" to /welcome (the address bar keeps "/", and a signed-in
+ * "/" still goes to the person's home), and LANDING_HREF, which the
+ * public pages use for "Memax home", "Product" and the Landing's
+ * canonical URL, becomes "/". /welcome keeps answering, with "/" as its
+ * canonical address.
+ */
+export const LANDING_AT_ROOT = false;
+export const LANDING_PAGE = "/welcome";
+export const LANDING_HREF = LANDING_AT_ROOT ? "/" : LANDING_PAGE;
+
 /** Top-level areas that are V2 in full, with any sub-path (§6.3). */
-const V2_AREAS = new Set(["signin", "device", "unsubscribe", "setup", "join"]);
+const V2_AREAS = new Set<string>([
+  "signin",
+  "device",
+  "unsubscribe",
+  "setup",
+  "join",
+  ...PUBLIC_AREAS,
+]);
 
 /**
  * V2 areas that open without the opt-in. The memax CLI sends anyone to
@@ -54,8 +84,14 @@ const V2_AREAS = new Set(["signin", "device", "unsubscribe", "setup", "join"]);
  * way there goes through /signin (and /signin/callback). Dream's morning
  * email links to /unsubscribe, which needs no sign-in at all. None shows
  * a space: once signed in, a browser without the opt-in lands back in V1.
+ * The public site is open to anyone, signed in or not.
  */
-const V2_OPEN_AREAS = new Set(["signin", "device", "unsubscribe"]);
+const V2_OPEN_AREAS = new Set<string>([
+  "signin",
+  "device",
+  "unsubscribe",
+  ...PUBLIC_AREAS,
+]);
 
 /**
  * OAuthConsent, the Ledger page where a person lets an outside agent (an
@@ -150,6 +186,8 @@ export const RESERVED_SPACE_SLUGS: ReadonlySet<string> = new Set([
   "admin",
   "api",
   "h",
+  // The public site's Landing, until it moves to "/" (LANDING_AT_ROOT)
+  "welcome",
   // V1 top-level routes, until cutover
   "agents",
   "auth",
@@ -305,6 +343,8 @@ export function needsV2Opt(path: string): boolean {
 
 export type UiGateDecision =
   | { action: "continue" }
+  /** Serve another page at this address (the Landing at "/"). */
+  | { action: "rewrite"; pathname: string }
   | {
       action: "redirect";
       pathname: string;
@@ -322,6 +362,7 @@ export function decideUiGate({
   uiCookie,
   hasSession,
   rechecked = false,
+  landingAtRoot = LANDING_AT_ROOT,
 }: {
   pathname: string;
   /** The request's query string, "?…" or "". */
@@ -330,10 +371,17 @@ export function decideUiGate({
   hasSession: boolean;
   /** The re-check marker is there: this browser was re-checked a moment ago. */
   rechecked?: boolean;
+  /** Whether "/" serves the public Landing to signed-out visitors (LANDING_AT_ROOT). */
+  landingAtRoot?: boolean;
 }): UiGateDecision {
   const v2Page = v2PageFor(pathname);
   if (v2Page !== null) {
     return { action: "redirect", pathname: v2Page, keepQuery: true };
+  }
+  if (landingAtRoot && pathname === "/" && !hasSession) {
+    // Signed out, "/" is the public Landing; signed in, it stays the way
+    // to the person's home (the proxy's session fast path, below).
+    return { action: "rewrite", pathname: LANDING_PAGE };
   }
   const bare = bareSpaceSlug(pathname);
   if (bare !== null) {

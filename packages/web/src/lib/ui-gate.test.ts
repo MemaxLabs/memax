@@ -9,8 +9,12 @@ import {
   isOpenV2Path,
   isSpaceSlug,
   isV2Path,
+  LANDING_AT_ROOT,
+  LANDING_HREF,
+  LANDING_PAGE,
   needsV2Opt,
   opensV1Home,
+  PUBLIC_AREAS,
   RESERVED_SPACE_SLUGS,
   V1_ENTRY_PATHS,
   V2_LANDING_PATH,
@@ -289,6 +293,84 @@ describe("decideUiGate", () => {
     }
     for (const pathname of ["/setup", "/setup/import", "/join/x", "/"]) {
       expect(isOpenV2Path(pathname)).toBe(false);
+    }
+  });
+
+  it("opens the public site for every browser, signed in or not", () => {
+    expect([...PUBLIC_AREAS]).toEqual([
+      "welcome",
+      "pricing",
+      "security",
+      "docs",
+    ]);
+    for (const area of PUBLIC_AREAS) {
+      expect(RESERVED_SPACE_SLUGS.has(area), area).toBe(true);
+      const pathname = `/${area}`;
+      expect(isV2Path(pathname)).toBe(true);
+      expect(isOpenV2Path(pathname)).toBe(true);
+      expect(needsV2Opt(`${pathname}?utm_source=x`)).toBe(false);
+      for (const uiCookie of [undefined, "v1", "v2"]) {
+        for (const hasSession of [false, true]) {
+          for (const rechecked of [false, true]) {
+            expect(
+              decideUiGate({ pathname, uiCookie, hasSession, rechecked }),
+            ).toEqual({ action: "continue" });
+          }
+        }
+      }
+    }
+  });
+
+  it("keeps V1's landing at / until a founder moves the Landing there", () => {
+    // The switch is off: "/" stays V1's, and the Landing is /welcome.
+    expect(LANDING_AT_ROOT).toBe(false);
+    expect(LANDING_PAGE).toBe("/welcome");
+    expect(LANDING_HREF).toBe("/welcome");
+    expect(
+      decideUiGate({ pathname: "/", hasSession: false, uiCookie: undefined }),
+    ).toEqual({
+      action: "continue",
+    });
+  });
+
+  it("serves the Landing at / to signed-out visitors once the switch is on", () => {
+    const at = (args: {
+      hasSession: boolean;
+      uiCookie?: string;
+      search?: string;
+    }) =>
+      decideUiGate({
+        pathname: "/",
+        uiCookie: undefined,
+        ...args,
+        landingAtRoot: true,
+      });
+    for (const uiCookie of [undefined, "v2"]) {
+      for (const search of ["", "?utm_source=hn"]) {
+        expect(at({ hasSession: false, uiCookie, search })).toEqual({
+          action: "rewrite",
+          pathname: "/welcome",
+        });
+      }
+    }
+    // Signed in, "/" still leads home: V1's /home, or the V2 landing for
+    // a person with the hint.
+    expect(at({ hasSession: true })).toEqual({ action: "continue" });
+    expect(at({ hasSession: true, uiCookie: "v2" })).toEqual({
+      action: "redirect",
+      pathname: V2_LANDING_PATH,
+      recheck: true,
+    });
+    // Nothing else moves.
+    for (const pathname of ["/welcome", "/login", "/pricing"]) {
+      expect(
+        decideUiGate({
+          pathname,
+          uiCookie: undefined,
+          hasSession: false,
+          landingAtRoot: true,
+        }),
+      ).toEqual({ action: "continue" });
     }
   });
 

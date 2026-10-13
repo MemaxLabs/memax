@@ -20,8 +20,8 @@ function makeRequest(
 }
 
 // The V2 areas every browser may open: the CLI's device sign-in, the
-// sign-in on the way to it, and the morning email's unsubscribe link
-// (lib/ui-gate.ts V2_OPEN_AREAS).
+// sign-in on the way to it, the morning email's unsubscribe link and the
+// public site (lib/ui-gate.ts V2_OPEN_AREAS).
 const OPEN_V2_PATHS = [
   "/signin",
   "/signin/callback",
@@ -29,6 +29,11 @@ const OPEN_V2_PATHS = [
   "/device?code=WQRT-4821",
   "/unsubscribe?token=abc",
   "/oauth/authorize?request_id=r1&consent_token=t1",
+  "/welcome",
+  "/pricing",
+  "/pricing?utm_source=hn",
+  "/security",
+  "/docs",
 ];
 
 // Representative V2 paths, one or more per gated area in lib/ui-gate.ts.

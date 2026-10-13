@@ -115,9 +115,13 @@ describe.skipIf(!enabled)("the session-start hook's budget", () => {
       join(home, ".codex/AGENTS.md"),
       `# Mine\n<!-- memax:start -->\n${body}<!-- memax:end -->\n`,
     );
+    // The canonical copy, which Cursor's hook prints in full.
+    mkdirSync(join(home, ".memax", "personal"), { recursive: true });
+    writeFileSync(join(home, ".memax/personal/AGENTS.md"), body);
     const files = [
       ["claude_user", ".claude/rules/memax-personal.md"],
       ["codex_user", ".codex/AGENTS.md"],
+      ["agents_md", ".memax/personal/AGENTS.md"],
     ];
     writeFileSync(
       join(dir, "home.json"),
@@ -186,7 +190,7 @@ describe.skipIf(!enabled)("the session-start hook's budget", () => {
     if (base) rmSync(base, { recursive: true, force: true });
   });
 
-  // 150 processes, one after another: about 15 s on a quiet machine.
+  // 200 processes, one after another: about 20 s on a quiet machine.
   it(
     `exits within 100 ms at p95 over ${RUNS} cold runs`,
     { timeout: 120_000 },
@@ -247,6 +251,21 @@ describe.skipIf(!enabled)("the session-start hook's budget", () => {
         );
       }
       renameSync(`${homeLink}.off`, homeLink);
+      // Cursor: the canonical copy's kept lines printed in full.
+      const cursor: number[] = [];
+      for (let i = 0; i < RUNS; i++) {
+        const event = JSON.stringify({
+          session_id: `c-${i}`,
+          workspace_roots: [repo],
+        });
+        const r = await time(
+          [bin, "hook", "session-start", "--agent", "cursor"],
+          event,
+          env,
+        );
+        expect(r.stdout).toContain("You load no file of it");
+        cursor.push(r.ms);
+      }
       const p = (xs: number[]) =>
         `p50 ${percentile(xs, 50).toFixed(1)} ms, p95 ${percentile(xs, 95).toFixed(1)} ms`;
       console.log(
@@ -254,9 +273,11 @@ describe.skipIf(!enabled)("the session-start hook's budget", () => {
           `node -e '': ${p(node)}`,
           `memax hook session-start, repository + home link: ${p(hook)}`,
           `memax hook session-start, repository only: ${p(repoOnly)}`,
+          `memax hook session-start --agent cursor, Personal printed: ${p(cursor)}`,
         ].join("\n"),
       );
       expect(percentile(hook, 95)).toBeLessThan(100);
+      expect(percentile(cursor, 95)).toBeLessThan(100);
     },
   );
 });

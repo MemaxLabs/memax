@@ -11,6 +11,7 @@ import type {
   WarmSpace,
   WarmTarget,
 } from "../../src/lib/hook/warm.js";
+import { estimateTokens } from "../../src/lib/hook/render.js";
 import { forget, header, machine, SPACE_ID, type Machine } from "./fixture.js";
 
 const PERSONAL = "22222222-2222-4222-8222-222222222222";
@@ -458,5 +459,265 @@ describe("the Personal section", () => {
     expect(Object.keys(seen.files)).toEqual([
       "~/.claude/rules/memax-personal.md",
     ]);
+  });
+});
+
+describe("Cursor, which loads no file of the Personal space", () => {
+  const CANON = ".memax/personal/AGENTS.md";
+
+  /** The canonical copy as the daemon writes it. */
+  function canonical(ref: string, sections: Record<string, string[]>): void {
+    mkdirSync(join(m.home, ".memax", "personal"), { recursive: true });
+    writeFileSync(
+      join(m.home, CANON),
+      [
+        header(ref, "personal"),
+        "# Personal",
+        "",
+        "The person you work with keeps these in Memax. Where a project's own files disagree, follow the project.",
+        ...Object.entries(sections).flatMap(([h, lines]) => [
+          "",
+          `## ${h}`,
+          ...lines,
+        ]),
+        "",
+        "## Live context",
+        "Use the memax MCP server for anything not here.",
+        "",
+      ].join("\n"),
+    );
+  }
+
+  const canonTarget = (
+    ref: string,
+    refs: string[],
+    over: Partial<WarmTarget> = {},
+  ): WarmTarget => ({
+    ...homeTarget("agents_md", ref, refs),
+    path: CANON,
+    label: `~/${CANON}`,
+    ...over,
+  });
+
+  const context = (agent = "cursor", where = outside()) => {
+    const res = m.run(agent, where);
+    return {
+      res,
+      text: res.output
+        ? (JSON.parse(res.output) as { additional_context: string })
+            .additional_context
+        : "",
+    };
+  };
+
+  it("gets its kept lines in full at every session start, under their headings, and a load for the canonical's compile", () => {
+    linkHome();
+    canonical("C-1204", {
+      Preferences: [
+        "- Answer in British English. [M-0101]",
+        "- Search with `rg`, not `grep`. [M-0111]",
+      ],
+      Decisions: ["- Use pnpm in every JavaScript project. [M-0106]"],
+    });
+    warm(null, {
+      targets: [canonTarget("C-1204", ["M-0101", "M-0106", "M-0111"])],
+    });
+    const first = context();
+    expect(first.text).toBe(
+      [
+        '<memax-context space="personal">',
+        "Memax: your Personal space (personal). You load no file of it, so its kept lines are here at every session start. Where a project's own files disagree, follow the project.",
+        "Preferences:",
+        "- Answer in British English. [M-0101]",
+        "- Search with `rg`, not `grep`. [M-0111]",
+        "Decisions:",
+        "- Use pnpm in every JavaScript project. [M-0106]",
+        "</memax-context>",
+        "",
+      ].join("\n"),
+    );
+    expect(first.res.loads.map((l) => [l.space, l.compile, l.agent])).toEqual([
+      [PERSONAL, "C-1204", "cursor"],
+    ]);
+    // Nothing changed, and it is said again: Cursor holds no other copy.
+    expect(context().text).toBe(first.text);
+  });
+
+  it("follows the repository's news, which keeps its place in the budget", () => {
+    linkHome();
+    m.compiled("C-0881", ["- Background jobs run on River. [M-0219]"]);
+    canonical("C-1204", {
+      Preferences: ["- Answer in British English. [M-0101]"],
+    });
+    warm(
+      { targets: [m.target("C-0881", ["M-0219"])] },
+      { targets: [canonTarget("C-1204", ["M-0101"])] },
+    );
+    const first = context("cursor", { cwd: m.repo });
+    // The repository's AGENTS.md is a baseline the first time; Personal isn't.
+    expect(first.text).toContain('<memax-context space="personal">');
+    expect(first.text).toContain("- Answer in British English. [M-0101]");
+    m.compiled("C-0890", [
+      "- Background jobs run on River. [M-0219]",
+      "- Deploys go out on Tuesdays. [M-0220]",
+    ]);
+    warm(
+      { targets: [m.target("C-0890", ["M-0219", "M-0220"])] },
+      { targets: [canonTarget("C-1204", ["M-0101"])] },
+    );
+    const next = context("cursor", { cwd: m.repo }).text;
+    expect(next.indexOf("- Deploys go out on Tuesdays. [M-0220]")).toBeLessThan(
+      next.indexOf("Your Personal space (personal). You load no file of it"),
+    );
+    expect(next).toContain("- Answer in British English. [M-0101]");
+  });
+
+  it("never says a forgotten memory's line, nor a cite the server didn't compile", () => {
+    linkHome();
+    canonical("C-1204", {
+      Preferences: [
+        "- Answer in British English. [M-0101]",
+        "- Mine, added by hand. [M-0900]",
+        "- Prefer small pull requests. [M-0102]",
+      ],
+    });
+    warm(null, {
+      targets: [canonTarget("C-1204", ["M-0101", "M-0102"])],
+      forgotten: [forget("M-0102", new Date())],
+    });
+    const { text } = context();
+    expect(text).toContain("- Answer in British English. [M-0101]");
+    expect(text).not.toContain("M-0900");
+    expect(text).not.toContain("Prefer small pull requests");
+    expect(text).toContain("- M-0102 (");
+  });
+
+  it("holds the print to 1,500 tokens, and says the rest stay live over MCP", () => {
+    linkHome();
+    const lines = Array.from(
+      { length: 120 },
+      (_, k) => `- Preference ${k}: ${"y".repeat(80)}. [M-${3000 + k}]`,
+    );
+    canonical("C-1204", { Preferences: lines });
+    warm(null, {
+      targets: [
+        canonTarget(
+          "C-1204",
+          lines.map((_, k) => `M-${3000 + k}`),
+        ),
+      ],
+    });
+    const { text } = context();
+    const shown = text.split("\n").filter((l) => l.startsWith("- Preference"));
+    expect(shown.length).toBeGreaterThan(10);
+    expect(shown.length).toBeLessThan(120);
+    expect(estimateTokens(shown.join("\n"))).toBeLessThanOrEqual(1500);
+    expect(text).toContain(
+      `…and ${120 - shown.length} more lines of your Personal space, not shown here: the rest stay live over MCP (memax_recall).`,
+    );
+  });
+
+  it("is cut before the repository's lines when the block runs long", () => {
+    linkHome();
+    const many = (n: number, ref: number, word: string) =>
+      Array.from(
+        { length: n },
+        (_, k) => `- ${word} line ${k} ${"x".repeat(60)}. [M-${ref + k}]`,
+      );
+    const refs = (n: number, ref: number) =>
+      Array.from({ length: n }, (_, k) => `M-${ref + k}`);
+    m.compiled("C-0881", []);
+    canonical("C-1204", { Preferences: many(60, 2000, "Personal") });
+    warm(
+      { targets: [m.target("C-0881", [])] },
+      { targets: [canonTarget("C-1204", refs(60, 2000))] },
+    );
+    context("cursor", { cwd: m.repo });
+    m.compiled("C-0890", many(60, 1000, "Repository"));
+    warm(
+      { targets: [m.target("C-0890", refs(60, 1000))] },
+      { targets: [canonTarget("C-1204", refs(60, 2000))] },
+    );
+    const { text } = context("cursor", { cwd: m.repo });
+    expect(estimateTokens(text)).toBeLessThanOrEqual(3000);
+    expect(text).toContain("Repository line 0");
+    expect(text).not.toContain("Personal line 59");
+    expect(text).toMatch(
+      /…and \d+ more lines of your Personal space, not shown here: the rest stay live over MCP \(memax_recall\)\./,
+    );
+  });
+
+  it("is cut before the repository's verifying lines, which are never cut", () => {
+    linkHome();
+    const many = (n: number, ref: number, word: string) =>
+      Array.from(
+        { length: n },
+        (_, k) => `- ${word} line ${k} ${"x".repeat(60)}. [M-${ref + k}]`,
+      );
+    const refs = (n: number, ref: number) =>
+      Array.from({ length: n }, (_, k) => `M-${ref + k}`);
+    const stale = [
+      {
+        ref: "M-0098",
+        since: "2026-10-10T03:00:00Z",
+        causes: [
+          { kind: "date" as const, stale_after: "2026-10-01T00:00:00Z" },
+        ],
+      },
+    ];
+    m.compiled("C-0881", []);
+    canonical("C-1204", { Preferences: many(60, 2000, "Personal") });
+    warm(
+      { targets: [m.target("C-0881", [])] },
+      { targets: [canonTarget("C-1204", refs(60, 2000))] },
+    );
+    context("cursor", { cwd: m.repo });
+    m.compiled("C-0890", many(60, 1000, "Repository"));
+    warm(
+      { targets: [m.target("C-0890", refs(60, 1000))], stale },
+      { targets: [canonTarget("C-1204", refs(60, 2000))] },
+    );
+    const { text } = context("cursor", { cwd: m.repo });
+    expect(estimateTokens(text)).toBeLessThanOrEqual(3000);
+    expect(text).toContain(
+      "- M-0098: its date to check again, 2026-10-01, has passed.",
+    );
+    expect(text).toContain("Repository line 0");
+    expect(text).not.toContain("Personal line 59");
+    expect(text.indexOf("M-0098: its date")).toBeLessThan(
+      text.indexOf("Your Personal space (personal)"),
+    );
+  });
+
+  it("says a hand edit, and prints nothing from a copy stopped on the web", () => {
+    linkHome();
+    canonical("C-1204", {
+      Preferences: ["- Answer in British English. [M-0101]"],
+    });
+    warm(null, {
+      targets: [
+        canonTarget("C-1204", ["M-0101"], {
+          sync_state: "drifted",
+          open_drift: 1,
+        }),
+      ],
+    });
+    expect(context().text).toContain(
+      "~/.memax/personal/AGENTS.md has a local edit that waits in Review, so these lines are as the file has them.",
+    );
+    warm(null, {
+      targets: [canonTarget("C-1204", ["M-0101"], { sync_state: "off" })],
+    });
+    expect(context().res).toMatchObject({ output: "", loads: [] });
+  });
+
+  it("is Cursor's alone: the agents with a file of their own never get the print", () => {
+    linkHome();
+    canonical("C-1204", {
+      Preferences: ["- Answer in British English. [M-0101]"],
+    });
+    warm(null, { targets: [canonTarget("C-1204", ["M-0101"])] });
+    for (const agent of ["claude-code", "codex", "gemini", "copilot"])
+      expect(m.run(agent, outside()).output).toBe("");
   });
 });

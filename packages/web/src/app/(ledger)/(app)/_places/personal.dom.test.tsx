@@ -226,10 +226,10 @@ describe("one machine's copy", () => {
     expect(configure).not.toHaveBeenCalled();
   });
 
-  it("says OpenCode reads the canonical copy on a machine whose OpenCode settings name it", async () => {
+  it("says OpenCode and Cursor read the canonical copy on a machine where they do", async () => {
     const opencode = (t: TargetView) =>
       t.kind === "agents_md" && t.machine?.label === "machine-1"
-        ? { ...t, readBy: ["opencode"] }
+        ? { ...t, readBy: ["cursor", "opencode"] }
         : t;
     withSource({
       targets: (real) => ({
@@ -242,7 +242,7 @@ describe("one machine's copy", () => {
     });
     expect(
       await screen.findByText(
-        "Your Personal space in one file on ziyang-mbp, for you to read and for agents that have no file of their own. OpenCode reads it in every project there: its settings name this file.",
+        "Your Personal space in one file on ziyang-mbp, for you to read and for agents that have no file of their own. OpenCode reads it in every project there: its settings name this file. Cursor gets it at every session start there, from its session-start hook.",
       ),
     ).toBeTruthy();
   });
@@ -391,6 +391,24 @@ function TouchesOf(props: { item: ReviewItem; card: ReviewCardData }) {
 }
 
 describe("keeping a proposal that goes into Personal", () => {
+  it("says Cursor gets Personal from its session-start hook", async () => {
+    withSource();
+    renderPlace(
+      <ConnectAgentDialog open onOpenChange={() => {}} connected={[]} />,
+      { space: PERSONAL_SPACE },
+    );
+    const dialog = await screen.findByRole("dialog");
+    const tiles = within(dialog).getByRole("radiogroup", {
+      name: "Which agent",
+    });
+    fireEvent.click(within(tiles).getByRole("radio", { name: /Cursor/ }));
+    expect(
+      within(dialog).getByText(
+        /^Gets your Personal space from its session-start hook, at every session start, on each machine you link\./,
+      ),
+    ).toBeTruthy();
+  });
+
   it("lists Personal's files, linking into Personal, and says a keep reaches every machine", async () => {
     const source = withSource();
     const item = source.review.peekQueue!("memax-v2")!.items.find(

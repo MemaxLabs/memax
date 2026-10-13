@@ -17,8 +17,11 @@
 // design §7.1): Claude Code's rules file, Codex's block, and Gemini's block
 // in ~/.gemini/AGENTS.md for Gemini CLI once that file's read_by lists it
 // (its context.fileName names AGENTS.md), and Copilot CLI's block in
-// ~/.copilot/copilot-instructions.md. Cursor gets its full print of the
-// canonical copy in a later release.
+// ~/.copilot/copilot-instructions.md. Cursor loads no file of the
+// Personal space (its User Rules aren't a file), so its hook prints the
+// canonical copy's kept lines in full at every session start (`prints`),
+// held to 1,500 tokens; a session-start hook's `additional_context` is the
+// one way in (cursor.com/docs/hooks.md, sessionStart).
 
 export type HookFormat = "plain" | "gemini" | "cursor" | "copilot";
 
@@ -30,6 +33,11 @@ export interface HookAgent {
   loads: string[];
   /** The home kinds it loads in every session, wherever it runs. */
   home: string[];
+  /**
+   * Home kinds it loads no file of: the hook prints their kept lines in
+   * full at every session start, not what changed (Cursor, the canonical).
+   */
+  prints: string[];
   /** Most tokens the block may take. */
   maxTokens: number;
 }
@@ -40,6 +48,7 @@ const AGENTS: Record<string, HookAgent> = {
     format: "plain",
     loads: ["claude_md", "agents_md"],
     home: ["claude_user"],
+    prints: [],
     maxTokens: 3000,
   },
   codex: {
@@ -47,6 +56,7 @@ const AGENTS: Record<string, HookAgent> = {
     format: "plain",
     loads: ["agents_md"],
     home: ["codex_user"],
+    prints: [],
     maxTokens: 2400,
   },
   "gemini-cli": {
@@ -54,6 +64,7 @@ const AGENTS: Record<string, HookAgent> = {
     format: "gemini",
     loads: ["gemini_md", "agents_md"],
     home: ["gemini_user"],
+    prints: [],
     maxTokens: 3000,
   },
   cursor: {
@@ -61,6 +72,7 @@ const AGENTS: Record<string, HookAgent> = {
     format: "cursor",
     loads: ["agents_md"],
     home: [],
+    prints: ["agents_md"],
     maxTokens: 3000,
   },
   copilot: {
@@ -68,6 +80,7 @@ const AGENTS: Record<string, HookAgent> = {
     format: "copilot",
     loads: ["agents_md"],
     home: ["copilot_user"],
+    prints: [],
     maxTokens: 3000,
   },
 };
@@ -91,6 +104,7 @@ export function hookAgent(id: string | undefined): HookAgent {
     format: "plain",
     loads: ["agents_md"],
     home: [],
+    prints: [],
     maxTokens: 3000,
   };
 }

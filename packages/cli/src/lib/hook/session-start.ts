@@ -10,7 +10,9 @@
 // cache's `home` entry has its compiles, forgets and gates), against
 // what the agent's last session anywhere was told (seen/home/<agent>.json),
 // as a Personal section after the repository's; outside a repository, as
-// the whole block. Its loads count reads of personal facts.
+// the whole block. Its loads count reads of personal facts. An agent that
+// loads no file of the Personal space (Cursor) gets the canonical copy's
+// kept lines in full instead, every session, held to PRINT_TOKENS.
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
@@ -23,12 +25,14 @@ import { readCompiled, type CitedLine, type CompiledFile } from "./compiled.js";
 import { readHookHome } from "./home.js";
 import type { QueuedLoad } from "./loads.js";
 import {
+  estimateTokens,
   renderBlock,
   type BlockBehind,
   type BlockBranch,
   type BlockFile,
   type BlockForget,
   type BlockGate,
+  type BlockPrint,
   type BlockSection,
   type BlockVerifying,
 } from "./render.js";
@@ -149,6 +153,11 @@ function staleWhy(x: WarmStale): string {
   }
   return "it was marked stale; check it against its sources.";
 }
+/**
+ * A printed Personal space's share of the block (personal-layer design
+ * §7.1): about the 6 KiB a home file holds; the rest stay live over MCP.
+ */
+export const PRINT_TOKENS = 1500;
 
 /** A compile's number (C-0881 → 881); compiles count up per tenant. */
 function compileNumber(ref: string): number {
@@ -326,6 +335,7 @@ function part(
   spaceId: string | undefined,
   seenFile: string,
   checked: Checked = {},
+  printed: Array<{ file: CompiledFile; target?: WarmTarget }> = [],
 ): Part {
   const before = readSeen(seenFile);
   const first = before === null;
@@ -366,7 +376,7 @@ function part(
   // only grow; a file newer than the cache means the cache is behind).
   const toldBehind = new Set(prev.behind);
   const behind: BlockBehind[] = [];
-  for (const { file, target } of files) {
+  for (const { file, target } of [...files, ...printed]) {
     if (
       target?.compile &&
       compileNumber(target.compile) > compileNumber(file.compile) &&
@@ -420,6 +430,9 @@ function part(
   const blockFiles = files.map(({ file, target }) =>
     diffFile(file, prev.files[file.path], baseline, target, forgottenRefs),
   );
+  const print = printed[0]
+    ? printFile(printed[0].file, printed[0].target, forgottenRefs)
+    : undefined;
 
   const seen: Seen = {
     version: 1,
@@ -466,13 +479,60 @@ function part(
       behind,
       ...(verifying.length > 0 ? { verifying } : {}),
       ...(branch ? { branch } : {}),
+      ...(print ? { print } : {}),
     },
     seen: { path: seenFile, value: seen },
-    loaded: files.map(({ file }) => ({
+    loaded: [...files, ...printed].map(({ file }) => ({
       space: spaceId ?? file.space,
       compile: file.compile,
     })),
     first,
+  };
+}
+
+/**
+ * A file printed in full, for an agent that loads none of it: its cited
+ * lines in order, under their headings, as many as PRINT_TOKENS holds.
+ * As in a diff, a line citing a forgotten memory is never said, nor one
+ * whose cites the server didn't compile (a hand-added cite).
+ */
+function printFile(
+  file: CompiledFile,
+  target: WarmTarget | undefined,
+  forgottenRefs: Set<string>,
+): BlockPrint {
+  const known =
+    target?.compile === file.compile && target.refs
+      ? new Set(target.refs)
+      : null;
+  const ours = file.lines.filter((l) =>
+    l.refs.every((r) => !forgottenRefs.has(r) && (!known || known.has(r))),
+  );
+  const groups: BlockPrint["groups"] = [];
+  let tokens = 0;
+  let shown = 0;
+  for (const l of ours) {
+    const head =
+      l.heading && groups.at(-1)?.heading !== l.heading ? `${l.heading}:` : "";
+    const cost = estimateTokens(`${head}\n${l.text}\n`);
+    if (tokens + cost > PRINT_TOKENS) break;
+    tokens += cost;
+    shown += 1;
+    const g = groups.at(-1);
+    if (g && g.heading === l.heading) g.lines.push(l.text);
+    else
+      groups.push({
+        ...(l.heading ? { heading: l.heading } : {}),
+        lines: [l.text],
+      });
+  }
+  return {
+    path: file.path,
+    compile: file.compile,
+    groups,
+    more: ours.length - shown,
+    handEdit:
+      !!target && (target.sync_state === "drifted" || target.open_drift > 0),
   };
 }
 
@@ -518,26 +578,31 @@ function homePart(
   i: SessionStartInput,
   warmFile: ReturnType<typeof readWarm>,
 ): Part | null {
-  if (i.agent.home.length === 0) return null;
+  if (i.agent.home.length === 0 && i.agent.prints.length === 0) return null;
   const home = readHookHome(i.paths.home);
   if (!home) return null;
   const warm =
     warmFile.home?.space_id === home.space_id ? warmFile.home : undefined;
   if (warm?.on_v1) return null;
   const files: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
+  const printed: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
   for (const f of home.files) {
-    if (!i.agent.home.includes(f.kind)) continue;
+    const prints = i.agent.prints.includes(f.kind);
+    if (!prints && !i.agent.home.includes(f.kind)) continue;
     // A file another agent reads (Antigravity's ~/.gemini/AGENTS.md, before
-    // Gemini CLI's settings list it) isn't one this agent loads.
-    if (f.read_by && !f.read_by.includes(i.agent.kind)) continue;
+    // Gemini CLI's settings list it) isn't one this agent loads. A printed
+    // one is this hook's to say, whoever else reads it.
+    if (!prints && f.read_by && !f.read_by.includes(i.agent.kind)) continue;
     const file = readCompiled(f.abs, `~/${f.path}`);
     if (!file) continue;
     const target = warm?.targets.find(
       (t) => t.kind === f.kind && t.path === f.path,
     );
-    files.push({ file, target });
+    // A file stopped on the web stays as it was, and isn't the record now.
+    if (prints && target?.sync_state === "off") continue;
+    (prints ? printed : files).push({ file, target });
   }
-  if (files.length === 0) return null;
+  if (files.length === 0 && printed.length === 0) return null;
   return part(
     i.now,
     files,
@@ -549,6 +614,8 @@ function homePart(
       "home",
       `${i.agent.kind.replace(/[^a-z0-9-]/gi, "_")}.json`,
     ),
+    {},
+    printed,
   );
 }
 

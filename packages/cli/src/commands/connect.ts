@@ -207,7 +207,9 @@ function homeLine(r: ConnectReport): Line | null {
         "Home",
         r.agent === "opencode"
           ? "memax link --home, then this again, adds your Personal space to OpenCode's instructions"
-          : "memax link --home writes your Personal space into its own file here",
+          : r.agent === "cursor"
+            ? "memax link --home, and Cursor's session-start hook prints your Personal space here"
+            : "memax link --home writes your Personal space into its own file here",
       ];
   }
 }

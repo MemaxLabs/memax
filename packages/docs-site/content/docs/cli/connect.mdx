@@ -97,8 +97,10 @@ Run it again and each line says `=`: already set up, nothing changed.
    `AGENTS.override.md` once Codex reads that. For OpenCode, which has no
    file of its own, it adds `~/.memax/personal/AGENTS.md` to the
    `instructions` in OpenCode's settings, unless OpenCode reads your
-   Personal space from `~/.claude/CLAUDE.md` already. A machine you
-   unlinked stays unlinked. Outside a repository, the Personal space is
+   Personal space from `~/.claude/CLAUDE.md` already. Cursor reads no
+   file of it, so its hook prints `~/.memax/personal/AGENTS.md` at every
+   session start, and connect makes sure the link has that copy. A
+   machine you unlinked stays unlinked. Outside a repository, the Personal space is
    the space.
 
 <Callout type="info">

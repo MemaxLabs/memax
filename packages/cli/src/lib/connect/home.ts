@@ -5,7 +5,12 @@
 // reads of personal facts.
 import { randomUUID } from "node:crypto";
 import type { Memax, V2 } from "memax-sdk";
-import { readHomeLink, writeHomeLink } from "../daemon/home-link.js";
+import {
+  readHomeLink,
+  writeHomeLink,
+  type HomeFile,
+  type HomeLink,
+} from "../daemon/home-link.js";
 import { tilde } from "../daemon/home-place.js";
 import type { DaemonPaths } from "../daemon/paths.js";
 import { describe, homeFile, planHomeFiles } from "../home/files.js";
@@ -141,4 +146,98 @@ export async function linkedPersonal(
   if (!link) return null;
   const spaces = (await memax.v2.spaces.list()).items;
   return spaces.find((s) => s.id === link.space_id) ?? null;
+}
+
+/**
+ * Who reads a home file, on the server (the target's read_by, for fading)
+ * and in home.json (for the hook): `change` applied, written only when it
+ * changes something.
+ */
+export async function setReaders(
+  d: { memax: Memax; paths: DaemonPaths },
+  link: HomeLink,
+  file: HomeFile,
+  change: (readers: string[]) => string[],
+  reason: string,
+): Promise<void> {
+  const target = (
+    await d.memax.v2.targets.list(link.space_id, { machine: link.machine_id })
+  ).items.find((t) => t.id === file.target_id);
+  if (!target) return;
+  const was = [...(target.settings.read_by ?? [])].sort();
+  const next = [...new Set(change(was))].sort();
+  if (next.join() !== was.join()) {
+    await d.memax.v2.targets.update(
+      target.id,
+      { settings: { read_by: next }, reason },
+      { idempotencyKey: randomUUID(), via: "cli", ifMatch: target.version },
+    );
+  }
+  const now = readHomeLink(d.paths) ?? link;
+  writeHomeLink(d.paths, {
+    ...now,
+    files: now.files.map((f) => {
+      if (f.target_id !== file.target_id) return f;
+      const { read_by: _, ...rest } = f;
+      return next.length > 0 ? { ...rest, read_by: next } : rest;
+    }),
+  });
+}
+
+/**
+ * The canonical copy in this machine's link, added through LinkMachine
+ * when it isn't (OpenCode's instructions and Cursor's hook read it).
+ * `added`: it wasn't in the link, so it isn't on disk yet.
+ */
+export async function linkedCanonical(d: {
+  memax: Memax;
+  paths: DaemonPaths;
+  env: Record<string, string | undefined>;
+}): Promise<
+  | { link: HomeLink; canonical: HomeFile; added: boolean }
+  | { report: HomeFileReport }
+> {
+  const link = readHomeLink(d.paths);
+  if (!link) return { report: { state: "not_linked" } };
+  const had = link.files.find((f) => f.kind === "agents_md");
+  if (had) return { link, canonical: had, added: false };
+  const res = await connectHomeFile("agents_md", d);
+  if (res.state !== "added") return { report: res };
+  const now = readHomeLink(d.paths);
+  const canonical = now?.files.find((f) => f.kind === "agents_md");
+  if (!now || !canonical)
+    return {
+      report: { state: "refused", note: "Memax didn't add its canonical copy" },
+    };
+  return { link: now, canonical, added: true };
+}
+
+/**
+ * memax connect cursor on a machine whose home is linked (personal-layer
+ * design §7.1): Cursor loads no file of the Personal space, so its
+ * session-start hook prints the canonical copy's kept lines at every
+ * session start; the canonical's read_by says Cursor reads it, for the
+ * web and fading. `needsCompile`: the canonical isn't on disk yet.
+ */
+export async function connectCursorHome(d: {
+  memax: Memax;
+  paths: DaemonPaths;
+  env: Record<string, string | undefined>;
+}): Promise<HomeFileReport & { needsCompile?: boolean }> {
+  const got = await linkedCanonical(d);
+  if ("report" in got) return got.report;
+  const { link, canonical, added } = got;
+  const before = canonical.read_by ?? [];
+  await setReaders(
+    d,
+    link,
+    canonical,
+    (r) => [...r, "cursor"],
+    "Cursor's session-start hook prints it on this machine",
+  );
+  const path = tilde(link.home, canonical.abs);
+  const note = "Cursor's session-start hook prints it at every session start";
+  if (!added && before.includes("cursor"))
+    return { state: "present", path, note };
+  return { state: "added", path, note, needsCompile: added };
 }

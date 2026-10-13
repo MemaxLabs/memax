@@ -8,6 +8,7 @@ import { useKeycap } from "@/lib/v2/keymap/react";
 import { clashTitle, expiryText } from "@/lib/v2/records-copy";
 import { EditClash } from "../../_components/edit-clash";
 import { StatementEditor } from "../../_components/statement-editor";
+import { usePhone } from "../../_lib/phone";
 import type { RecordsView } from "../records-view";
 import { FlagCard } from "./flag-card";
 import { GateCard } from "./gate-card";
@@ -15,6 +16,7 @@ import { compareHref } from "./hrefs";
 import { ProposalCard } from "./proposal-card";
 import { RejectPanel } from "./reject-panel";
 import { CardSkeleton } from "./skeleton";
+import { Swipe } from "./swipe";
 import { Touches } from "./touches";
 import type { ReviewController } from "./use-review";
 import styles from "./review.module.css";
@@ -35,6 +37,7 @@ export function CardColumn({
   const r = l.review;
   const { selected: item, index, entries, card, state } = review;
   const keepChord = useKeycap("command.keep");
+  const phone = usePhone();
 
   if (review.queue.data === undefined || review.gatesLoading) {
     return (
@@ -83,16 +86,21 @@ export function CardColumn({
         ? expiryText(rc, gate.expiresAt, now, view.timeZone, view.locale)
         : null,
     ].filter(Boolean);
+    const askedLine = asked.length > 0 ? asked.join(" · ") : null;
     return (
       <section className={styles.cardPane} aria-label={copy.review.title}>
         <div className={styles.cardColumn}>
           <div className={styles.metaRow}>
             <span className="mx-meta">{position(false)}</span>
-            {asked.length > 0 ? (
-              <span className="mx-meta">{asked.join(" · ")}</span>
+            {askedLine && !phone ? (
+              <span className="mx-meta">{askedLine}</span>
             ) : null}
           </div>
           <GateCard key={gate.ref} view={view} review={review} gate={gate} />
+          {/* A phone says it under the card (MobileGate.png). */}
+          {askedLine && phone ? (
+            <p className={`mx-meta ${styles.phoneMeta}`}>{askedLine}</p>
+          ) : null}
           {pager}
         </div>
       </section>
@@ -173,14 +181,34 @@ export function CardColumn({
       />
     );
   } else if (item.lifecycle === "proposed") {
+    // A swipe is Keep or Reject itself, so only where those are one press
+    // away: not for a viewer, a card already kept or busy, or a conflict,
+    // whose Keep replaces a decision and is pressed on purpose.
+    const swipeable =
+      review.canDecide &&
+      !rejecting &&
+      item.state !== "conflict" &&
+      review.state.sealed?.ref !== item.ref &&
+      state.busy !== item.ref;
     body = (
       <>
-        <ProposalCard
-          view={view}
-          review={review}
-          item={item}
-          card={card.data}
-        />
+        <Swipe
+          enabled={swipeable}
+          onKeep={() => void review.keep(item)}
+          onReject={() => void review.reject(item, "")}
+          keepLabel={l.app.phone.swipeKeep}
+          rejectLabel={l.app.phone.swipeReject}
+        >
+          <ProposalCard
+            view={view}
+            review={review}
+            item={item}
+            card={card.data}
+          />
+        </Swipe>
+        {swipeable ? (
+          <p className={`mx-meta ${styles.swipeHint}`}>{l.app.phone.swipe}</p>
+        ) : null}
         {rejecting ? (
           <RejectPanel
             view={view}

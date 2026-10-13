@@ -39,6 +39,7 @@ export const ledgerMemoryZh: Translations["ledger"]["memory"] = {
     move: "移到别的空间",
     moveLater: "把记忆移到别的空间暂时还不能用",
     cite: "复制引用",
+    citeShort: "引用",
     forget: "忘记",
     forgetConfirm: {
       title: "在所有地方忘记它？",

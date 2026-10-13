@@ -88,6 +88,21 @@ export const ledgerAppEn = {
       retry: "Try again",
     },
   },
+  // Below 640px (MobileReview.png, MobileGate.png, MobileAsk.png,
+  // MobileMemory.png): a page's own header, Review's swipe and the
+  // full-screen Ask.
+  phone: {
+    back: "Back",
+    backTo: "Back to {place}",
+    position: "{n} of {total}",
+    gateTitle: "A question for you",
+    swipe: "Swipe right to keep, left to reject",
+    swipeKeep: "Keep",
+    swipeReject: "Reject",
+    askTitle: "Ask {space}",
+    rememberTitle: "Remember in {space}",
+    closeAsk: "Close Ask",
+  },
   spaces: {
     yours: "Your spaces",
     teams: "Teams",

@@ -40,6 +40,8 @@ export const ledgerMemoryEn = {
     move: "Move to space",
     moveLater: "Moving a memory to another space isn't available yet",
     cite: "Copy citation",
+    // A phone's row of three (MobileMemory.png).
+    citeShort: "Cite",
     forget: "Forget",
     // States board: "Forget · confirm inline, then leave the redaction".
     forgetConfirm: {

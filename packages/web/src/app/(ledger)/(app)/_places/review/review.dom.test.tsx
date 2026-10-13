@@ -1168,3 +1168,210 @@ describe("Decision gates in Review", () => {
     ).toBeNull();
   });
 });
+
+describe("Review on a phone", () => {
+  // A phone's viewport (below 640px): what _lib/phone.ts reads.
+  function asPhone() {
+    window.matchMedia = ((query: string) => ({
+      matches: query === "(max-width: 639px)",
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+  }
+  afterEach(() => {
+    // jsdom has none of its own.
+    delete (window as { matchMedia?: unknown }).matchMedia;
+  });
+
+  const card = () => document.querySelector(".mx-review") as HTMLElement;
+
+  /** A finger across the card: down, two moves, up. */
+  function swipe(
+    el: Element,
+    dx: number,
+    {
+      dy = 4,
+      pointerType = "touch",
+    }: { dy?: number; pointerType?: string } = {},
+  ) {
+    const at = { pointerId: 7, pointerType, isPrimary: true };
+    fireEvent.pointerDown(el, { ...at, clientX: 100, clientY: 300 });
+    fireEvent.pointerMove(el, {
+      ...at,
+      clientX: 100 + dx / 2,
+      clientY: 300 + dy / 2,
+    });
+    fireEvent.pointerMove(el, { ...at, clientX: 100 + dx, clientY: 300 + dy });
+    fireEvent.pointerUp(el, { ...at, clientX: 100 + dx, clientY: 300 + dy });
+  }
+
+  it("draws the deck's header: back to Today, Review and where you are", async () => {
+    sourceWith(() => ({}));
+    renderReview();
+    await ready();
+    const back = screen.getByRole("link", { name: "Back to Today" });
+    expect(back.getAttribute("href")).toBe("/memax-v2/today");
+    const bar = back.closest("header")!;
+    expect(within(bar).getByRole("heading", { name: "Review" })).toBeTruthy();
+    expect(bar.textContent).toContain("1 of 5");
+    expect(
+      screen.getByText("Swipe right to keep, left to reject"),
+    ).toBeTruthy();
+  });
+
+  it("keeps on a swipe right: the Keep the button sends, with the same key", async () => {
+    const source = sourceWith((demo) => ({
+      review: {
+        keep: vi
+          .fn(demo.review.keep)
+          .mockRejectedValueOnce(new MemaxError("down", "network_error", 0)),
+      },
+    }));
+    renderReview();
+    await ready();
+    swipe(card(), 160);
+    await waitFor(() => expect(source.review.keep).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByText(
+        "M-0430 wasn't kept. It didn't reach Memax, so nothing changed. Try again.",
+      ),
+    ).toBeTruthy();
+    // The same decision from the button: the same intent, the same key.
+    fireEvent.click(within(card()).getByRole("button", { name: "Keep" }));
+    await waitFor(() => expect(source.review.keep).toHaveBeenCalledTimes(2));
+    const [first, second] = vi.mocked(source.review.keep).mock.calls;
+    expect(first[0]).toMatchObject({
+      item: expect.objectContaining({ ref: "M-0430" }),
+    });
+    expect(second[0].idempotencyKey).toBe(first[0].idempotencyKey);
+    expect(
+      await screen.findByText("Kept M-0430 · 3 files recompiled"),
+    ).toBeTruthy();
+  });
+
+  it("rejects on a swipe left, with Undo in its toast", async () => {
+    const source = sourceWith((demo) => ({
+      review: { reject: vi.fn(demo.review.reject) },
+    }));
+    renderReview();
+    await ready();
+    swipe(card(), -160);
+    await waitFor(() => expect(source.review.reject).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(source.review.reject).mock.calls[0]![0]).toMatchObject({
+      item: expect.objectContaining({ ref: "M-0430" }),
+      reason: undefined,
+      idempotencyKey: expect.any(String),
+    });
+    await screen.findByText("memax-v2 · 1 of 4");
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+  });
+
+  it("decides nothing on a short drag, a scroll, a mouse or a tap", async () => {
+    const source = sourceWith((demo) => ({
+      review: {
+        keep: vi.fn(demo.review.keep),
+        reject: vi.fn(demo.review.reject),
+      },
+    }));
+    renderReview();
+    await ready();
+    swipe(card(), 30);
+    swipe(card(), 160, { dy: 400 });
+    swipe(card(), 160, { pointerType: "mouse" });
+    swipe(card(), 0, { dy: 0 });
+    await act(async () => {});
+    expect(source.review.keep).not.toHaveBeenCalled();
+    expect(source.review.reject).not.toHaveBeenCalled();
+    expect(screen.getByText("memax-v2 · 1 of 5")).toBeTruthy();
+  });
+
+  it("never presses the button a swipe started on", async () => {
+    const source = sourceWith((demo) => ({
+      review: { reject: vi.fn(demo.review.reject) },
+    }));
+    renderReview();
+    await ready();
+    const edit = within(card()).getByRole("button", { name: "Edit" });
+    // A short drag that began on Edit, then the click the browser sends.
+    swipe(edit, -30);
+    fireEvent.click(edit, { detail: 1 });
+    expect(screen.queryByRole("textbox", { name: "Statement" })).toBeNull();
+    expect(source.review.reject).not.toHaveBeenCalled();
+    // A key press on the button after it still presses it.
+    fireEvent.click(edit, { detail: 0 });
+    expect(screen.getByRole("textbox", { name: "Statement" })).toBeTruthy();
+  });
+
+  it("leaves a conflict to its buttons: its Keep replaces a decision", async () => {
+    h.params = new URLSearchParams("filter=conflicts");
+    const source = sourceWith((demo) => ({
+      review: { keep: vi.fn(demo.review.keep) },
+    }));
+    renderReview();
+    await screen.findByText("memax-v2 · 1 of 1");
+    await act(async () => {});
+    swipe(card(), 160);
+    await act(async () => {});
+    expect(source.review.keep).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("Swipe right to keep, left to reject"),
+    ).toBeNull();
+  });
+
+  it("answers a gate on one tap: the same answer command, no second step", async () => {
+    asPhone();
+    const source = sourceWith((demo) => ({
+      gates: { answer: vi.fn(demo.gates.answer) },
+    }));
+    renderReview(team);
+    await screen.findByText("Memax team · 1 of 4");
+    await act(async () => {});
+    const gate = document.querySelector(".mx-gate") as HTMLElement;
+    fireEvent.click(within(gate).getAllByRole("radio")[1]!);
+    fireEvent.click(within(gate).getByRole("button", { name: "Answer" }));
+    await waitFor(() => expect(source.gates.answer).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(source.gates.answer).mock.calls[0]![0]).toMatchObject({
+      option: 1,
+      gate: expect.objectContaining({ ref: "G-0011", version: 1 }),
+      idempotencyKey: expect.any(String),
+    });
+    expect(
+      await screen.findByText(/^Kept M-0439 as your answer to G-0011/),
+    ).toBeTruthy();
+  });
+
+  it("puts a gate's line under its card, once", async () => {
+    asPhone();
+    sourceWith(() => ({}));
+    renderReview(team);
+    await screen.findByText("Memax team · 1 of 4");
+    const line = screen.getAllByText(
+      "Asked in session 3e1a · Expires tomorrow at 13:40",
+    );
+    expect(line).toHaveLength(1);
+    const gate = document.querySelector(".mx-gate") as HTMLElement;
+    expect(
+      gate.compareDocumentPosition(line[0]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("titles a gate opened on its own as a question for you", async () => {
+    asPhone();
+    h.params = new URLSearchParams("gate=G-0012");
+    sourceWith(() => ({}));
+    renderReview(team);
+    expect(
+      await screen.findByRole("heading", { name: "A question for you" }),
+    ).toBeTruthy();
+    expect(
+      within(document.querySelector(".mx-gate") as HTMLElement).getByText(
+        "Codex is waiting on you",
+      ),
+    ).toBeTruthy();
+  });
+});

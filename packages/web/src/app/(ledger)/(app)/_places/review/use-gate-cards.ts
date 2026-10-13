@@ -234,9 +234,14 @@ export function useGateCards({
     [afterGate, linger, source, space],
   );
 
-  /** ↵ or Answer: choose → confirm, then confirm → answer. */
+  /**
+   * ↵ or Answer: choose → confirm, then confirm → answer. `direct`: a tap
+   * on a phone's Answer, under the card's own line saying what happens
+   * ("Your answer is kept in … authored by you", MobileGate.png), answers
+   * at once: the same command, with the same key.
+   */
   const answer = useCallback(
-    async (gate: GateView) => {
+    async (gate: GateView, { direct = false }: { direct?: boolean } = {}) => {
       const card = cardOf(gate.ref);
       if (!canDecide || busy.current || card.choice < 0) return;
       if (gateStatusAt(gate, source.now()) !== "waiting") return;
@@ -246,7 +251,7 @@ export function useGateCards({
       ) {
         return;
       }
-      if (card.step !== "confirm") {
+      if (card.step !== "confirm" && !direct) {
         patch(gate.ref, { step: "confirm" });
         return;
       }

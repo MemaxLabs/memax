@@ -1,0 +1,62 @@
+/* Review's swipe (MobileReview.png). The card follows the finger while it
+ * drags and settles back when it lets go: no bounce, no fling, and
+ * nothing at all under reduced motion. Tokens only. */
+
+.swipe {
+  position: relative;
+}
+
+/* Sideways drags are the card's; vertical ones stay the page's scroll. */
+.enabled {
+  touch-action: pan-y;
+  transition: transform var(--duration-base) var(--ease-settle);
+}
+
+.dragging {
+  transition: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enabled {
+    transition: none;
+  }
+}
+
+/* What letting go would do: faint until past the line, then full. */
+.cue {
+  position: absolute;
+  top: 16px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 2px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.cue[data-on] {
+  opacity: 1;
+}
+
+.cueKeep {
+  left: 16px;
+  border-color: var(--seal);
+}
+
+.cueReject {
+  right: 16px;
+  border-color: var(--ink-2);
+}
+
+.rejectWord {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}

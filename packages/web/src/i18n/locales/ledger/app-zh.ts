@@ -70,6 +70,18 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
       retry: "再试一次",
     },
   },
+  phone: {
+    back: "返回",
+    backTo: "返回{place}",
+    position: "{n} / {total}",
+    gateTitle: "有个问题等你决定",
+    swipe: "向右滑保留，向左滑拒绝",
+    swipeKeep: "保留",
+    swipeReject: "拒绝",
+    askTitle: "向 {space} 提问",
+    rememberTitle: "记到 {space}",
+    closeAsk: "关闭提问",
+  },
   spaces: {
     yours: "你的空间",
     teams: "团队",

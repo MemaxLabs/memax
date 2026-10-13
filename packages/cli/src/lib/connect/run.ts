@@ -22,8 +22,10 @@
 // 6. Home (personal-layer design §6.1, §7.2): on a machine whose home is
 //    linked (memax link --home), connect the agent to the Personal space
 //    too, and add its home file (Claude Code's rules file, Codex's block),
-//    or move it to the file the agent reads now; then deliver it. Outside
-//    a repository, the Personal space is the space.
+//    or move it to the file the agent reads now; then deliver it. OpenCode
+//    has no file of its own: its instructions name the canonical copy
+//    (lib/connect/opencode.ts). Outside a repository, the Personal space
+//    is the space.
 import type { Memax, V2 } from "memax-sdk";
 import type { DaemonPaths } from "../daemon/paths.js";
 import { findLinkedRepo, readRegistry } from "../daemon/registry.js";
@@ -44,6 +46,7 @@ import {
   linkedPersonal,
   type HomeFileReport,
 } from "./home.js";
+import { connectOpenCode } from "./opencode.js";
 import { handWritten } from "../init/finish.js";
 import type { CompileOutcome, McpOutcome } from "../init/types.js";
 import { gitRoot } from "../project-context.js";
@@ -119,7 +122,10 @@ export interface ConnectReport {
     space: string;
     autonomy?: V2.Autonomy;
   };
-  /** The agent's home file on this machine (Claude Code, Codex). */
+  /**
+   * The agent's home file on this machine (Claude Code, Codex, …); for
+   * OpenCode, the settings file whose instructions name the canonical copy.
+   */
   home?: HomeFileReport & {
     compile?: "compiled" | "timed_out" | "failed";
   };
@@ -348,7 +354,25 @@ export async function runConnect(
 
   // 6. The agent's home file, on a machine whose home is linked.
   const homeKind = HOME_KIND[a.kind];
-  if (homeKind && homeLink) {
+  if (a.kind === "opencode" && homeLink) {
+    const { needsCompile, ...home } = await connectOpenCode({
+      memax: d.memax,
+      paths: d.paths,
+      env: d.env ?? {},
+    });
+    r.home = home;
+    if (o.compile !== false && needsCompile) {
+      const out = await d.compile(
+        homeLink.space_slug,
+        Math.max(1, Number(o.timeout ?? 30)),
+      );
+      r.home.compile = !out
+        ? "failed"
+        : out.timedOut
+          ? "timed_out"
+          : "compiled";
+    }
+  } else if (homeKind && homeLink) {
     r.home = await connectHomeFile(homeKind, {
       memax: d.memax,
       paths: d.paths,
@@ -368,7 +392,7 @@ export async function runConnect(
           ? "timed_out"
           : "compiled";
     }
-  } else if (homeKind) {
+  } else if (homeKind || a.kind === "opencode") {
     r.home = { state: "not_linked" };
   }
 

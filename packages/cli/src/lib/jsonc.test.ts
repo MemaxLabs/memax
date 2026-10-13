@@ -8,7 +8,12 @@ import {
   setupMcpOAuth,
 } from "../commands/setup-mcp.js";
 import type { AgentDef } from "../commands/setup-types.js";
-import { parseJsoncObject, setJsonc } from "./jsonc.js";
+import {
+  appendJsonc,
+  parseJsoncObject,
+  removeFromJsonc,
+  setJsonc,
+} from "./jsonc.js";
 
 describe("JSON settings with comments", () => {
   const mine = [
@@ -54,6 +59,89 @@ describe("JSON settings with comments", () => {
     expect(JSON.parse(setJsonc("", ["a", "b"], true))).toEqual({
       a: { b: true },
     });
+  });
+});
+
+describe("a list in JSON settings with comments", () => {
+  const add = (text: string) => appendJsonc(text, ["instructions"], "/h/p.md");
+  const take = (text: string) =>
+    removeFromJsonc(text, ["instructions"], (v) => v === "/h/p.md");
+
+  it.each([
+    [
+      "on its own line, after a comment",
+      '{\n  "instructions": [\n    "a.md", // one\n    "b.md"\n  ]\n}\n',
+      '{\n  "instructions": [\n    "a.md", // one\n    "b.md",\n    "/h/p.md"\n  ]\n}\n',
+    ],
+    [
+      "after a trailing comma",
+      '{\n  "instructions": [\n    "a.md",\n  ]\n}\n',
+      '{\n  "instructions": [\n    "a.md",\n    "/h/p.md"\n  ]\n}\n',
+    ],
+    [
+      "on the same line",
+      '{ "instructions": ["a.md"] }',
+      '{ "instructions": ["a.md", "/h/p.md"] }\n',
+    ],
+    [
+      "into an empty list",
+      '{ "instructions": [] }\n',
+      '{ "instructions": ["/h/p.md"] }\n',
+    ],
+  ])("adds an element %s, every other byte kept", (_, before, after) => {
+    expect(add(before)).toBe(after);
+    expect(parseJsoncObject(add(before))?.instructions).toContain("/h/p.md");
+  });
+
+  it("makes the list when there's none, and refuses one that isn't a list", () => {
+    expect(add('{\n  "model": "a/b" // mine\n}\n')).toBe(
+      '{\n  "model": "a/b", // mine\n  "instructions": [\n    "/h/p.md"\n  ]\n}\n',
+    );
+    expect(JSON.parse(add(""))).toEqual({ instructions: ["/h/p.md"] });
+    expect(() => add('{ "instructions": "a.md" }')).toThrow(/isn't a list/);
+  });
+
+  it.each([
+    [
+      "the last, with the comma before it",
+      '{ "instructions": ["a.md", "/h/p.md"] }',
+      '{ "instructions": ["a.md"] }',
+    ],
+    [
+      "the first, with its own comma",
+      '{ "instructions": ["/h/p.md", "a.md"] }',
+      '{ "instructions": ["a.md"] }',
+    ],
+    [
+      "one between two",
+      '{ "instructions": ["a.md", "/h/p.md", "b.md"] }',
+      '{ "instructions": ["a.md", "b.md"] }',
+    ],
+    [
+      "its line, keeping a comment on the line before",
+      '{\n  "instructions": [\n    "a.md", // keep me\n    "/h/p.md"\n  ]\n}\n',
+      '{\n  "instructions": [\n    "a.md" // keep me\n  ]\n}\n',
+    ],
+    [
+      "every copy",
+      '{\n  "instructions": [\n    "/h/p.md",\n    "a.md",\n    "/h/p.md"\n  ]\n}\n',
+      '{\n  "instructions": [\n    "a.md"\n  ]\n}\n',
+    ],
+  ])("takes out %s", (_, before, after) => {
+    expect(take(before)).toBe(after);
+  });
+
+  it("gives back what it added, and leaves alone what has no such element", () => {
+    for (const t of [
+      '{\n  "instructions": [\n    "a.md", // one\n    "b.md"\n  ]\n}\n',
+      '{ "instructions": ["a.md", "b.md"] }\n',
+    ])
+      expect(take(add(t))).toBe(t);
+    expect(take('{ "instructions": ["a.md"] }')).toBe(
+      '{ "instructions": ["a.md"] }',
+    );
+    expect(take("{ not json")).toBe("{ not json");
+    expect(take('{ "model": "a/b" }')).toBe('{ "model": "a/b" }');
   });
 });
 

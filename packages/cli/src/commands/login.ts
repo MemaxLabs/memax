@@ -101,6 +101,7 @@ async function finishSignIn(tokens: TokenPair): Promise<void> {
     paths,
     out: (l) => console.log(l),
     oneShot: () => openOneShot({ memax: getClient(), paths }),
+    env: process.env,
   }).catch((err: Error) =>
     console.log(
       `  Couldn't take the previous account's Personal space off this machine's home: ${err.message}. Run memax unlink --home.`,

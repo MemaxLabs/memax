@@ -131,6 +131,11 @@ describe("Gemini's home file", () => {
     ).toBe(true);
     expect(homeAgent("windsurf_user")).toBe("windsurf");
   });
+
+  it("and OpenCode reads the canonical copy, once its settings name it", () => {
+    expect(HOME_FILE_OF_AGENT.opencode).toBe("~/.memax/personal/AGENTS.md");
+    expect(homeAgent("agents_md")).toBeNull();
+  });
 });
 
 describe("grouping home files", () => {
@@ -439,6 +444,12 @@ describe("the status line and the counts", () => {
     expect(machineAgents(laptop, [{ ...all[1]!, readBy: [] }])).toEqual([
       "codex",
     ]);
+    // The canonical copy, once OpenCode's settings name it there.
+    expect(
+      machineAgents(laptop, [
+        home(9, laptop, "agents_md", { readBy: ["opencode"] }),
+      ]),
+    ).toEqual(["opencode"]);
   });
 });
 

@@ -14,7 +14,7 @@ import { createDemoSource } from "@/lib/v2/data/demo-source";
 import type { MachinesSource } from "@/lib/v2/data/machines";
 import type { ReviewCardData, ReviewItem } from "@/lib/v2/data/review";
 import type { LedgerDataSource } from "@/lib/v2/data/source";
-import type { TargetsSource } from "@/lib/v2/data/targets";
+import type { TargetsSource, TargetView } from "@/lib/v2/data/targets";
 import { useRailProps } from "../_components/rail-props";
 import { useOverview } from "../_lib/data";
 import { BriefPlace } from "./brief";
@@ -224,6 +224,27 @@ describe("one machine's copy", () => {
     fireEvent.keyDown(budget, { key: "Enter" });
     expect(await screen.findByText("Between 1 and 16 KB.")).toBeTruthy();
     expect(configure).not.toHaveBeenCalled();
+  });
+
+  it("says OpenCode reads the canonical copy on a machine whose OpenCode settings name it", async () => {
+    const opencode = (t: TargetView) =>
+      t.kind === "agents_md" && t.machine?.label === "machine-1"
+        ? { ...t, readBy: ["opencode"] }
+        : t;
+    withSource({
+      targets: (real) => ({
+        peekList: (slug) => real.peekList?.(slug)?.map(opencode),
+        list: async (input) => (await real.list(input)).map(opencode),
+      }),
+    });
+    renderPlace(<TargetPlace segment="agents-md-machine-1" />, {
+      space: PERSONAL_SPACE,
+    });
+    expect(
+      await screen.findByText(
+        "Your Personal space in one file on ziyang-mbp, for you to read and for agents that have no file of their own. OpenCode reads it in every project there: its settings name this file.",
+      ),
+    ).toBeTruthy();
   });
 
   it("stops compiling here: this file on this machine, one key per intent", async () => {

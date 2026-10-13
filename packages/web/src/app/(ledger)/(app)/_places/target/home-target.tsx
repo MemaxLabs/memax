@@ -58,7 +58,9 @@ export function homeLede(
             ? lede.copilot_user
             : target.kind === "windsurf_user"
               ? lede.windsurf_user
-              : lede.agents_md;
+              : target.readBy.includes("opencode")
+                ? lede.agents_md_opencode
+                : lede.agents_md;
   return interpolate(template, { machine, file: target.label });
 }
 

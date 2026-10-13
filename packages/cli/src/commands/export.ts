@@ -17,6 +17,8 @@ import chalk from "chalk";
 import type { Command } from "commander";
 import {
   MemaxError,
+  parseExport,
+  toOkf,
   verifyExport,
   type ExportReport,
   type Memax,
@@ -39,6 +41,8 @@ export interface ExportOptions {
   out?: string;
   force?: boolean;
   format?: string;
+  /** Write each space as an Open Knowledge Format (OKF v0.2) bundle instead. */
+  okf?: boolean;
 }
 
 export interface ExportDeps {
@@ -115,7 +119,18 @@ export async function exportSpaces(
       );
     }
     const dir = `${outDir.replace(/\/+$/, "")}/${sp.slug}`;
-    writeExport(resolve(d.cwd, dir), files, Boolean(o.force));
+    if (o.okf) {
+      // The same record, as any OKF reader reads it; the signed copy is
+      // the export itself.
+      const enc = new TextEncoder();
+      const bundle = new Map(
+        [...toOkf(parseExport(files), sp.slug)].map(([p, t]) => [
+          p,
+          enc.encode(t),
+        ]),
+      );
+      writeExport(resolve(d.cwd, dir), bundle, Boolean(o.force), "index.md");
+    } else writeExport(resolve(d.cwd, dir), files, Boolean(o.force));
     const manifest = JSON.parse(
       new TextDecoder().decode(files.get("export.json")),
     ) as {
@@ -137,7 +152,7 @@ export async function exportSpaces(
       d.out(
         chalk.green(`  ${MARK.done} `) +
           chalk.bold(`Exported ${sp.slug}`) +
-          chalk.gray(` to ${dir}`),
+          chalk.gray(` ${o.okf ? "as an OKF bundle " : ""}to ${dir}`),
       );
       const last = done[done.length - 1];
       d.out(
@@ -148,7 +163,19 @@ export async function exportSpaces(
     }
   }
   if (json) {
-    d.out(JSON.stringify({ exports: done }, null, 2));
+    d.out(
+      JSON.stringify(
+        { exports: done, ...(o.okf ? { as: "okf" } : {}) },
+        null,
+        2,
+      ),
+    );
+  } else if (o.okf) {
+    d.out(
+      chalk.gray(
+        "\n  An OKF bundle is for reading anywhere; it carries no signatures. Export without --okf for the copy memax verify-export checks.",
+      ),
+    );
   } else {
     const first = done[0]?.dir;
     d.out(
@@ -336,6 +363,10 @@ export function registerExportCommands(program: Command): void {
       "memax-export",
     )
     .option("--force", "Replace an earlier export in the same folder")
+    .option(
+      "--okf",
+      "Write each space as an Open Knowledge Format (OKF v0.2) bundle",
+    )
     .option("--format <format>", "Output format: text, json", "text")
     .action(async (opts: ExportOptions) => {
       try {

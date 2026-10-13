@@ -18,7 +18,7 @@ and it doesn't count as a read.
 ## Usage
 
 ```bash
-memax export [--space <slug>] [--out <dir>] [--force] [--format json]
+memax export [--space <slug>] [--out <dir>] [--force] [--okf] [--format json]
 ```
 
 | Flag             | Description                                                                       |
@@ -26,6 +26,7 @@ memax export [--space <slug>] [--out <dir>] [--force] [--format json]
 | `--space <slug>` | The space. Without it, every space of yours on the V2 record, a folder each.      |
 | `--out <dir>`    | Where to write it. Default `memax-export`; each space goes in `<dir>/<slug>`.     |
 | `--force`        | Replace an earlier export in the same folder. A folder that isn't one is refused. |
+| `--okf`          | Write each space as an Open Knowledge Format bundle instead (below).              |
 | `--format <fmt>` | `text` (default) or `json`.                                                       |
 
 ```text
@@ -88,3 +89,26 @@ const archive = await memax.v2.spaces.export("memax-v2", {
 });
 // archive.bytes, archive.filename, archive.receipt
 ```
+
+## As an Open Knowledge Format bundle
+
+`memax export --okf` writes the same record as an
+[Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format)
+(OKF v0.2) bundle, for any tool that reads OKF:
+
+- **One concept per memory** (`memories/M-0219.md`), in OKF's own fields:
+  - `type` (`fact` or `decision`);
+  - `title`;
+  - `status` (`stable` once kept, `draft` while it waits in Review, `deprecated` once superseded, merged or faded);
+  - `stale_after`;
+  - `generated` (who proposed it);
+  - `verified` (every keep and verification, so a person's keep reads as human-reviewed);
+  - `sources`, where a file source is `path#Lline`.
+  The rest of the record goes under one extension key, `memax`, which OKF readers keep.
+- **A tombstone for each forgotten memory,** with no words.
+- **`index.md`,** the Brief, with `okf_version: "0.2"`.
+- **`log.md`,** what happened to each memory, newest first, without words.
+
+A rejected proposal isn't in the bundle. The bundle carries no signatures,
+so it isn't what `memax verify-export` checks: export without `--okf` for
+that copy.

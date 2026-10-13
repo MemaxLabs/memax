@@ -44,7 +44,15 @@ const CLAUDE: TargetSettings = { kind: "claude_user" };
 const CODEX: TargetSettings = { kind: "codex_user", current: "" };
 const GEMINI: TargetSettings = { kind: "gemini_user", current: "" };
 const COPILOT: TargetSettings = { kind: "copilot_user", current: "" };
-const HOME: TargetSettings[] = [CANONICAL, CLAUDE, CODEX, GEMINI, COPILOT];
+const WINDSURF: TargetSettings = { kind: "windsurf_user", current: "" };
+const HOME: TargetSettings[] = [
+  CANONICAL,
+  CLAUDE,
+  CODEX,
+  GEMINI,
+  COPILOT,
+  WINDSURF,
+];
 
 const file = (result: CompileResult, path: string) => {
   const found = result.files.find((f) => f.path === path);
@@ -74,12 +82,13 @@ function inner(content: string): string[] {
 }
 
 describe("the home kinds", () => {
-  it("are Claude Code's, Codex's, Antigravity's and Copilot's user files", () => {
+  it("are Claude Code's, Codex's, Antigravity's, Copilot's and Windsurf's user files", () => {
     expect(HOME_TARGET_KINDS).toEqual([
       "claude_user",
       "codex_user",
       "gemini_user",
       "copilot_user",
+      "windsurf_user",
     ]);
     expect(HOME_BUDGET).toBe(6 * 1024);
   });
@@ -173,6 +182,34 @@ describe("the home kinds", () => {
     }
   });
 
+  it("write one block in Windsurf's global rules, inside its 6,000 characters, 4,000 bytes by default", () => {
+    const facts = Array.from({ length: 200 }, (_, n) =>
+      memory(
+        `M-${String(n + 1).padStart(4, "0")}`,
+        `Fact number ${n} ${"x".repeat(60)}.`,
+      ),
+    );
+    const mine = "Use tabs.\n";
+    const r = compile(
+      personal(facts, [{ kind: "windsurf_user", current: mine }]),
+    );
+    const f = r.files[0];
+    expect(f.path).toBe(".codeium/windsurf/memories/global_rules.md");
+    expect(f.user_owned).toBe(true);
+    expect(f.content.startsWith(`${mine}${MANAGED_START}\n`)).toBe(true);
+    // The budget is what's between the markers.
+    const inside = inner(f.content).join("\n");
+    expect(new TextEncoder().encode(inside).length).toBeLessThanOrEqual(4_000);
+    expect(r.warnings.map((w) => w.code)).toContain("dropped_for_budget");
+    // A larger budget still stops at Windsurf's 6,000 characters.
+    const big = compile(
+      personal(facts, [
+        { kind: "windsurf_user", current: "", size_budget: 16 * 1024 },
+      ]),
+    ).files[0];
+    expect(big.content.length).toBeLessThanOrEqual(6_000);
+  });
+
   it("cap Antigravity's block at its 24,000 bytes per file", () => {
     const facts = Array.from({ length: 400 }, (_, n) =>
       memory(
@@ -214,6 +251,7 @@ describe("what a home file carries", () => {
     }),
     memory("M-0004", "Only Gemini.", { scope: { agents: ["gemini"] } }),
     memory("M-0007", "Only Copilot.", { scope: { agents: ["copilot"] } }),
+    memory("M-0008", "Only Windsurf.", { scope: { agents: ["windsurf"] } }),
     memory("M-0005", "Only in packages/web.", {
       scope: { paths: ["packages/web/**"] },
     }),
@@ -235,6 +273,10 @@ describe("what a home file carries", () => {
     expect(refs(".copilot/copilot-instructions.md")).toEqual([
       "M-0001",
       "M-0007",
+    ]);
+    expect(refs(".codeium/windsurf/memories/global_rules.md")).toEqual([
+      "M-0001",
+      "M-0008",
     ]);
   });
 
@@ -334,7 +376,7 @@ describe("refusals", () => {
   it.each(["project", "team"] as const)(
     "refuses a home kind in a %s space: a project's facts never land in a home folder",
     (kind) => {
-      for (const t of [CLAUDE, CODEX, GEMINI, COPILOT]) {
+      for (const t of [CLAUDE, CODEX, GEMINI, COPILOT, WINDSURF]) {
         const i = personal([memory("M-0001", "A fact.")], [t]);
         i.space.kind = kind;
         expect(issues(() => compile(i))).toEqual([
@@ -358,6 +400,9 @@ describe("refusals", () => {
     ["copilot_user", ".github/copilot-instructions.md"],
     ["copilot_user", ".copilot/instructions/memax.instructions.md"],
     ["copilot_user", "copilot-instructions.md"],
+    ["windsurf_user", ".codeium/windsurf/global_rules.md"],
+    ["windsurf_user", ".windsurf/rules/memax.md"],
+    ["windsurf_user", ".codeium/windsurf/memories/memax.md"],
   ] as const)("refuses %s at %s", (kind, path) => {
     const found = bad({
       kind,

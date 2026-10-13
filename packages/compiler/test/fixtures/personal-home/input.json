@@ -172,6 +172,10 @@
     {
       "kind": "copilot_user",
       "current": ""
+    },
+    {
+      "kind": "windsurf_user",
+      "current": "Reply in English.\n"
     }
   ]
 }

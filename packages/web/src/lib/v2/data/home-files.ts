@@ -49,6 +49,7 @@ export const HOME_FILE_OF_AGENT: Readonly<Record<string, string>> = {
   codex: "~/.codex/AGENTS.md",
   gemini: "~/.gemini/AGENTS.md",
   copilot: "~/.copilot/copilot-instructions.md",
+  windsurf: "~/.codeium/windsurf/memories/global_rules.md",
 };
 
 /** The agent a home kind is written for; the canonical copy (agents_md) is for people and agents with no file. */
@@ -57,6 +58,7 @@ export function homeAgent(kind: TargetKind): string | null {
   if (kind === "codex_user") return "codex";
   if (kind === "gemini_user") return "gemini";
   if (kind === "copilot_user") return "copilot";
+  if (kind === "windsurf_user") return "windsurf";
   return null;
 }
 
@@ -65,7 +67,8 @@ export function isBlock(target: Pick<TargetView, "kind" | "path">): boolean {
   if (
     target.kind === "codex_user" ||
     target.kind === "gemini_user" ||
-    target.kind === "copilot_user"
+    target.kind === "copilot_user" ||
+    target.kind === "windsurf_user"
   )
     return true;
   // Claude Code's fallback for an old Claude Code: a block in ~/.claude/CLAUDE.md.

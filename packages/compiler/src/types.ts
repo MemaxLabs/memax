@@ -151,7 +151,8 @@ export type AdapterKind =
   | "claude_user"
   | "codex_user"
   | "gemini_user"
-  | "copilot_user";
+  | "copilot_user"
+  | "windsurf_user";
 
 export type IncludeMode = "kept_only" | "kept_and_open";
 export type StaleMode = "mark" | "omit";
@@ -162,10 +163,10 @@ export interface TargetSettings {
   /**
    * Where the target writes, relative to its root: the repository, or the
    * person's home folder for the home adapters (`claude_user`,
-   * `codex_user`, `gemini_user`, `copilot_user`) and a personal space's
-   * `.memax/personal/AGENTS.md`. A file for `agents_md`, the shims and the
-   * home adapters, a directory for the scoped adapters; ignored by
-   * `chatgpt`. Each adapter has a default.
+   * `codex_user`, `gemini_user`, `copilot_user`, `windsurf_user`) and a
+   * personal space's `.memax/personal/AGENTS.md`. A file for `agents_md`,
+   * the shims and the home adapters, a directory for the scoped adapters;
+   * ignored by `chatgpt`. Each adapter has a default.
    */
   path?: string;
   /** Whether open questions compile. Default `kept_and_open`. */
@@ -175,7 +176,8 @@ export interface TargetSettings {
   /**
    * Size budget per file, in bytes. Capped by the tool's own limit. Default
    * 32 KiB, or 6 KiB for the home adapters and a personal space's AGENTS.md,
-   * which load in every session of every project.
+   * which load in every session of every project (4,000 bytes for
+   * Windsurf's, whose 6,000-character limit the person's rules share).
    */
   size_budget?: number;
   /** Section keys to compile. Default: every section except `overview`. */

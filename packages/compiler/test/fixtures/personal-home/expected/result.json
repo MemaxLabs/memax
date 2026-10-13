@@ -70,6 +70,36 @@
       "user_owned": false
     },
     {
+      "path": ".codeium/windsurf/memories/global_rules.md",
+      "target": "windsurf_user",
+      "bytes": 1071,
+      "lines": 26,
+      "sha256": "e4b8b8b59331c7347244a2c1e594967469724ed869ea8c763383b2685129f9f0",
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "cites": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "8bcd883685f947879937a86dc6ef8734c742f593e6984ac4ffcd8c29788d4928",
+      "user_owned": true
+    },
+    {
       "path": ".codex/AGENTS.md",
       "target": "codex_user",
       "bytes": 1094,
@@ -340,6 +370,24 @@
       "delivery": "file",
       "reads": null,
       "files": [".copilot/copilot-instructions.md"],
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "windsurf_user",
+      "path": ".codeium/windsurf/memories/global_rules.md",
+      "delivery": "file",
+      "reads": null,
+      "files": [".codeium/windsurf/memories/global_rules.md"],
       "refs": [
         "M-0101",
         "M-0102",

@@ -139,6 +139,29 @@ describe("the files a home link offers", () => {
     expect(consent).toContain("~/.copilot/copilot-instructions.md");
   });
 
+  it("offers Windsurf's global rules only when asked, while no real run has confirmed them", () => {
+    dir(".codeium", "windsurf");
+    expect(plan()).toEqual([]);
+    expect(
+      planHomeFiles({ home, env: {} }, ["windsurf_user"]).map((f) => [
+        f.kind,
+        f.path,
+        f.block,
+        f.readBy,
+        f.refusal,
+      ]),
+    ).toEqual([
+      [
+        "windsurf_user",
+        ".codeium/windsurf/memories/global_rules.md",
+        true,
+        ["windsurf"],
+        null,
+      ],
+      ["agents_md", ".memax/personal/AGENTS.md", false, [], null],
+    ]);
+  });
+
   it("offers nothing on a machine with neither agent", () => {
     dir(".cursor");
     expect(plan()).toEqual([]);
@@ -221,6 +244,8 @@ describe("the files a home link offers", () => {
       ["copilot_user", ".config/copilot/copilot-instructions.md", true],
       ["copilot_user", ".github/copilot-instructions.md", false],
       ["copilot_user", ".copilot/instructions/memax.instructions.md", false],
+      ["windsurf_user", ".codeium/windsurf/memories/global_rules.md", true],
+      ["windsurf_user", ".codeium/windsurf/global_rules.md", false],
       ["cursor_mdc", ".cursor/rules/memax-x.mdc", false],
     ] as const)
       expect(validHomePath(kind, path), `${kind} ${path}`).toBe(ok);

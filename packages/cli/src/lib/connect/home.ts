@@ -16,6 +16,7 @@ export const HOME_KIND: Partial<Record<V2.AgentKind, V2.TargetKind>> = {
   codex: "codex_user",
   "gemini-cli": "gemini_user",
   copilot: "copilot_user",
+  windsurf: "windsurf_user",
 };
 
 export interface HomeFileReport {

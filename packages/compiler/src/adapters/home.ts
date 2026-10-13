@@ -88,6 +88,8 @@ export interface HomeSpec {
   /** Who owns the file at an accepted path. */
   owner(path: string): Owner;
   limits: Limits;
+  /** The default budget in bytes, when not HOME_BUDGET (Windsurf's is smaller). */
+  budget?: number;
 }
 
 export function home(spec: HomeSpec): Adapter {
@@ -102,7 +104,7 @@ export function home(spec: HomeSpec): Adapter {
     roots: ["home"],
     owner: spec.owner,
     spaceKinds: ["personal"],
-    defaultBudget: () => HOME_BUDGET,
+    defaultBudget: () => spec.budget ?? HOME_BUDGET,
     limits: spec.limits,
     reads: () => null,
     parse: parseFile,

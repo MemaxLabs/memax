@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type { V2 } from "memax-sdk";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Daemon } from "../../src/lib/daemon/daemon.js";
 import { readHomeLink, writeHomeLink } from "../../src/lib/daemon/home-link.js";
 import { daemonPaths, type DaemonPaths } from "../../src/lib/daemon/paths.js";
@@ -310,6 +310,77 @@ describe.each([
     await daemon.syncOnce();
     expect(readFileSync(join(h.home, FILE), "utf8")).toBe(theirs);
     expect(readFileSync(join(h.home, beside), "utf8")).toBe(memory);
+  });
+});
+
+describe("Windsurf's global rules, 6,000 characters with the person's own", () => {
+  const RULES_FILE = ".codeium/windsurf/memories/global_rules.md";
+  async function windsurf(theirs: string) {
+    const space = h.fake.addPersonalSpace();
+    mkdirSync(join(h.home, ".codeium", "windsurf"), { recursive: true });
+    if (theirs) {
+      mkdirSync(join(h.home, RULES_FILE, ".."), { recursive: true });
+      writeFileSync(join(h.home, RULES_FILE), theirs);
+    }
+    const m = h.fake.addMachine(space, "device-1");
+    const t = h.fake.addHomeTarget(space, m, "windsurf_user");
+    writeHomeLink(h.paths, {
+      space_id: space.id,
+      space_slug: space.slug,
+      machine_id: m.id,
+      home: h.home,
+      files: [
+        {
+          target_id: t.id,
+          kind: "windsurf_user",
+          path: RULES_FILE,
+          abs: join(h.home, RULES_FILE),
+          read_by: ["windsurf"],
+        },
+      ],
+    });
+    const daemon = h.daemon({ paths: h.paths, deviceId: "device-1" });
+    return { t, daemon };
+  }
+
+  it("writes the block in memories/, which Memax may create below Windsurf's folder", async () => {
+    const { t, daemon } = await windsurf("");
+    h.fake.compile(t.id, { [RULES_FILE]: PERSONAL_1 });
+    await daemon.syncOnce();
+    expect(readFileSync(join(h.home, RULES_FILE), "utf8")).toBe(
+      upsertManagedBlock("", PERSONAL_1),
+    );
+    expect(mode(join(h.home, ".codeium", "windsurf", "memories"))).toBe(0o700);
+  });
+
+  it("writes nothing past the limit, says why, and writes once the person's rules leave room", async () => {
+    const theirs = `# My rules\n${"- Prefer small diffs and short answers.\n".repeat(150)}`;
+    expect(theirs.length).toBeGreaterThan(5_900);
+    const { t, daemon } = await windsurf(theirs);
+    h.fake.compile(t.id, { [RULES_FILE]: PERSONAL_1 });
+    await daemon.syncOnce();
+    expect(readFileSync(join(h.home, RULES_FILE), "utf8")).toBe(theirs);
+    const state = daemon.snapshot().home!.targets.find((x) => x.id === t.id);
+    expect(state).toMatchObject({ state: "blocked" });
+    expect(state?.detail).toMatch(
+      /Over Windsurf's 6,000-character limit with your own rules \(6,\d{3} characters\)\. Lower the budget, or shorten your own rules\./,
+    );
+    expect(h.fake.entry(t.id).target.sync_state).not.toBe("in_sync");
+
+    // A file that waits for a person is tried again after a backoff.
+    const shorter = "# My rules\n- Prefer small diffs.\n";
+    writeFileSync(join(h.home, RULES_FILE), shorter);
+    const later = Date.now() + 10 * 60_000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(later);
+    try {
+      await daemon.syncOnce();
+    } finally {
+      clock.mockRestore();
+    }
+    expect(readFileSync(join(h.home, RULES_FILE), "utf8")).toBe(
+      upsertManagedBlock(shorter, PERSONAL_1),
+    );
+    expect(h.fake.entry(t.id).target.sync_state).toBe("in_sync");
   });
 });
 

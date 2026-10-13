@@ -22,13 +22,14 @@ linked.
 
 ## What it writes
 
-| Agent       | File                                              | Whose it is                                |
-| ----------- | ------------------------------------------------- | ------------------------------------------ |
-| Claude Code | `~/.claude/rules/memax-personal.md`               | Memax's. User rules load in every session. |
-| Codex       | one block in `~/.codex/AGENTS.md`                 | Yours. Memax keeps one marked block in it. |
-| Antigravity | one block in `~/.gemini/AGENTS.md`                | Yours. Memax keeps one marked block in it. |
-| Copilot     | one block in `~/.copilot/copilot-instructions.md` | Yours. Memax keeps one marked block in it. |
-| (all)       | `~/.memax/personal/AGENTS.md`                     | Memax's: a local copy of what's compiled.  |
+| Agent       | File                                                        | Whose it is                                |
+| ----------- | ----------------------------------------------------------- | ------------------------------------------ |
+| Claude Code | `~/.claude/rules/memax-personal.md`                         | Memax's. User rules load in every session. |
+| Codex       | one block in `~/.codex/AGENTS.md`                           | Yours. Memax keeps one marked block in it. |
+| Antigravity | one block in `~/.gemini/AGENTS.md`                          | Yours. Memax keeps one marked block in it. |
+| Copilot     | one block in `~/.copilot/copilot-instructions.md`           | Yours. Memax keeps one marked block in it. |
+| Windsurf    | one block in `~/.codeium/windsurf/memories/global_rules.md` | Yours. Memax keeps one marked block in it. |
+| (all)       | `~/.memax/personal/AGENTS.md`                               | Memax's: a local copy of what's compiled.  |
 
 Antigravity reads `~/.gemini/AGENTS.md` beside `~/.gemini/GEMINI.md` in
 every session. Memax writes its block there when you run
@@ -44,6 +45,14 @@ VS Code's older Local agent reads `~/.claude` and `~/.copilot` both, so on
 a machine with Claude Code's file too it loads your Personal space twice;
 Memax writes both files anyway, and says so when it links them, since
 leaving Copilot's out would leave Copilot CLI with none.
+
+Windsurf reads `~/.codeium/windsurf/memories/global_rules.md` in every
+workspace, and at most 6,000 characters of it, your own rules included.
+Memax's block stays under 4,000 bytes by default, and when it and your
+rules together would pass 6,000 characters Memax writes nothing there and
+`memax status` says so: shorten your rules or lower the budget. Memax
+writes it when you run `memax connect windsurf` on a linked machine;
+`memax link --home` doesn't offer it on its own yet.
 
 Paths follow `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME` and
 `COPILOT_HOME`, read in your shell when you link (the daemon runs without them). Codex reads
@@ -154,6 +163,6 @@ A network error or a server that's busy never takes anything off. A file
 you edited by hand stays, and `memax unlink --home` says which.
 
 <Callout type="info">
-  Windsurf, OpenCode and Cursor get their personal files in later releases.
-  Until then they read your Personal space over MCP.
+  OpenCode and Cursor get their personal files in later releases. Until then
+  they read your Personal space over MCP.
 </Callout>

@@ -29,6 +29,7 @@ export const AGENTS = {
   antigravity: { mono: "AG", name: "Antigravity", surface: "ide" },
   copilot: { mono: "CP", name: "Copilot", surface: "ide" },
   opencode: { mono: "OC", name: "OpenCode", surface: "cli" },
+  windsurf: { mono: "WS", name: "Windsurf", surface: "ide" },
   dream: { mono: "DR", name: "Dream", surface: "memax", kind: "dream" },
 } as const satisfies Record<string, AgentInfo>;
 

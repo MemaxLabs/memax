@@ -309,6 +309,12 @@ func TestHomeTargetsThroughConfigureTarget(t *testing.T) {
 		!copilot.Target.Settings.UserOwned || !slices.Equal(copilot.Target.Settings.ReadBy, []string{"copilot"}) {
 		t.Fatalf("add Copilot's file: %v %+v", err, copilot.Target)
 	}
+	windsurf, err := add(&ledger.ConfigureTarget{Kind: ledger.TargetWindsurfUser, Root: ledger.RootHome, Machine: res.Machine.ID})
+	if err != nil || windsurf.Target == nil || windsurf.Target.Path != ".codeium/windsurf/memories/global_rules.md" ||
+		!windsurf.Target.Settings.UserOwned || windsurf.Target.Settings.SizeBudget != ledger.DefaultWindsurfSizeBudget ||
+		!slices.Equal(windsurf.Target.Settings.ReadBy, []string{"windsurf"}) {
+		t.Fatalf("add Windsurf's file: %v %+v", err, windsurf.Target)
+	}
 	for name, c := range map[string]*ledger.ConfigureTarget{
 		"a home kind in a repository":   {Kind: ledger.TargetCodexUser},
 		"Gemini's file in a repository": {Kind: ledger.TargetGeminiUser},
@@ -538,6 +544,10 @@ func TestHomePathRulesMatchTheDatabase(t *testing.T) {
 		{ledger.TargetCopilotUser, ".copilot/instructions/memax.instructions.md"},
 		{ledger.TargetCopilotUser, ".memax/copilot-instructions.md"},
 		{ledger.TargetCopilotUser, "copilot-instructions.md"},
+		{ledger.TargetWindsurfUser, ".codeium/windsurf/memories/global_rules.md"},
+		{ledger.TargetWindsurfUser, ".codeium/windsurf/memories/memax.md"},
+		{ledger.TargetWindsurfUser, ".windsurf/rules/global_rules.md"},
+		{ledger.TargetWindsurfUser, ".memax/.codeium/windsurf/memories/global_rules.md"},
 	}
 	for _, c := range cases {
 		var db bool

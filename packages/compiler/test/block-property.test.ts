@@ -65,6 +65,11 @@ const BLOCK_KINDS: {
     target: (current) => ({ kind: "codex_user", current }),
   },
   {
+    name: "windsurf_user in Windsurf's global_rules.md",
+    space: "personal",
+    target: (current) => ({ kind: "windsurf_user", current }),
+  },
+  {
     name: "copilot_user in ~/.copilot/copilot-instructions.md",
     space: "personal",
     target: (current) => ({ kind: "copilot_user", current }),

@@ -58,7 +58,29 @@ const BLOCK_KINDS: ReadonlySet<V2.TargetKind> = new Set([
   "codex_user",
   "gemini_user",
   "copilot_user",
+  "windsurf_user",
 ]);
+
+/**
+ * A tool's limit on a whole file it reads, which the person's own lines
+ * share with Memax's block: Windsurf's global rules stop at 6,000
+ * characters. Past it the daemon writes nothing and says why.
+ */
+const FILE_CAPS: Partial<
+  Record<V2.TargetKind, { chars: number; tool: string }>
+> = {
+  windsurf_user: { chars: 6_000, tool: "Windsurf" },
+};
+
+/** Why a file can't be written whole within its tool's limit, or null. */
+export function overFileCap(
+  kind: V2.TargetKind,
+  content: string,
+): string | null {
+  const cap = FILE_CAPS[kind];
+  if (!cap || content.length <= cap.chars) return null;
+  return `Over ${cap.tool}'s ${cap.chars.toLocaleString("en-US")}-character limit with your own rules (${content.length.toLocaleString("en-US")} characters). Lower the budget, or shorten your own rules.`;
+}
 
 /**
  * Whether the person owns the file and Memax manages one block in it: a
@@ -229,6 +251,16 @@ export async function deliverRun(
       }
     }
     return handEdit(files);
+  }
+
+  // Within the tool's limit on the whole file, the person's lines included.
+  for (const f of files) {
+    if (f.plan.kind !== "write") continue;
+    const over = overFileCap(t.kind, f.plan.content);
+    if (over) {
+      d.log.warn("left a file alone", { target: t.label, reason: over });
+      return blocked(`${f.out.path}: ${over}`, snapshotOf(files));
+    }
   }
 
   // Every file is safe. Check the hashes first: never write what can't be

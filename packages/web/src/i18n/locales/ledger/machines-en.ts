@@ -98,6 +98,8 @@ export const ledgerMachinesEn = {
         "Memax's block in {file} on {machine}, which Codex reads in every project. Your own lines in that file stay on your machine; Memax doesn't read them.",
       copilot_user:
         "Memax's block in {file} on {machine}, which Copilot CLI and VS Code's Copilot agent read in every project. Your own lines in that file stay on your machine; Memax doesn't read them.",
+      windsurf_user:
+        "Memax's block in {file} on {machine}, which Windsurf reads in every workspace. Windsurf reads at most 6,000 characters of it, your own rules included, so Memax writes nothing there past that. Your own lines stay on your machine; Memax doesn't read them.",
       gemini_user:
         "Memax's block in {file} on {machine}, which Antigravity reads in every project, and Gemini CLI once it reads AGENTS.md. Your own lines in that file stay on your machine; Memax doesn't read them.",
       agents_md:

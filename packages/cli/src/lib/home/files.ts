@@ -13,6 +13,9 @@
 // - Copilot: one block in `$COPILOT_HOME/copilot-instructions.md` (else
 //   ~/.copilot), which Copilot CLI loads every session; beside Claude
 //   Code's file, see copilotBesideClaude.
+// - Windsurf: one block in ~/.codeium/windsurf/memories/global_rules.md,
+//   whose 6,000 characters the person's rules share (the daemon writes
+//   nothing past them); only when asked for (UNCONFIRMED_HOME_KINDS).
 // - The canonical copy `~/.memax/personal/AGENTS.md`, Memax's.
 //
 // An agent offers a file only when its folder is here. Each file is
@@ -198,10 +201,12 @@ export function copilotBesideClaude(files: HomeFilePlan[]): HomeFilePlan[] {
  * them only when someone asks for that agent (memax connect gemini), never
  * in memax link --home's default consent. Gemini's file: Antigravity's docs
  * and Gemini CLI's source say they read ~/.gemini/AGENTS.md, but neither
- * has been run against a block in it.
+ * has been run against a block in it. Windsurf's: its docs say it reads
+ * its global rules, never run here.
  */
 export const UNCONFIRMED_HOME_KINDS: ReadonlySet<V2.TargetKind> = new Set([
   "gemini_user",
+  "windsurf_user",
 ]);
 
 /**
@@ -263,6 +268,18 @@ export function planHomeFiles(
         "Copilot",
         join(copilot, "copilot-instructions.md"),
         ["copilot"],
+      ),
+    );
+  }
+  const windsurf = realParent(join(e.home, ".codeium", "windsurf"));
+  if (isDir(windsurf) && ask.includes("windsurf_user")) {
+    out.push(
+      plan(
+        e,
+        "windsurf_user",
+        "Windsurf",
+        join(windsurf, "memories", "global_rules.md"),
+        ["windsurf"],
       ),
     );
   }

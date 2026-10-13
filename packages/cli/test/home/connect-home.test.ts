@@ -171,6 +171,26 @@ describe("memax connect on a linked machine", () => {
     });
   });
 
+  it("adds Windsurf's global rules when memax connect windsurf asks for them", async () => {
+    mkdirSync(join(h.home, ".codeium", "windsurf"), { recursive: true });
+    h.fake.agents.push(connection("windsurf", [personal]));
+    const r = await runConnect(agentFor("windsurf")!, {}, deps().d);
+    expect(r.home).toMatchObject({
+      state: "added",
+      path: "~/.codeium/windsurf/memories/global_rules.md",
+      note: "a new file, with one Memax block",
+    });
+    expect(links().at(-1)?.body).toMatchObject({
+      files: [
+        {
+          kind: "windsurf_user",
+          path: ".codeium/windsurf/memories/global_rules.md",
+          read_by: ["windsurf"],
+        },
+      ],
+    });
+  });
+
   it("says Gemini CLI alone needs --agents-md to read the Personal space", async () => {
     mkdirSync(join(h.home, ".gemini"), { recursive: true });
     const r = await runConnect(agentFor("gemini")!, {}, deps().d);

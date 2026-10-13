@@ -4,6 +4,7 @@ import { CommandFailedError, isRetryable, toFailure } from "./command-error";
 import { DEMO_SPACES } from "./demo-dataset";
 import { choiceFor, conflictOf } from "./sdk-conflict";
 import { createSdkMemories } from "./sdk-memories";
+import { registryKey } from "./agents-sdk";
 import { conditionsOf, flagOf, lineageOf, recordOf } from "./sdk-record";
 import {
   actorOf,
@@ -367,6 +368,33 @@ describe("mapping /v2 records", () => {
     expect(
       recordOf(detail({ ...reads, reads: 0, reads_7d: 0, agents: 0 }), ME),
     ).toMatchObject({ reads: 0, reach: { files: null, agents: 0 } });
+  });
+
+  it("says when its conditions were last checked, and for which agent's start", () => {
+    const detail = (checked?: V2.MemoryChecked): V2.MemoryDetail => ({
+      memory: memory({ ref: "M-0219", state: "kept", lifecycle: "kept" }),
+      versions: [],
+      receipts: { items: [receipt()], has_more: false },
+      ...(checked ? { checked } : {}),
+    });
+    const run = {
+      at: "2026-10-13T14:31:00Z",
+      branch: "main",
+      commit: "a".repeat(40),
+      observer: "device" as const,
+      trigger: "session_start" as const,
+    };
+    expect(recordOf(detail(), ME).checked).toBeNull();
+    expect(
+      recordOf(detail({ ...run, agent: "gemini-cli" }), ME).checked,
+    ).toEqual({
+      at: run.at,
+      branch: "main",
+      agent: { kind: "agent", agent: registryKey("gemini-cli") },
+    });
+    expect(
+      recordOf(detail({ ...run, trigger: "head_moved" }), ME).checked,
+    ).toEqual({ at: run.at, branch: "main", agent: null });
   });
 });
 

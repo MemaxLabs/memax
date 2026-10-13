@@ -102,7 +102,13 @@ export function MemorySide({
             {record.checked ? (
               <span className={`mx-meta ${styles.checked} ${styles.prose}`}>
                 {interpolate(
-                  record.conditions.length > 1 ? p.checked : p.checkedOne,
+                  record.checked.agent
+                    ? record.conditions.length > 1
+                      ? p.checkedFor
+                      : p.checkedForOne
+                    : record.conditions.length > 1
+                      ? p.checked
+                      : p.checkedOne,
                   {
                     when: formatWhen(
                       copy,
@@ -111,7 +117,10 @@ export function MemorySide({
                       timeZone,
                       locale,
                     ),
-                    name: view.name(record.checked.by),
+                    branch: record.checked.branch,
+                    name: record.checked.agent
+                      ? view.name(record.checked.agent)
+                      : "",
                   },
                 )}
               </span>

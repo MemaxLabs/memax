@@ -131,21 +131,21 @@ func (h *Handler) getMemory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := hist.Memory
-	// The counts and the waiting forget requests are extras the page can
-	// live without, read together in one round trip: a failure leaves them
-	// out rather than failing the read.
-	reads, requests, err := h.ledger.GetMemoryExtras(r.Context(), scope.Narrow(m.SpaceID), m, m.Lifecycle != "forgotten")
+	// The counts, the waiting forget requests and the last check are extras
+	// the page can live without, read together in one round trip: a failure
+	// leaves them out rather than failing the read.
+	extras, err := h.ledger.GetMemoryExtras(r.Context(), scope.Narrow(m.SpaceID), m, m.Lifecycle != "forgotten")
 	if err != nil {
-		h.log.WarnContext(r.Context(), "v2: a memory's reads and forget requests couldn't be read", "memory", m.Ref, "error", err)
-		reads, requests = nil, nil
+		h.log.WarnContext(r.Context(), "v2: a memory's reads, forget requests and last check couldn't be read", "memory", m.Ref, "error", err)
+		extras = &ledger.MemoryExtras{}
 	}
 	if m.Lifecycle == "forgotten" {
-		requests = nil
+		extras.ForgetRequests, extras.Checked = nil, nil
 	}
 	setETag(w, m)
 	writeData(w, http.StatusOK, memoryDetail{
-		Memory: m, Versions: nonNil(hist.Versions), Receipts: toReceiptPage(hist.Receipts), Reads: reads,
-		ForgetRequests: requests,
+		Memory: m, Versions: nonNil(hist.Versions), Receipts: toReceiptPage(hist.Receipts), Reads: extras.Reads,
+		ForgetRequests: extras.ForgetRequests, Checked: extras.Checked,
 	})
 	if g, ok := p.scope.Grant(m.SpaceID); ok {
 		h.recordRead(p, g, ledger.ReadGet, []uuid.UUID{m.ID})

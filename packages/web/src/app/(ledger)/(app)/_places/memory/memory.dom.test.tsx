@@ -517,7 +517,7 @@ describe("Forget on a memory's page", () => {
     expect(lines).toEqual([
       "github.com/riverqueue/river is in go.mod",
       "docs/adr/004-queues.md is unchanged",
-      "Checked today at 14:31 by Claude Code. Memax marks it stale if one stops holding.",
+      "Checked on main today at 14:31, when Claude Code started. Memax marks it stale if one stops holding.",
     ]);
     // Names and paths are set in mono, the manifest isn't.
     expect(

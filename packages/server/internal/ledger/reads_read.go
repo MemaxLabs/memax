@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -182,26 +183,74 @@ func (l *Ledger) GetMemoryReads(ctx context.Context, scope Scope, memoryID uuid.
 	return out, nil
 }
 
+// MemoryChecked is when a memory's conditions were last checked: the
+// space's latest check run since one first reported on them. Every run
+// reads every condition, so one with nothing new to report still checked
+// them. Where, by what, and for which agent's session start. No words.
+type MemoryChecked struct {
+	At       time.Time `json:"at"`
+	Branch   string    `json:"branch"`
+	Commit   string    `json:"commit"`
+	Observer string    `json:"observer"`
+	Trigger  string    `json:"trigger"`
+	Agent    string    `json:"agent,omitempty"`
+}
+
+// MemoryExtras are what a memory's page shows beside the record: how it
+// was read, agents' requests to forget it, and its conditions' last check.
+type MemoryExtras struct {
+	Reads          *MemoryReads
+	ForgetRequests []ForgetRequest
+	// Checked is nil until a check reported on its conditions.
+	Checked *MemoryChecked
+}
+
 // GetMemoryExtras reads what a memory's page shows beside its history, for
-// a memory the caller has read already (GetMemoryHistory): its reads and,
-// with requests, the forget requests waiting on it. One round trip.
-func (l *Ledger) GetMemoryExtras(ctx context.Context, scope Scope, m *Memory, requests bool) (*MemoryReads, []ForgetRequest, error) {
+// a memory the caller has read already (GetMemoryHistory), in one round
+// trip (ReadBatch): its reads, with requests the forget requests waiting
+// on it, and its conditions' last check when it has conditions.
+func (l *Ledger) GetMemoryExtras(ctx context.Context, scope Scope, m *Memory, requests bool) (*MemoryExtras, error) {
 	if l == nil {
-		return nil, nil, ErrDisabled
+		return nil, ErrDisabled
 	}
 	b := &pgx.Batch{}
-	reads := queueMemoryReads(b, m.SpaceID, m.ID, m.Ref, l.now().UTC())
-	var waiting []ForgetRequest
+	out := &MemoryExtras{Reads: queueMemoryReads(b, m.SpaceID, m.ID, m.Ref, l.now().UTC())}
 	if requests {
-		queueForgetRequests(b, &waiting, m.ID, scope.SpaceIDs())
+		queueForgetRequests(b, &out.ForgetRequests, m.ID, scope.SpaceIDs())
+	}
+	if hasConditions(m.Conditions) {
+		b.Queue(`
+			SELECT r.checked_at, r.branch, r.commit_sha, r.observer, r.trigger, COALESCE(r.agent, '')
+			  FROM v2.check_runs r
+			 WHERE r.space_id = $1
+			   AND EXISTS (SELECT 1 FROM v2.condition_checks c
+			                WHERE c.space_id = $1 AND c.memory_id = $2 AND c.context = 'default')
+			 ORDER BY r.recorded_at DESC
+			 LIMIT 1`, m.SpaceID, m.ID).QueryRow(func(row pgx.Row) error {
+			var c MemoryChecked
+			err := row.Scan(&c.At, &c.Branch, &c.Commit, &c.Observer, &c.Trigger, &c.Agent)
+			if errNoRows(err) {
+				return nil
+			}
+			if err == nil {
+				out.Checked = &c
+			}
+			return err
+		})
 	}
 	if err := l.ReadBatch(ctx, scope, b); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if waiting == nil {
-		waiting = []ForgetRequest{}
+	if out.ForgetRequests == nil {
+		out.ForgetRequests = []ForgetRequest{}
 	}
-	return reads, waiting, nil
+	return out, nil
+}
+
+// hasConditions says whether a memory's stored conditions list any.
+func hasConditions(raw json.RawMessage) bool {
+	t := strings.TrimSpace(string(raw))
+	return t != "" && t != "null" && t != "[]"
 }
 
 // queueMemoryReads queues a memory's reads (its own and those of every

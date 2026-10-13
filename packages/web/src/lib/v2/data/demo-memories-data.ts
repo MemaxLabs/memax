@@ -507,7 +507,7 @@ export const DEMO_RECORDS: Record<string, Partial<MemoryRecord>> = {
       },
       { key: "c2", kind: "file_unchanged", path: "docs/adr/004-queues.md" },
     ],
-    checked: { at: at("14:31"), by: agent("claude-code") },
+    checked: { at: at("14:31"), branch: "main", agent: agent("claude-code") },
   },
 };
 

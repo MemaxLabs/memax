@@ -190,8 +190,11 @@ export interface MemoryRecord {
   /** Null until compile targets are served (PLACEHOLDER in the SDK). */
   reaches: TargetLine[] | null;
   conditions: ConditionLine[];
-  /** The last check of its conditions (null: not checked yet). */
-  checked: { at: string; by: Actor | null } | null;
+  /**
+   * The last check of its conditions (null: not checked yet): when, on
+   * which branch, and the agent whose session start asked for it.
+   */
+  checked: { at: string; branch: string; agent: Actor | null } | null;
   forgotten: Forgotten | null;
   /** Agents' requests that a person forget it, waiting (Forget, or Keep it). */
   forgetRequests?: ForgetRequestLine[];

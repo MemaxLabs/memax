@@ -201,7 +201,8 @@ test("settings switch Paper, Carbon and System", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });
 
-// Self-baselines: the empty states of the demo's new project space.
+// Self-baselines: the demo's new project space, which has nothing in it:
+// its Today, Review and Memories show its three steps (EmptySpace.png).
 const SHOTS = [
   // EmptySpace.png: a new space shows its three steps to a first compile.
   { place: "today", heading: "Nothing here yet" },

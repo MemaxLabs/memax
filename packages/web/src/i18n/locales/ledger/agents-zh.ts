@@ -60,6 +60,10 @@ export const ledgerAgentsZh: Translations["ledger"]["agents"] = {
     notAllowed:
       "{agent} 在 {space} 最多只能提议：只有能在这里保留的人，才能让 Agent 写入。",
     viewer: "查看者不能调高 {space} 里 Agent 的权限，找一位成员来改吧。",
+    agentKindLimit:
+      "你连接的 Agent 种类已经达到套餐上限，所以 {agent} 连不上。断开一个不用的，或者换到 Pro 套餐，不限种类。",
+    seatNeeded:
+      "{agent} 在 {space} 最多只能提议：在它的套餐上只有所有者能保留，成员需要 Team 席位。",
     personMustManage: "只有人能改 Agent 能做的事。",
     notMember: "你不是 {space} 的成员，它的 Agent 轮不到你来改。",
     surfaceUnverified: "网页端的签名没通过校验，什么都没改。刷新页面再试一次。",
@@ -75,6 +79,7 @@ export const ledgerAgentsZh: Translations["ledger"]["agents"] = {
     paused: "已暂停 {agent}。它还能读取，恢复之前什么都不会写。",
     resumed: "已恢复 {agent}。",
     disconnected: "已断开 {agent}，它的凭据已吊销。",
+    rekeyed: "已给 {agent} 换了新的启动密钥，旧密钥已失效。",
   },
   detail: {
     eyebrow: "Agent · {space}",
@@ -83,6 +88,7 @@ export const ledgerAgentsZh: Translations["ledger"]["agents"] = {
       ide: "在你的编辑器里运行。",
       cloud: "云端任务和 CLI。",
       chat: "聊天应用，通过远程 MCP 接入。",
+      startKey: "用启动密钥在它的云端沙箱里启动。",
     },
     lede: {
       read: "它只读、从不写入，收据上显示为 {mono}。",
@@ -101,8 +107,33 @@ export const ledgerAgentsZh: Translations["ledger"]["agents"] = {
       oauth:
         "它的 OAuth 授权会立刻吊销，下一次请求就会被拒。收据会留着，以后也可以重新接入。",
       key: "它的 API 密钥会立刻吊销，下一次请求就会被拒。收据会留着，以后也可以重新接入。",
+      startKey:
+        "它的启动密钥会立刻吊销，下一次启动就什么也不会说。读取记录会留着，以后也可以重新接入。",
       cancel: "取消",
       confirm: "断开 {agent}",
+    },
+    rekey: "换新的启动密钥",
+    rekeyConfirm: {
+      title: "给 {agent} 换新的启动密钥？",
+      body: "旧密钥会立刻失效，在新密钥放到旧密钥原来的位置之前，它的下一次启动什么也不会说。读取记录仍然留在同一个连接下。",
+      cancel: "取消",
+      confirm: "换新密钥",
+    },
+    newKey: {
+      title: "{agent} 的新启动密钥",
+      body: "现在就复制：Memax 只显示一次启动密钥，只留下它的哈希。把它放到旧密钥原来的位置。",
+      done: "完成",
+    },
+    lastStart: {
+      title: "最近一次启动",
+      when: "时间",
+      held: "它的文件里是",
+      told: "告诉了它",
+      toldMany: "之后有 {n} 条记忆变了：{refs}",
+      toldOne: "之后有 1 条记忆变了：{refs}",
+      nothing: "没有新内容：它的文件是最新的。",
+      session: "会话",
+      none: "还没有启动过。等它的沙箱拿到密钥、仓库里有了钩子文件，每次会话启动都会显示在这里。",
     },
     revoked: {
       title: "它的凭据已经吊销了。",
@@ -154,6 +185,7 @@ export const ledgerAgentsZh: Translations["ledger"]["agents"] = {
       carriedOver: "{date}，从 V1 迁移过来",
       oauth: "远程 MCP · OAuth 2.1",
       key: "API 密钥",
+      startKey: "启动密钥",
       only: "仅 {space}",
       none: "还没有空间",
       never: "从没用过",
@@ -227,6 +259,71 @@ export const ledgerAgentsZh: Translations["ledger"]["agents"] = {
     copied: "命令已复制。到 {agent} 所在的地方运行，接入后它就会出现在这里。",
     copiedUrl: "服务器地址已复制。在 {agent} 里添加，登录后它就会出现在这里。",
     copyFailed: "没能复制。选中文字自己复制一下吧。",
+    cloud: "它在云端沙箱里运行？",
+    cloudLink: "接入云端 Agent",
+  },
+  cloud: {
+    title: "接入云端 Agent",
+    to: "接入 {where}",
+    close: "关闭",
+    which: "1 · 哪个云端 Agent",
+    whichLabel: "哪个云端 Agent",
+    connected: "已接入",
+    notConnected: "云端 · 未接入",
+    filesOnly: "只用提交的文件",
+    where: "2 · 在哪里启动",
+    whereLabel: "{agent} 启动所在的空间",
+    whereHint:
+      "一个项目空间或团队空间。你的个人空间写进的是你自己机器上的文件。",
+    noSpaces:
+      "云端 Agent 要在 V2 记录上的项目空间或团队空间里启动，你现在还没有这样的空间。",
+    key: "3 · 它的启动密钥",
+    keyIntro:
+      "启动密钥只用来在 {space} 启动 {agent} 的会话：它只读取自仓库里那次编译以来的变化，别的都读不到。它读不了记忆，也不能写入，有效期 180 天。",
+    keyConnected:
+      "{agent} 已经接入 {space}。新密钥会让旧密钥立刻失效，所以要把新密钥放到旧密钥原来的位置。",
+    keyShown: "现在就复制：Memax 只显示一次启动密钥，只留下它的哈希。",
+    keyExpires: "有效期到 {date}。",
+    keyReplayed:
+      "这把密钥已经生成过了，Memax 不会第二次显示密钥。要看到密钥，就给它换一把新的。",
+    copyKey: "复制密钥",
+    copiedKey: "启动密钥已复制",
+    put: "4 · 放到它的沙箱能读到的地方",
+    claudeNetwork:
+      "Pro 或 Max：在云端环境里为 {host} 添加一个网络密钥（network secret），把这把密钥作为 Bearer 令牌。密钥不会进入沙箱。",
+    claudeEnv:
+      "Team 或 Enterprise：在个人环境的变量里把 MEMAX_START_KEY 设成这把密钥。不要放在共享环境里：凡是用共享环境的会话，都能读到它的变量。",
+    copilotSecret:
+      "把密钥添加为 Agents 密钥 MEMAX_START_KEY：在仓库（或组织）的 Settings › Secrets and variables › Agents。Copilot 会在会话日志里遮住它。",
+    copilotAllow:
+      "让这个 Agent 能访问 {host}：把它加到仓库的 Copilot 联网设置里（Agent 防火墙）。",
+    apiUrl: "这个应用的服务器是 {url}：在密钥旁边把 MEMAX_API_URL 设成它。",
+    commit: "5 · 提交钩子文件",
+    commitIntro:
+      "把这段加到 {path} 并提交。它只写了密钥的变量名，从不包含密钥本身。",
+    claudeGuard:
+      "它只在云端会话里运行，也就是 CLAUDE_CODE_REMOTE 为 true 的地方。",
+    copilotGuard:
+      "它只在设置了 MEMAX_START_KEY 的地方运行，所以大家机器上的 Copilot CLI 会跳过它。",
+    merge:
+      "如果文件已经存在，就把这一项加进去，或者在仓库里运行这条命令：它会加上这一项、保留其余内容，并打印一把密钥。",
+    agentsMd:
+      "每次编译之后也要提交 AGENTS.md：启动时说的是自它持有的那次编译以来的变化。",
+    codeowners:
+      "给 {path} 和 AGENTS.md 加一条 CODEOWNERS，改动启动方式就需要负责人审查。",
+    copyFile: "复制文件",
+    copiedFile: "{path} 已复制",
+    copyCommand: "复制命令",
+    copiedCommand: "命令已复制",
+    codex:
+      "Codex Cloud 目前还没有 Memax 能用的会话启动钩子，所以它只从提交的 AGENTS.md 开始。每次编译之后提交它就行，不需要生成密钥。",
+    loads: "3 · 它会载入什么",
+    create: "生成启动密钥",
+    rekey: "换新密钥",
+    done: "完成",
+    cancel: "取消",
+    failed: "密钥没生成，什么都没变。再试一次吧。",
+    receiptsAs: "它的读取会显示为 {stamp}",
   },
   keys: {
     title: "Agent 与密钥",

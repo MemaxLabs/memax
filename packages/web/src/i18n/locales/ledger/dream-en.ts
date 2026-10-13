@@ -64,6 +64,8 @@ export const ledgerDreamEn = {
     conflictPlain: "It contradicts a memory in force. Settle it in Review.",
     staleSource: "Its source changed on {date} in {source}. Verify it.",
     staleDate: "Its date to check again has passed. Verify it.",
+    staleCheck: "One of its conditions stopped holding on {date}. Verify it.",
+    staleWaiting: "Marked stale a month ago, and still waiting. Verify it.",
     unflag: "Unflag",
   },
   faded: {

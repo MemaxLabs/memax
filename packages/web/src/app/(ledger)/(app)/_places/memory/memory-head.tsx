@@ -8,6 +8,7 @@ import { useAriaKeys, useKeycap } from "@/lib/v2/keymap/react";
 import { placeHref } from "@/lib/v2/places";
 import { memoryReadsText, reachText } from "@/lib/v2/reads-copy";
 import { StatementText } from "../../_components/statement-text";
+import { useNarrow } from "../../_lib/use-narrow";
 import type { RecordsView } from "../records-view";
 import { ForgetConfirm } from "./forget-confirm";
 import type { MemoryForget } from "./use-memory-forget";
@@ -15,7 +16,8 @@ import styles from "./memory.module.css";
 
 /**
  * Memory.png's head: the statement (its type carries its state), the
- * receipt with reads and reach, and the actions. Move to space is drawn
+ * receipt with reads and reach, and the actions; a stale one leads with
+ * Verify (V, VerifyStale). Move to space is drawn
  * with why it isn't available yet. Forget opens its inline confirmation
  * (the States board) and never has a key; an agent's waiting request to
  * forget it sits above, with Forget it and Keep it.
@@ -26,17 +28,23 @@ export function MemoryHead({
   forget,
   onEdit,
   onCite,
+  onVerify,
 }: {
   view: RecordsView;
   record: MemoryRecord;
   forget: MemoryForget;
   onEdit: () => void;
   onCite: () => void;
+  /** Opens VerifyStale; only a stale memory has one. */
+  onVerify: () => void;
 }) {
   const { l, rc, space, timeZone, locale } = view;
   const p = l.memory.page;
   const editKey = useKeycap("memory.edit");
+  const verifyKey = useKeycap("memory.verify");
   const citeKeys = useAriaKeys("memory.cite");
+  // A phone's row has room for "Cite" (MobileMemory.png).
+  const phone = useNarrow();
   const forgotten = record.forgotten;
   const request = record.forgetRequests?.[0] ?? null;
   // The Keep the seal is for, or the latest receipt while it isn't kept.
@@ -138,6 +146,16 @@ export function MemoryHead({
         <ForgetConfirm view={view} record={record} forget={forget} />
       ) : (
         <div className={`mx-inline ${styles.actions}`}>
+          {record.state === "stale" ? (
+            <Button
+              variant="secondary"
+              icon="check"
+              kbd={verifyKey}
+              onClick={onVerify}
+            >
+              {p.verify}
+            </Button>
+          ) : null}
           <Button
             variant="secondary"
             icon="pencil"
@@ -146,7 +164,9 @@ export function MemoryHead({
           >
             {p.edit}
           </Button>
+          {/* Not on a phone's row (MobileMemory.png): it isn't available yet. */}
           <Button
+            className={styles.notYet}
             variant="secondary"
             icon="space"
             disabled
@@ -161,7 +181,7 @@ export function MemoryHead({
             aria-keyshortcuts={citeKeys}
             onClick={onCite}
           >
-            {p.cite}
+            {phone ? p.citeShort : p.cite}
           </Button>
           <span className={styles.spacer} />
           {/* Forget has no key, on purpose (HANDOFF §7). */}

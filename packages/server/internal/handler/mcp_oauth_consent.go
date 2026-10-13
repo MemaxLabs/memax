@@ -289,7 +289,16 @@ func (h *MCPOAuthHandler) DecideRequest(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "consent_failed", "That didn't go through. Try again.")
 		return
 	}
-	h.connectAgent(r.Context(), session, grantID, []string{space}, scope)
+	if refused := h.connectAgent(r.Context(), session, grantID, []string{space}, scope); refused != nil && refused.Limit != nil {
+		// A plan's limit (D9: the kinds of agent a person connects): the agent
+		// couldn't connect, so it would read nothing. The grant goes, the
+		// request stays open, and the page says why.
+		if _, err := h.authH.pool.Exec(r.Context(), `UPDATE oauth_grants SET revoked_at = now() WHERE id = $1::uuid`, grantID); err != nil {
+			slog.Error("MCP OAuth: can't take back a grant whose agent couldn't connect", "grant_id", grantID, "error", err)
+		}
+		WriteErrorWithDetails(w, http.StatusForbidden, "refused", refused.Message, map[string]any{"policy": refused})
+		return
+	}
 
 	code := generateOAuthSession()
 	if _, err := h.authH.pool.Exec(r.Context(),
@@ -564,7 +573,7 @@ func (h *MCPOAuthHandler) describeSpaces(ctx context.Context, session oauthPendi
 			if item.Hub.OwnerID == session.userID {
 				role = policy.RoleOwner
 			}
-			space := policy.Space{Name: item.Hub.Name, Kind: row.kind, Rules: row.rules}
+			space := policy.Space{Name: item.Hub.Name, Kind: row.kind, Rules: row.rules, OnV2: row.onV2}
 			level := consentLevel(agent, role, space, scope)
 			sp.Autonomy = string(level)
 			sp.Ceiling = string(consentCeiling(role, space, scope))

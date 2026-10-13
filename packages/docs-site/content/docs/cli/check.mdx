@@ -1,0 +1,56 @@
+---
+title: memax check
+description: Check this repository against what its space's memories rely on, now.
+---
+
+A kept memory can say what keeps it true: a file it names exists, a
+manifest lists a dependency, a file still contains a name. The daemon
+checks those conditions against this repository's default branch as
+pushed, whenever it moves. `memax check` runs the same check now and says
+what each condition found.
+
+## Usage
+
+```bash
+memax check [--format json]
+```
+
+Run it in a repository [linked](/cli/link) to its space.
+
+```text
+› memax check
+
+  ~/code/memax → memax-v2 · main at a1b2c3d, checked 14:31
+
+  ○ M-0187  internal/ask/config.go exists
+            internal/ask/config.go was renamed to internal/ask/tiers.go on main. Memax marked it stale.
+  ● M-0219  go.mod lists github.com/riverqueue/river
+
+  ○ Memax marked M-0187 stale. Verify it: memax verify M-0187
+```
+
+A memory is marked stale only when a condition that held on the default
+branch stops holding there. What the check couldn't tell (a file too
+large, a manifest it can't read, a commit this clone doesn't have) never
+marks anything. When the change is undone (a revert brings the file back),
+Memax takes its own mark off again. A mark from a date to check again
+stays until a person answers it.
+
+## What it checks, and what leaves the machine
+
+- The committed tree at `HEAD`, never your working copy, and only on the
+  default branch as pushed, in a clone whose `origin` is the space's
+  repository. Anywhere else it says why it checked nothing.
+- Only results go to Memax: each condition's outcome, the commit, and the
+  paths and declared versions that changed. Never a file's contents.
+- It goes through the [daemon](/cli/daemon) when one runs, or runs in this
+  process when none does.
+
+A space switched back to V1 isn't checked.
+
+## Exit codes
+
+| Code | Meaning                                                           |
+| ---- | ----------------------------------------------------------------- |
+| 0    | The check ran, or said why it checked nothing here.               |
+| 1    | Not in a linked repository, the check failed, or a failed request. |

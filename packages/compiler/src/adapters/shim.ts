@@ -33,6 +33,7 @@ export function shim(spec: ShimSpec): Adapter {
     tool: spec.tool,
     defaultPath: spec.defaultPath,
     pathHint: `ending in ${spec.fileNames.join(" or ")}`,
+    roots: ["repo"],
     acceptsPath: (path) => spec.fileNames.includes(basename(path)),
     limits: spec.limits,
     reads: (target) => target.canonical,

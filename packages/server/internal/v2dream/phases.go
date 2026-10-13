@@ -27,7 +27,6 @@ const (
 	maxConflictChecks = 20
 	conflictCands     = 6
 	maxDedupeChecks   = 20
-	maxStale          = 50
 	maxBriefNew       = 20
 )
 
@@ -353,19 +352,8 @@ func (r *runState) conflicts(ctx context.Context) error {
 }
 
 // ---------------------------------------------------------------------
-// Stale and fade: no model
+// Fade: no model
 // ---------------------------------------------------------------------
-
-func (r *runState) stale(context.Context) error {
-	r.considered["stale_due"] = len(r.snap.StaleDue)
-	for i, m := range r.snap.StaleDue {
-		if i >= maxStale {
-			break
-		}
-		r.add(ledger.PlannedAction{Kind: ledger.DreamStale, Memory: m.ID, Version: m.Version, StaleAfter: m.StaleAfter})
-	}
-	return nil
-}
 
 func (r *runState) fade(ctx context.Context) error {
 	cands, err := r.e.ledger.FadeCandidates(ctx, r.scope, r.snap.SpaceID, r.e.cfg.FadeAfter, r.e.cfg.MaxFades)

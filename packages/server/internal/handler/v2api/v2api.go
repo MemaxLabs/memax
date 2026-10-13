@@ -29,6 +29,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/trust"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
@@ -55,6 +56,9 @@ type Handler struct {
 	near   nearLimiter
 	// asker answers ⌘K Ask (ask.go); nil answers 503.
 	asker *ask.Service
+	// search is the hybrid search GET /v2/search runs (search.go); nil
+	// answers 503.
+	search *v2recall.Searcher
 	// dream queues run-now (dream.go); nil answers 503 there.
 	dream *dreamDeps
 	// exports rate-limits exports (export.go).
@@ -119,6 +123,7 @@ type Route struct {
 var routes = []Route{
 	{"GET", "/v2/spaces", "listSpaces", (*Handler).listSpaces},
 	{"POST", "/v2/spaces", "createSpace", (*Handler).createSpace},
+	{"GET", "/v2/search", "search", (*Handler).searchSpaces},
 	{"GET", "/v2/spaces/{space}/switch", "getSpaceSwitch", (*Handler).getSpaceSwitch},
 	{"POST", "/v2/spaces/{space}:switch", "switchSpace", (*Handler).switchSpace},
 	{"GET", "/v2/spaces/{space}/v1-dream-runs", "listV1DreamRuns", (*Handler).listV1DreamRuns},
@@ -142,9 +147,13 @@ var routes = []Route{
 	{"GET", "/v2/spaces/{space}/checkpoints", "listCheckpoints", (*Handler).listCheckpoints},
 	{"GET", "/v2/spaces/{space}/reads", "listReads", (*Handler).listReads},
 	{"POST", "/v2/spaces/{space}/compile-loads", "recordCompileLoad", (*Handler).recordCompileLoad},
+	{"POST", "/v2/spaces/{space}/session-starts", "startSession", (*Handler).startSession},
+	{"GET", "/v2/spaces/{space}/conditions", "listConditions", (*Handler).listConditions},
+	{"POST", "/v2/spaces/{space}/check-runs", "reportChecks", (*Handler).reportChecks},
 	{"GET", "/v2/memories/{ref}", "getMemory", (*Handler).getMemory},
 	{"POST", "/v2/memories/{ref}:keep", "keepMemory", (*Handler).keep},
 	{"POST", "/v2/memories/{ref}:edit", "editMemory", (*Handler).edit},
+	{"POST", "/v2/memories/{ref}:scope", "scopeMemory", (*Handler).scopeMemory},
 	{"POST", "/v2/memories/{ref}:reject", "rejectMemory", (*Handler).reject},
 	{"GET", "/v2/memories/{ref}/conflict", "getConflict", (*Handler).getConflict},
 	{"POST", "/v2/memories/{ref}:resolve-conflict", "resolveConflict", (*Handler).resolveConflict},
@@ -153,6 +162,8 @@ var routes = []Route{
 	{"POST", "/v2/memories/{ref}:decline-forget", "declineForget", (*Handler).declineForget},
 	{"GET", "/v2/memories/{ref}/forget-preview", "previewForget", (*Handler).previewForget},
 	{"GET", "/v2/memories/{ref}/tombstone", "getTombstone", (*Handler).getTombstone},
+	{"GET", "/v2/memories/{ref}/stale", "getStaleReport", (*Handler).getStaleReport},
+	{"POST", "/v2/memories/{ref}:verify", "verifyMemory", (*Handler).verifyMemory},
 	{"GET", "/v2/spaces/{space}/tombstones", "listTombstones", (*Handler).listTombstones},
 	{"POST", "/v2/receipts/{receipt}:undo", "undoReceipt", (*Handler).undoReceipt},
 	{"GET", "/v2/agents", "listAgents", (*Handler).listAgents},
@@ -162,12 +173,18 @@ var routes = []Route{
 	{"POST", "/v2/agents/{agent}:pause", "pauseAgent", (*Handler).pauseAgent},
 	{"POST", "/v2/agents/{agent}:resume", "resumeAgent", (*Handler).resumeAgent},
 	{"POST", "/v2/agents/{agent}:disconnect", "disconnectAgent", (*Handler).disconnectAgent},
+	{"POST", "/v2/agents/{agent}:rekey", "rekeyAgent", (*Handler).rekeyAgent},
+	{"POST", "/v2/cloud-agents", "createCloudAgent", (*Handler).createCloudAgent},
 	{"GET", "/v2/spaces/{space}/brief", "getBrief", (*Handler).getBrief},
 	{"POST", "/v2/spaces/{space}/brief", "reviseBrief", (*Handler).reviseBrief},
 	{"GET", "/v2/spaces/{space}/brief/versions", "listBriefVersions", (*Handler).listBriefVersions},
 	{"POST", "/v2/spaces/{space}/brief/versions/{n}:restore", "restoreBriefVersion", (*Handler).restoreBriefVersion},
 	{"GET", "/v2/spaces/{space}/targets", "listTargets", (*Handler).listTargets},
 	{"POST", "/v2/spaces/{space}/targets", "createTarget", (*Handler).createTarget},
+	{"GET", "/v2/spaces/{space}/machines", "listMachines", (*Handler).listMachines},
+	{"POST", "/v2/spaces/{space}/machines", "linkMachine", (*Handler).linkMachine},
+	{"PATCH", "/v2/machines/{machine}", "renameMachine", (*Handler).renameMachine},
+	{"POST", "/v2/machines/{machine}:unlink", "unlinkMachine", (*Handler).unlinkMachine},
 	{"PATCH", "/v2/targets/{target}", "configureTarget", (*Handler).configureTarget},
 	{"POST", "/v2/targets/{target}:compile", "compileTarget", (*Handler).compileTarget},
 	{"GET", "/v2/targets/{target}/preview", "getTargetPreview", (*Handler).getTargetPreview},

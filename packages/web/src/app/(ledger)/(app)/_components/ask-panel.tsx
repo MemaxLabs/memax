@@ -21,6 +21,7 @@ import type {
 import type { AskState } from "../_lib/use-ask";
 import { useSource } from "../_lib/data";
 import { memoryHref } from "../_places/memories/memory-rows";
+import { OnV1Notice } from "./on-v1-notice";
 import styles from "./command-center.module.css";
 
 /** The tooltip a citation shows: the memory's ID and its words. */
@@ -78,6 +79,11 @@ export function AskPanel({
 
   if (state.status === "idle") return null;
 
+  // The space went back to V1 while the page was open.
+  if (state.status === "onV1") {
+    return <OnV1Notice space={space} onOpen={onOpen} />;
+  }
+
   if (state.status === "none" || state.status === "unavailable") {
     const text = state.status === "none" ? copy.none : copy.unavailable;
     return (
@@ -111,6 +117,7 @@ export function AskPanel({
         </p>
         <p className={styles.quietDetail}>
           {interpolate(copy.limit.detail, { date })}
+          {state.upgrade === "pro" ? ` ${copy.limit.upgrade}` : null}
         </p>
       </div>
     );
@@ -215,7 +222,9 @@ export function AskPanel({
       ) : null}
       {state.status === "done" ? (
         <div className={styles.actions}>
+          {/* Not on a phone (MobileAsk.png): it isn't available yet. */}
           <Button
+            className={styles.notYet}
             variant="secondary"
             size="sm"
             icon="terminal"

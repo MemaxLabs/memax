@@ -22,10 +22,11 @@ import (
 func WithReads(rec ledger.ReadRecorder) Option { return func(h *Handler) { h.reads = rec } }
 
 type readPage struct {
-	Items      []ledger.Read `json:"items"`
-	HasMore    bool          `json:"has_more"`
-	NextCursor string        `json:"next_cursor,omitempty"`
-	Reads7d    int           `json:"reads_7d"`
+	Items         []ledger.Read `json:"items"`
+	HasMore       bool          `json:"has_more"`
+	NextCursor    string        `json:"next_cursor,omitempty"`
+	Reads7d       int           `json:"reads_7d"`
+	RetentionDays int           `json:"retention_days,omitempty"`
 }
 
 type compileLoadRequest struct {
@@ -51,7 +52,8 @@ func (h *Handler) listReads(w http.ResponseWriter, r *http.Request) {
 		writeError(w, h.fromLedger(r, err))
 		return
 	}
-	writeData(w, http.StatusOK, readPage{Items: nonNil(res.Reads), HasMore: res.HasMore, NextCursor: res.NextCursor, Reads7d: res.Week})
+	writeData(w, http.StatusOK, readPage{Items: nonNil(res.Reads), HasMore: res.HasMore, NextCursor: res.NextCursor, Reads7d: res.Week,
+		RetentionDays: res.RetentionDays})
 }
 
 // POST /v2/spaces/{space}/compile-loads

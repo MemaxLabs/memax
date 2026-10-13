@@ -346,45 +346,113 @@ func (s *PostgresStore) PatchHubSettings(ctx context.Context, hubID string, patc
 	return nil
 }
 
+// ListUserHubs lists the person's hubs with each one's V1 memory count:
+// what the list API, memax_hubs and the consent page show. The request
+// middleware reads RequestHubs' list instead, without the counts.
 func (s *PostgresStore) ListUserHubs(userID string) ([]model.HubWithRole, error) {
-	ctx := context.Background()
-	// settings is included in the list response so the per-hub
-	// overrides UI (Settings → Intelligence) can render without
-	// issuing N GET /v1/hubs/{id} requests. Payload is ~5 booleans
-	// per hub; storage size is negligible.
-	rows, err := s.pool.Query(ctx,
-		`SELECT h.id, h.name, COALESCE(h.icon, ''), COALESCE(h.accent, ''), h.slug, h.hub_type, COALESCE(h.plan, ''), h.owner_id,
-			h.allow_contributor_topics, h.allow_contributor_dreams,
-			COALESCE(h.contributor_delete_policy, 'own'),
-			COALESCE(h.header_aurora_mode, ''),
-			COALESCE(h.settings, '{}'::jsonb),
-			h.created_at, h.updated_at, hm.role,
-			(SELECT COUNT(*) FROM memories m WHERE m.hub_id = h.id AND m.state != 'archived')
-		FROM hubs h
-		JOIN hub_members hm ON h.id = hm.hub_id
-		WHERE hm.user_id = $1
-		ORDER BY h.hub_type ASC, h.name ASC`, userID)
-	if err != nil {
+	var result []model.HubWithRole
+	listed := false
+	b := &pgx.Batch{}
+	queueHubList(b, fmt.Sprintf(hubListSQL, memoryCountColumn, "$1"), userID, &result, &listed)
+	if err := s.pool.SendBatch(context.Background(), b).Close(); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	return result, nil
+}
 
+// ListUserHubsWith is the request middleware's hub list (QueueRequestHubs,
+// without the memory counts) with more statements in the same round trip:
+// extra queues them after the list, on the same connection, and reads
+// their results through its own callbacks. The request middleware sends
+// the person's V2 scope this way (handler.HubContext), so a request reads
+// the hubs and the scope in one round trip, not two.
+func (s *PostgresStore) ListUserHubsWith(ctx context.Context, userID string, extra func(*pgx.Batch)) ([]model.HubWithRole, error) {
 	var result []model.HubWithRole
-	for rows.Next() {
-		var h model.Hub
-		var role string
-		var memoryCount int
-		if err := rows.Scan(&h.ID, &h.Name, &h.Icon, &h.Accent, &h.Slug, &h.HubType, &h.Plan, &h.OwnerID,
-			&h.AllowContributorTopics, &h.AllowContributorDreams,
-			&h.ContributorDeletePolicy,
-			&h.HeaderAuroraMode,
-			&h.Settings,
-			&h.CreatedAt, &h.UpdatedAt, &role, &memoryCount); err != nil {
-			return nil, fmt.Errorf("scan hub row: %w", err)
-		}
-		result = append(result, model.HubWithRole{Hub: h, Role: role, MemoryCount: memoryCount})
+	listed := false
+	b := &pgx.Batch{}
+	QueueRequestHubs(b, HubsOfUser(userID), &result, &listed)
+	if extra != nil {
+		extra(b)
 	}
-	return result, rows.Err()
+	// A statement extra queued may fail after the list came back: the list
+	// stands (extra's own callbacks say what failed).
+	if err := s.pool.SendBatch(ctx, b).Close(); err != nil && !listed {
+		return nil, err
+	}
+	return result, nil
+}
+
+// HubsOf says whose hubs a list reads: a person's, or the person an API
+// key names (by its SHA-256, so the list goes out in the key's own round
+// trip, before anyone knows whose it is).
+type HubsOf struct {
+	expr string
+	arg  any
+}
+
+// HubsOfUser is a person's hubs.
+func HubsOfUser(userID string) HubsOf { return HubsOf{expr: "$1", arg: userID} }
+
+// HubsOfAPIKey is the hubs of the person whose unrevoked API key has this
+// SHA-256 (hex): none for a key that doesn't resolve.
+func HubsOfAPIKey(keyHash string) HubsOf {
+	return HubsOf{expr: "(SELECT user_id FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL)", arg: keyHash}
+}
+
+// hubListSQL lists a person's hubs (whose: %[2]s) with their role and
+// whether each is on the V2 record; %[1]s is the memory count column.
+const hubListSQL = `SELECT h.id, h.name, COALESCE(h.icon, ''), COALESCE(h.accent, ''), h.slug, h.hub_type, COALESCE(h.plan, ''), h.owner_id,
+		h.allow_contributor_topics, h.allow_contributor_dreams,
+		COALESCE(h.contributor_delete_policy, 'own'),
+		COALESCE(h.header_aurora_mode, ''),
+		COALESCE(h.settings, '{}'::jsonb),
+		h.created_at, h.updated_at, hm.role,
+		%[1]s,
+		h.v2_enabled_at IS NOT NULL
+	FROM hubs h
+	JOIN hub_members hm ON h.id = hm.hub_id
+	WHERE hm.user_id = %[2]s
+	ORDER BY h.hub_type ASC, h.name ASC`
+
+// memoryCountColumn is the V1 memory count the list API answers. settings
+// is listed too, so the per-hub overrides UI (Settings → Intelligence)
+// renders without N GET /v1/hubs/{id} requests.
+const memoryCountColumn = `(SELECT COUNT(*) FROM memories m WHERE m.hub_id = h.id AND m.state != 'archived')`
+
+// QueueRequestHubs queues the hub list every authenticated request reads
+// (handler.HubContext), into *out, setting *listed once it is read. It
+// leaves out the V1 memory counts (MemoryCount is 0): a COUNT(*) per hub
+// on every request, which only the list API and memax_hubs show, and they
+// read ListUserHubs.
+func QueueRequestHubs(b *pgx.Batch, of HubsOf, out *[]model.HubWithRole, listed *bool) {
+	queueHubList(b, fmt.Sprintf(hubListSQL, "0", of.expr), of.arg, out, listed)
+}
+
+func queueHubList(b *pgx.Batch, sql string, arg any, out *[]model.HubWithRole, listed *bool) {
+	b.Queue(sql, arg).Query(func(rows pgx.Rows) error {
+		var result []model.HubWithRole
+		for rows.Next() {
+			var h model.Hub
+			var role string
+			var memoryCount int
+			var onV2 bool
+			if err := rows.Scan(&h.ID, &h.Name, &h.Icon, &h.Accent, &h.Slug, &h.HubType, &h.Plan, &h.OwnerID,
+				&h.AllowContributorTopics, &h.AllowContributorDreams,
+				&h.ContributorDeletePolicy,
+				&h.HeaderAuroraMode,
+				&h.Settings,
+				&h.CreatedAt, &h.UpdatedAt, &role, &memoryCount, &onV2); err != nil {
+				return fmt.Errorf("scan hub row: %w", err)
+			}
+			result = append(result, model.HubWithRole{Hub: h, Role: role, MemoryCount: memoryCount, OnV2: onV2})
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		*out = result
+		*listed = true
+		return nil
+	})
 }
 
 // HubMembershipIDs returns just the hub-id list a user belongs to.

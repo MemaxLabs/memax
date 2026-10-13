@@ -1,19 +1,24 @@
 // Keeps the warm-start cache (~/.memax/daemon/warm.json, lib/hook/warm.ts)
 // current for the session-start hook: each linked space's compiled files
 // (from every poll of its targets), and its recent forgets and waiting
-// gates (fetched when the space changed, at most every few seconds). The
-// hook reads it without the network, so it is only as fresh as the last
-// poll: within seconds while the daemon runs.
+// gates (fetched when the space changed, at most every few seconds); and,
+// on a machine whose home is linked, the Personal space's files here, its
+// forgets and its gates (the `home` entry, personal-layer design §7.1).
+// The hook reads it without the network, so it is only as fresh as the
+// last poll: within seconds while the daemon runs.
 import type { V2 } from "memax-sdk";
 import {
   readWarm,
+  type WarmBranch,
   type WarmFile,
   type WarmForget,
   type WarmGate,
+  type WarmHome,
   type WarmSpace,
+  type WarmStale,
   type WarmTarget,
 } from "../hook/warm.js";
-import { failureOf, type DaemonApi } from "./api.js";
+import { failureOf, type DaemonApi, type TargetPoll } from "./api.js";
 import { cleanLine } from "./compiler/sanitize.js";
 import { writeJsonAtomic } from "./json-file.js";
 import type { Logger } from "./log.js";
@@ -21,9 +26,21 @@ import { ensureDaemonDir, type DaemonPaths } from "./paths.js";
 
 /** The compiled files agents load at session start (lib/hook/agents.ts). */
 const LOADED_KINDS = new Set(["agents_md", "claude_md", "gemini_md"]);
+/** The home files a home link writes: what agents load in every session. */
+const HOME_KINDS = new Set([
+  "claude_user",
+  "codex_user",
+  "gemini_user",
+  "copilot_user",
+  "windsurf_user",
+  "agents_md",
+]);
+/** The key refresh() and requestRefresh() take for the home link's space. */
+export const HOME = "home";
 const FORGET_WINDOW_MS = 30 * 24 * 60 * 60_000;
 const MAX_FORGETS = 50;
 const MAX_GATES = 20;
+const MAX_STALE = 50;
 const QUESTION_CHARS = 240;
 /** At most one fetch of a space's forgets and gates this often. */
 export const MIN_REFRESH_MS = 5_000;
@@ -32,10 +49,16 @@ export const MIN_REFRESH_MS = 5_000;
 export function warmTargets(
   targets: V2.Target[],
   prev: WarmTarget[] = [],
+  home = false,
 ): WarmTarget[] {
   return targets
     .filter(
-      (t) => LOADED_KINDS.has(t.kind) && t.delivery === "local" && !!t.path,
+      (t) =>
+        (home
+          ? t.root === "home" && HOME_KINDS.has(t.kind)
+          : t.root !== "home" && LOADED_KINDS.has(t.kind)) &&
+        t.delivery === "local" &&
+        !!t.path,
     )
     .map((t) => {
       const last = t.last_compile;
@@ -108,6 +131,22 @@ export interface WarmCacheOptions {
   saveDelayMs?: number;
   /** At most one fetch of a space's forgets and gates this often (MIN_REFRESH_MS). */
   minRefreshMs?: number;
+  /**
+   * A linked space's memories newly forgotten (each tombstone's ref and
+   * the refs forgotten with it), as soon as a fetch sees them: the
+   * daemon's checks drop what they hold of them (checks.ts).
+   */
+  onForgotten?(spaceId: string, refs: string[]): void;
+}
+
+/** Every ref the cache's forgets name: each one's, and those forgotten with it. */
+export function forgottenRefs(forgotten: WarmForget[]): string[] {
+  return [...new Set(forgotten.flatMap((f) => [f.ref, ...f.with]))];
+}
+
+function onV1(s: WarmSpace, poll: TargetPoll): void {
+  if (poll.onV2) delete s.on_v1;
+  else s.on_v1 = true;
 }
 
 export class WarmCache {
@@ -139,12 +178,93 @@ export class WarmCache {
   }
 
   /** What a poll of the space's targets says. */
-  setTargets(spaceId: string, slug: string, targets: V2.Target[]): void {
+  setTargets(spaceId: string, slug: string, poll: TargetPoll): void {
     const s = this.space(spaceId, slug);
-    const next = warmTargets(targets, s.targets);
-    if (JSON.stringify(next) === JSON.stringify(s.targets)) return;
+    const next = warmTargets(poll.targets, s.targets);
+    if (
+      JSON.stringify(next) === JSON.stringify(s.targets) &&
+      !s.on_v1 === poll.onV2
+    )
+      return;
     s.targets = next;
+    onV1(s, poll);
     this.changed(s);
+  }
+
+  /** What a poll of this machine's home files says (its home link). */
+  setHome(
+    link: { space_id: string; space_slug: string; machine_id: string },
+    poll: TargetPoll,
+  ): void {
+    const prev = this.data.home;
+    const same =
+      prev?.space_id === link.space_id && prev.machine_id === link.machine_id;
+    const h: WarmHome = same
+      ? prev
+      : {
+          space_id: link.space_id,
+          machine_id: link.machine_id,
+          slug: link.space_slug,
+          updated_at: new Date(this.now()).toISOString(),
+          targets: [],
+          forgotten: [],
+          gates: [],
+        };
+    h.slug = link.space_slug;
+    const next = warmTargets(poll.targets, h.targets, true);
+    if (
+      same &&
+      JSON.stringify(next) === JSON.stringify(h.targets) &&
+      !h.on_v1 === poll.onV2
+    )
+      return;
+    h.targets = next;
+    onV1(h, poll);
+    this.data.home = h;
+    this.changed(h);
+  }
+
+  /**
+   * What a check read of the space's memories marked stale (the
+   * conditions list), less any the cache knows were forgotten.
+   */
+  setStale(spaceId: string, slug: string, stale: V2.StaleMemory[]): void {
+    const s = this.space(spaceId, slug);
+    const gone = new Set(forgottenRefs(s.forgotten));
+    const next: WarmStale[] = stale
+      .filter((x) => !gone.has(x.memory))
+      .slice(0, MAX_STALE)
+      .map((x) => ({ ref: x.memory, since: x.since, causes: x.causes }));
+    if (JSON.stringify(next) === JSON.stringify(s.stale ?? [])) return;
+    s.stale = next;
+    this.changed(s);
+  }
+
+  /** A linked repository's branch hints, or none (null). */
+  setBranch(root: string, hints: WarmBranch | null): void {
+    const prev = this.data.branches?.[root];
+    if (JSON.stringify(prev ?? null) === JSON.stringify(hints)) return;
+    const next = { ...(this.data.branches ?? {}) };
+    if (hints) next[root] = hints;
+    else delete next[root];
+    if (Object.keys(next).length > 0) this.data.branches = next;
+    else delete this.data.branches;
+    this.schedule();
+  }
+
+  /** Keeps only these repositories' branch hints (the ones linked here). */
+  retainRoots(roots: Set<string>): void {
+    for (const root of Object.keys(this.data.branches ?? {}))
+      if (!roots.has(root)) this.setBranch(root, null);
+  }
+
+  /** The home link is gone: so is its entry. */
+  clearHome(): void {
+    if (!this.data.home) return;
+    delete this.data.home;
+    clearTimeout(this.pending.get(HOME));
+    this.pending.delete(HOME);
+    this.schedule();
   }
 
   /** Fetches the space's forgets and waiting gates now. */
@@ -184,18 +304,37 @@ export class WarmCache {
     this.pending.set(spaceId, t);
   }
 
-  private async fetch(spaceId: string, slug: string): Promise<void> {
-    this.lastRefresh.set(spaceId, this.now());
+  /** A space's entry, or the home link's (HOME). */
+  private entry(key: string): WarmSpace | undefined {
+    return key === HOME ? this.data.home : this.data.spaces[key];
+  }
+
+  private async fetch(key: string, slug: string): Promise<void> {
+    this.lastRefresh.set(key, this.now());
+    const spaceId = key === HOME ? this.data.home?.space_id : key;
+    if (!spaceId) return;
     try {
       const [gates, tombstones] = await Promise.all([
         this.o.api.waitingGates(spaceId),
         this.o.api.tombstones(spaceId),
       ]);
-      if (this.stopped || !(spaceId in this.data.spaces)) return;
-      const s = this.space(spaceId, slug);
+      const s = this.entry(key);
+      if (this.stopped || !s) return;
+      if (key !== HOME) this.space(spaceId, slug);
       const forgotten = warmForgets(tombstones, this.now());
       const waiting = warmGates(gates, this.now());
-      this.warned.delete(spaceId);
+      this.warned.delete(key);
+      if (key !== HOME) {
+        const before = new Set(forgottenRefs(s.forgotten));
+        const fresh = forgottenRefs(forgotten).filter((r) => !before.has(r));
+        if (fresh.length) {
+          this.o.onForgotten?.(spaceId, fresh);
+          // Rule 7: a forgotten memory is never said to be being verified.
+          const gone = new Set(fresh);
+          if (s.stale?.some((x) => gone.has(x.ref)))
+            s.stale = s.stale.filter((x) => !gone.has(x.ref));
+        }
+      }
       if (
         JSON.stringify(forgotten) === JSON.stringify(s.forgotten) &&
         JSON.stringify(waiting) === JSON.stringify(s.gates)
@@ -206,8 +345,8 @@ export class WarmCache {
       this.changed(s);
     } catch (err) {
       const f = failureOf(err);
-      if (!this.warned.has(spaceId)) {
-        this.warned.add(spaceId);
+      if (!this.warned.has(key)) {
+        this.warned.add(key);
         this.o.log.warn("couldn't refresh the warm-start cache", {
           space: slug,
           code: f.code,

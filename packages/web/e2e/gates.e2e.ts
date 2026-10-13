@@ -163,7 +163,10 @@ test("a gate card in Review, light, 390", async ({ page, baseURL }) => {
   await useTheme(page, baseURL, "light");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/memax-team/review?gate=G-0012");
-  await expect(page.getByText("Memax team · 2 of 4")).toBeVisible();
+  // A phone's header: the gate as its own question (MobileGate.png).
+  await expect(
+    page.getByRole("heading", { level: 1, name: "A question for you" }),
+  ).toBeVisible();
   await page.locator("#main").focus();
   await page.keyboard.press("1");
   await settle(page);

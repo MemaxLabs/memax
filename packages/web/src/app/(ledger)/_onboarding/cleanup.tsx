@@ -525,10 +525,11 @@ export function plannedWrites(
       ? targets
           .filter((t) => t.syncState !== "off")
           .map((t) => ({ label: t.label, kind: t.kind, path: t.path }))
-      : [
+      : // A new space's targets (ledger.DefaultTargetKinds). Scoped rules
+        // files are opt-in: AGENTS.md holds the path-scoped facts.
+        [
           { label: "AGENTS.md", kind: "agents_md", path: "AGENTS.md" },
           { label: "CLAUDE.md", kind: "claude_md", path: "CLAUDE.md" },
-          { label: ".cursor/rules", kind: "cursor_mdc", path: ".cursor/rules" },
           { label: "ChatGPT project", kind: "chatgpt", path: null },
         ];
   return list.map((t) => {

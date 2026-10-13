@@ -1,0 +1,623 @@
+{
+  "about": "Golden vectors for the condition evaluator (src/conditions/evaluate.ts; the stale-detection design §2.3). Each is a condition, the tree at one commit as far as it was read, and what it says. tree.entries: path → {type, id}, or null (nothing there); a path missing from entries couldn't be read. tree.texts: path → contents; missing couldn't be read. tree.files: every file listed (sorted on reading), or null when the listing couldn't be read. prev: what the condition said last.",
+  "vectors": [
+    {
+      "name": "path_exists: a file is there",
+      "condition": {
+        "kind": "path_exists",
+        "path": "packages/server/internal/ask/config.go"
+      },
+      "tree": {
+        "entries": {
+          "packages/server/internal/ask/config.go": {
+            "type": "blob",
+            "id": "1111111111111111111111111111111111111111"
+          }
+        }
+      },
+      "want": { "outcome": "holds" }
+    },
+    {
+      "name": "path_exists: a folder counts",
+      "condition": {
+        "kind": "path_exists",
+        "path": "packages/server/internal/queue"
+      },
+      "tree": {
+        "entries": {
+          "packages/server/internal/queue": {
+            "type": "tree",
+            "id": "2222222222222222222222222222222222222222"
+          }
+        }
+      },
+      "want": { "outcome": "holds" }
+    },
+    {
+      "name": "path_exists: gone",
+      "condition": {
+        "kind": "path_exists",
+        "path": "packages/server/internal/ask/config.go"
+      },
+      "tree": { "entries": { "packages/server/internal/ask/config.go": null } },
+      "want": {
+        "outcome": "fails",
+        "evidence": {
+          "change": "removed",
+          "path": "packages/server/internal/ask/config.go"
+        }
+      }
+    },
+    {
+      "name": "path_exists: couldn't read the tree",
+      "condition": { "kind": "path_exists", "path": "go.mod" },
+      "tree": { "entries": {} },
+      "want": { "outcome": "unknown" }
+    },
+    {
+      "name": "path_exists glob: a match under its folder",
+      "condition": { "kind": "path_exists", "glob": "packages/web/**/*.tsx" },
+      "tree": {
+        "files": ["packages/web/src/app.tsx", "packages/webapp/x.tsx"]
+      },
+      "want": { "outcome": "holds" }
+    },
+    {
+      "name": "path_exists glob: nothing matches, and the folder is named",
+      "condition": { "kind": "path_exists", "glob": "packages/web/**/*.tsx" },
+      "tree": { "files": ["packages/web/src/app.ts", "packages/webapp/x.tsx"] },
+      "want": {
+        "outcome": "fails",
+        "evidence": { "change": "no_match", "path": "packages/web" }
+      }
+    },
+    {
+      "name": "path_exists glob: from the root, no folder to name",
+      "condition": { "kind": "path_exists", "glob": "**/*.proto" },
+      "tree": { "files": ["api/v1/ask.json"] },
+      "want": { "outcome": "fails", "evidence": { "change": "no_match" } }
+    },
+    {
+      "name": "path_exists glob: a listing past its cap",
+      "condition": { "kind": "path_exists", "glob": "packages/web/**" },
+      "tree": { "files": null },
+      "want": { "outcome": "unknown" }
+    },
+    {
+      "name": "file_contains: the identifier, as a whole word",
+      "condition": {
+        "kind": "file_contains",
+        "path": "internal/ask/config.go",
+        "text": "TierHaiku",
+        "word": true
+      },
+      "tree": {
+        "entries": {
+          "internal/ask/config.go": {
+            "type": "blob",
+            "id": "3333333333333333333333333333333333333333"
+          }
+        },
+        "texts": {
+          "internal/ask/config.go": "package ask\n\nconst TierHaikuOld = 1\nvar t = TierHaiku\n"
+        }
+      },
+      "want": { "outcome": "holds" }
+    },
+    {
+      "name": "file_contains: only inside a longer identifier is no whole word",
+      "condition": {
+        "kind": "file_contains",
+        "path": "internal/ask/config.go",
+        "text": "TierHaiku",
+        "word": true
+      },
+      "tree": {
+        "entries": {
+          "internal/ask/config.go": {
+            "type": "blob",
+            "id": "3333333333333333333333333333333333333333"
+          }
+        },
+        "texts": {
+          "internal/ask/config.go": "const TierHaiku_2 = 1\nconst MyTierHaiku = 2\n"
+        }
+      },
+      "want": {
+        "outcome": "fails",
+        "evidence": {
+          "change": "text_missing",
+          "path": "internal/ask/config.go"
+        }
+      }
+    },
+    {
+      "name": "file_contains: without word, a part of a longer identifier holds",
+      "condition": {
+        "kind": "file_contains",
+        "path": "internal/ask/config.go",
+        "text": "TierHaiku"
+      },
+      "tree": {
+        "entries": {
+          "internal/ask/config.go": {
+            "type": "blob",
+            "id": "3333333333333333333333333333333333333333"
+          }
+        },
+        "texts": { "internal/ask/config.go": "const MyTierHaiku = 2\n" }
+      },
+      "want": { "outcome": "holds" }
+    },
+    {
+      "name": "file_contains: case-sensitive",
+      "condition": {
+        "kind": "file_contains",
+        "path": "README.md",
+        "text": "Fly.io"
+      },
+      "tree": {
+        "entries": {
+          "README.md": {
+            "type": "blob",
+            "id": "4444444444444444444444444444444444444444"
+          }
+        },
+        "texts": { "README.md": "We deploy to fly.io.\n" }
+      },
+      "want": {
+        "outcome": "fails",
+        "evidence": { "change": "text_missing", "path": "README.md" }
+      }
+    },
+    {
+      "name": "file_contains: the file is gone",
+      "condition": {
+        "kind": "file_contains",
+        "path": "README.md",
+        "text": "Fly.io"
+      },
+      "tree": { "entries": { "README.md": null } },
+      "want": {
+        "outcome": "fails",
+        "evidence": { "change": "removed", "path": "README.md" }
+      }
+    },
+    {
+      "name": "file_contains: a file past the size cap",
+      "condition": {
+        "kind": "file_contains",
+        "path": "README.md",
+        "text": "Fly.io"
+      },
+      "tree": {
+        "entries": {
+          "README.md": {
+            "type": "blob",
+            "id": "4444444444444444444444444444444444444444"
+          }
+        }
+      },
+      "want": { "outcome": "unknown" }
+    },
+    {
+      "name": "file_contains: a folder where a file was",
+      "condition": {
+        "kind": "file_contains",
+        "path": "docs",
+        "text": "Fly.io"
+      },
+      "tree": {
+        "entries": {
+          "docs": {
+            "type": "tree",
+            "id": "5555555555555555555555555555555555555555"
+          }
+        }
+      },
+      "want": { "outcome": "unknown" }
+    },
+    {
+      "name": "file_unchanged: the same blob",
+      "condition": {
+        "kind": "file_unchanged",
+        "path": "docs/adr/004-queues.md",
+        "blob": "9f2c000000000000000000000000000000000000"
+      },
+      "tree": {
+        "entries": {
+          "docs/adr/004-queues.md": {
+            "type": "blob",
+            "id": "9f2c000000000000000000000000000000000000"
+          }
+        }
+      },
+      "want": { "outcome": "holds" }
+    },
+    {
+      "name": "file_unchanged: another blob",
+      "condition": {
+        "kind": "file_unchanged",
+        "path": "docs/adr/004-queues.md",
+        "blob": "9f2c000000000000000000000000000000000000"
+      },
+      "tree": {
+        "entries": {
+          "docs/adr/004-queues.md": {
+            "type": "blob",
+            "id": "1f2c000000000000000000000000000000000000"
+          }
+        }
+      },
+      "want": {
+        "outcome": "fails",
+        "evidence": {
+          "change": "blob_changed",
+          "path": "docs/adr/004-queues.md"
+        }
+      }
+    },
+    {
+      "name": "file_unchanged: a SHA-256 repository against a SHA-1 blob can't say",
+      "condition": {
+        "kind": "file_unchanged",
+        "path": "docs/adr/004-queues.md",
+        "blob": "9f2c000000000000000000000000000000000000"
+      },
+      "tree": {
+        "entries": {
+          "docs/adr/004-queues.md": {
+            "type": "blob",
+            "id": "9f2c000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      },
+      "want": { "outcome": "unknown" }
+    },
+    {
+      "name": "dep_present: go.mod requires it",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "services/api/go.mod",
+        "name": "github.com/riverqueue/river"
+      },
+      "tree": {
+        "entries": {
+          "services/api/go.mod": {
+            "type": "blob",
+            "id": "6666666666666666666666666666666666666666"
+          }
+        },
+        "texts": {
+          "services/api/go.mod": "module x\n\ngo 1.26\n\nrequire (\n\tgithub.com/riverqueue/river v0.14.2\n\tgithub.com/jackc/pgx/v5 v5.7.1 // indirect\n)\n"
+        }
+      },
+      "want": { "outcome": "holds" }
+    },
+    {
+      "name": "dep_present: go.mod no longer requires it",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "services/api/go.mod",
+        "name": "github.com/riverqueue/river"
+      },
+      "tree": {
+        "entries": {
+          "services/api/go.mod": {
+            "type": "blob",
+            "id": "6666666666666666666666666666666666666666"
+          }
+        },
+        "texts": {
+          "services/api/go.mod": "module x\n\nrequire github.com/jackc/pgx/v5 v5.7.1\n"
+        }
+      },
+      "want": {
+        "outcome": "fails",
+        "evidence": {
+          "change": "dependency_removed",
+          "path": "services/api/go.mod"
+        }
+      }
+    },
+    {
+      "name": "dep_present: the manifest is gone",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "services/api/go.mod",
+        "name": "github.com/riverqueue/river"
+      },
+      "tree": { "entries": { "services/api/go.mod": null } },
+      "want": {
+        "outcome": "fails",
+        "evidence": { "change": "removed", "path": "services/api/go.mod" }
+      }
+    },
+    {
+      "name": "dep_present: a manifest it can't parse",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "web/package.json",
+        "name": "next"
+      },
+      "tree": {
+        "entries": {
+          "web/package.json": {
+            "type": "blob",
+            "id": "7777777777777777777777777777777777777777"
+          }
+        },
+        "texts": { "web/package.json": "{ \"dependencies\": { \"next\": " }
+      },
+      "want": { "outcome": "unknown" }
+    },
+    {
+      "name": "dep_present: a range the declared constraint's lowest satisfies",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "web/package.json",
+        "name": "next",
+        "range": ">=16"
+      },
+      "tree": {
+        "entries": {
+          "web/package.json": {
+            "type": "blob",
+            "id": "7777777777777777777777777777777777777777"
+          }
+        },
+        "texts": {
+          "web/package.json": "{ \"dependencies\": { \"next\": \"^16.0.3\" } }"
+        }
+      },
+      "want": { "outcome": "holds" }
+    },
+    {
+      "name": "dep_present: a range it no longer satisfies says the constraint",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "web/package.json",
+        "name": "next",
+        "range": "^16"
+      },
+      "tree": {
+        "entries": {
+          "web/package.json": {
+            "type": "blob",
+            "id": "7777777777777777777777777777777777777777"
+          }
+        },
+        "texts": {
+          "web/package.json": "{ \"dependencies\": { \"next\": \"15.2.0\" } }"
+        }
+      },
+      "want": {
+        "outcome": "fails",
+        "evidence": {
+          "change": "constraint_changed",
+          "path": "web/package.json",
+          "constraint": "15.2.0"
+        }
+      }
+    },
+    {
+      "name": "dep_present: a constraint outside the subset can't be compared",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "web/package.json",
+        "name": "memax-sdk",
+        "range": ">=0.8"
+      },
+      "tree": {
+        "entries": {
+          "web/package.json": {
+            "type": "blob",
+            "id": "7777777777777777777777777777777777777777"
+          }
+        },
+        "texts": {
+          "web/package.json": "{ \"dependencies\": { \"memax-sdk\": \"workspace:*\" } }"
+        }
+      },
+      "want": { "outcome": "unknown" }
+    },
+    {
+      "name": "dep_present bare: any package.json, and which one held",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "package.json",
+        "name": "@tanstack/react-query"
+      },
+      "tree": {
+        "files": [
+          "package.json",
+          "packages/sdk/package.json",
+          "packages/web/package.json"
+        ],
+        "entries": {
+          "package.json": {
+            "type": "blob",
+            "id": "8888888888888888888888888888888888888881"
+          },
+          "packages/sdk/package.json": {
+            "type": "blob",
+            "id": "8888888888888888888888888888888888888882"
+          },
+          "packages/web/package.json": {
+            "type": "blob",
+            "id": "8888888888888888888888888888888888888883"
+          }
+        },
+        "texts": {
+          "package.json": "{ \"devDependencies\": { \"turbo\": \"^2\" } }",
+          "packages/sdk/package.json": "{ \"dependencies\": {} }",
+          "packages/web/package.json": "{ \"dependencies\": { \"@tanstack/react-query\": \"^5.62.0\" } }"
+        }
+      },
+      "want": { "outcome": "holds", "resolved": "packages/web/package.json" }
+    },
+    {
+      "name": "dep_present bare: none declares it, naming the one it held in",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "package.json",
+        "name": "@tanstack/react-query"
+      },
+      "prev": { "resolved": "packages/web/package.json" },
+      "tree": {
+        "files": ["package.json", "packages/web/package.json"],
+        "entries": {
+          "package.json": {
+            "type": "blob",
+            "id": "8888888888888888888888888888888888888881"
+          },
+          "packages/web/package.json": {
+            "type": "blob",
+            "id": "8888888888888888888888888888888888888884"
+          }
+        },
+        "texts": {
+          "package.json": "{ \"devDependencies\": { \"turbo\": \"^2\" } }",
+          "packages/web/package.json": "{ \"dependencies\": { \"swr\": \"^2\" } }"
+        }
+      },
+      "want": {
+        "outcome": "fails",
+        "evidence": {
+          "change": "dependency_removed",
+          "path": "packages/web/package.json"
+        }
+      }
+    },
+    {
+      "name": "dep_present bare: the manifest it held in is gone",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "package.json",
+        "name": "@tanstack/react-query"
+      },
+      "prev": { "resolved": "packages/web/package.json" },
+      "tree": {
+        "files": ["package.json"],
+        "entries": {
+          "package.json": {
+            "type": "blob",
+            "id": "8888888888888888888888888888888888888881"
+          }
+        },
+        "texts": {
+          "package.json": "{ \"devDependencies\": { \"turbo\": \"^2\" } }"
+        }
+      },
+      "want": {
+        "outcome": "fails",
+        "evidence": { "change": "removed", "path": "packages/web/package.json" }
+      }
+    },
+    {
+      "name": "dep_present bare: no manifest of that name anywhere",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "go.mod",
+        "name": "github.com/riverqueue/river"
+      },
+      "tree": { "files": ["README.md"] },
+      "want": { "outcome": "fails", "evidence": { "change": "removed" } }
+    },
+    {
+      "name": "dep_present bare: one it couldn't read, and none of the rest declares it",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "go.mod",
+        "name": "github.com/riverqueue/river"
+      },
+      "tree": {
+        "files": ["a/go.mod", "b/go.mod"],
+        "entries": {
+          "a/go.mod": {
+            "type": "blob",
+            "id": "9999999999999999999999999999999999999991"
+          },
+          "b/go.mod": {
+            "type": "blob",
+            "id": "9999999999999999999999999999999999999992"
+          }
+        },
+        "texts": { "b/go.mod": "module b\n" }
+      },
+      "want": { "outcome": "unknown" }
+    },
+    {
+      "name": "dep_present bare: a requirements file that includes another can't say it's gone",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "requirements.txt",
+        "name": "requests"
+      },
+      "tree": {
+        "files": ["requirements.txt"],
+        "entries": {
+          "requirements.txt": {
+            "type": "blob",
+            "id": "aaaa000000000000000000000000000000000000"
+          }
+        },
+        "texts": { "requirements.txt": "-r base.txt\nflask==3.0\n" }
+      },
+      "want": { "outcome": "unknown" }
+    },
+    {
+      "name": "dep_present: Python names compare as PEP 503 normalises them",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "pyproject.toml",
+        "name": "Requests_OAuthlib"
+      },
+      "tree": {
+        "files": ["pyproject.toml"],
+        "entries": {
+          "pyproject.toml": {
+            "type": "blob",
+            "id": "bbbb000000000000000000000000000000000000"
+          }
+        },
+        "texts": {
+          "pyproject.toml": "[project]\nname = \"x\"\ndependencies = [\n  \"requests-oauthlib>=1.3 ; python_version >= '3.9'\",\n]\n"
+        }
+      },
+      "want": { "outcome": "holds", "resolved": "pyproject.toml" }
+    },
+    {
+      "name": "dep_present: a Cargo dependency renamed, by its crate",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "Cargo.toml",
+        "name": "serde_json"
+      },
+      "tree": {
+        "files": ["Cargo.toml"],
+        "entries": {
+          "Cargo.toml": {
+            "type": "blob",
+            "id": "cccc000000000000000000000000000000000000"
+          }
+        },
+        "texts": {
+          "Cargo.toml": "[package]\nname = \"x\"\n\n[dependencies]\njson = { package = \"serde-json\", version = \"1\" }\n"
+        }
+      },
+      "want": { "outcome": "holds", "resolved": "Cargo.toml" }
+    },
+    {
+      "name": "evidence never names a path outside the server's form",
+      "condition": {
+        "kind": "dep_present",
+        "manifest": "go.mod",
+        "name": "github.com/riverqueue/river"
+      },
+      "prev": { "resolved": "my service/go.mod" },
+      "tree": { "files": [] },
+      "want": { "outcome": "fails", "evidence": { "change": "removed" } }
+    }
+  ]
+}

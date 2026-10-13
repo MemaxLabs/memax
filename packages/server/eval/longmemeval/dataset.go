@@ -23,15 +23,15 @@ import (
 
 // Entry represents a single benchmark question with its associated haystack.
 type Entry struct {
-	QuestionID        string       `json:"question_id"`
-	QuestionType      string       `json:"question_type"`
-	Question          string       `json:"question"`
-	Answer            FlexString   `json:"answer"` // string or number in the dataset
-	QuestionDate      string       `json:"question_date"`
-	HaystackDates     []string     `json:"haystack_dates"`
-	HaystackSessionIDs []string    `json:"haystack_session_ids"`
-	HaystackSessions  [][]Turn     `json:"haystack_sessions"`
-	AnswerSessionIDs  []string     `json:"answer_session_ids"`
+	QuestionID         string     `json:"question_id"`
+	QuestionType       string     `json:"question_type"`
+	Question           string     `json:"question"`
+	Answer             FlexString `json:"answer"` // string or number in the dataset
+	QuestionDate       string     `json:"question_date"`
+	HaystackDates      []string   `json:"haystack_dates"`
+	HaystackSessionIDs []string   `json:"haystack_session_ids"`
+	HaystackSessions   [][]Turn   `json:"haystack_sessions"`
+	AnswerSessionIDs   []string   `json:"answer_session_ids"`
 }
 
 // FlexString handles JSON fields that can be either a string or a number.

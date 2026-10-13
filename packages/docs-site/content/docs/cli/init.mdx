@@ -20,8 +20,8 @@ The binary is `memax`, so once the CLI is installed it's `memax init`.
 
 ```bash
 memax init [--space <slug>] [--yes] [--no-personal] [--no-connect]
-           [--no-daemon] [--dry-run] [--wait <seconds>] [--timing]
-           [--format text|json] [--device]
+           [--no-daemon] [--home | --no-home] [--dry-run] [--wait <seconds>]
+           [--timing] [--format text|json] [--device]
 ```
 
 | Flag               | Description                                                                                                |
@@ -31,6 +31,8 @@ memax init [--space <slug>] [--yes] [--no-personal] [--no-connect]
 | `--no-personal`    | Leave machine-local memory (`~/.claude`, `~/.codex`, `~/.gemini`) where it is.                             |
 | `--no-connect`     | Don't write the agents' MCP settings or hooks.                                                             |
 | `--no-daemon`      | Write the files once instead of starting [the daemon](/cli/daemon).                                        |
+| `--home`           | Link this machine's home to your Personal space too; with `--yes`, without asking.                        |
+| `--no-home`        | Don't offer the home link.                                                                                 |
 | `--dry-run`        | Show what would be uploaded, and upload nothing.                                                           |
 | `--wait <seconds>` | How long to wait for the judge (default 20).                                                               |
 | `--timing`         | Show how long each step took, against its budget.                                                          |
@@ -89,7 +91,11 @@ memax init [--space <slug>] [--yes] [--no-personal] [--no-connect]
 5. **Upload.** The repository's statements go to the project space, and
    machine-local memory to your Personal space (it asks first). Every
    statement arrives as a **proposal**, never kept, with its file and line
-   as its source.
+   as its source. This repository's own notes, `CLAUDE.local.md` and
+   Claude Code's auto memory for it, go to Personal tied to the repository
+   (`scope.repos`, its `owner/name`), so they apply there and not in every
+   project; a memory's page can widen one to everywhere. A repository with
+   no remote leaves those two where they are.
 6. **The judge.** Statements the space already has are skipped, and the
    same statement in two files becomes one proposal with both sources. The
    judge compares each proposal with what the space keeps, and checks the
@@ -99,11 +105,18 @@ memax init [--space <slug>] [--yes] [--no-personal] [--no-connect]
    where each came from. Pick the one that holds, keep them all, or leave it
    for Review. Then it offers to keep, in one go, the statements from your
    own files that agree with everything (below).
-8. **Compile.** The space gets its targets (AGENTS.md, CLAUDE.md, scoped
-   Cursor rules, the ChatGPT copy-out), the repository is
-   [linked](/cli/link), and the daemon (or init itself, with `--no-daemon`)
-   writes them. It ends with `git status` for those files and three next
-   steps. A `GEMINI.md` isn't among them: Antigravity CLI reads AGENTS.md,
+   Then it offers the [home link](/concepts/personal-layer): your Personal
+   space in this machine's agents' own files, read in every project, with
+   the consent `memax link --home` shows. `--yes` never links it unless
+   you also pass `--home`. Outside a repository, it's the first file init
+   gives.
+8. **Compile.** The space gets its targets (AGENTS.md, CLAUDE.md, the
+   ChatGPT copy-out), the repository is [linked](/cli/link), and the
+   daemon (or init itself, with `--no-daemon`) writes them. It ends with
+   `git status` for those files and three next steps. Path-scoped facts
+   go in AGENTS.md under headings that name their paths, so each agent
+   reads them once; scoped rules files are opt-in. A `GEMINI.md` isn't
+   among them either: Antigravity CLI reads AGENTS.md,
    and for Gemini CLI, [`memax connect gemini --gemini-md`](/cli/connect)
    adds one.
 

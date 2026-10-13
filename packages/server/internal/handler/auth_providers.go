@@ -1103,6 +1103,11 @@ func (h *AuthHandler) LinkProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Linking is a way into the account: an API key, an agent or an
+	// operator impersonating could otherwise add their own GitHub to it.
+	if refuseUnlessPerson(w, r, true, "link a sign-in method") {
+		return
+	}
 	// A person with a passkey links in Settings › Account, where the
 	// change can ask for it.
 	if h.refuseLinkForPasskey(w, r, userID) {
@@ -1170,6 +1175,9 @@ func (h *AuthHandler) UnlinkProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if refuseUnlessPerson(w, r, true, "unlink a sign-in method") {
+		return
+	}
 	if h.refuseLinkForPasskey(w, r, userID) {
 		return
 	}
@@ -1189,6 +1197,9 @@ func (h *AuthHandler) ListIdentities(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
 			Error: &model.Error{Code: "unauthorized", Message: "Authentication required."},
 		})
+		return
+	}
+	if refuseUnlessPerson(w, r, false, "list sign-in methods") {
 		return
 	}
 

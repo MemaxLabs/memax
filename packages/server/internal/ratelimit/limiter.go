@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -160,6 +161,7 @@ const (
 	OpClassHeavy    OpClass = "heavy"    // recall, push, ask — embedding, rerank, LLM
 	OpClassLight    OpClass = "light"    // get, list, topics, forget; every /v2 write
 	OpClassV2Read   OpClass = "v2_read"  // every /v2 GET and HEAD (v2ReadMultiplier × light)
+	OpClassV2Start  OpClass = "v2_start" // a cloud session start: /v2 reads' rate, a bucket per credential
 	OpClassMetadata OpClass = "metadata" // hubs, hub_members
 	OpClassNone     OpClass = ""         // not rate-limited (auth, settings, etc.)
 )
@@ -179,6 +181,8 @@ func ClassifyRequest(method, path string) OpClass {
 		return OpClassHeavy
 	case method == "GET" && (path == "/v1/hubs" || startsWithPrefix(path, "/v1/hubs/")):
 		return OpClassMetadata
+	case method == "POST" && isV2SessionStart(path):
+		return OpClassV2Start
 	case isV2Read(method, path):
 		return OpClassV2Read
 	case isLightDataPlane(method, path):
@@ -216,6 +220,16 @@ func isUnmeteredControlPlane(path string) bool {
 // allows. /v1 is frozen and keeps its classes.
 func isV2Read(method, path string) bool {
 	return (method == "GET" || method == "HEAD") && startsWithPrefix(path, "/v2/")
+}
+
+// isV2SessionStart reports whether path is a cloud session start (POST
+// /v2/spaces/{space}/session-starts): a read, with its own bucket per
+// credential, so a busy repository's cloud jobs never use up the person's
+// own reads and writes (cloud warm-start design §11).
+func isV2SessionStart(path string) bool {
+	rest, ok := strings.CutPrefix(path, "/v2/spaces/")
+	space, tail, _ := strings.Cut(rest, "/")
+	return ok && space != "" && tail == "session-starts"
 }
 
 func isLightDataPlane(method, path string) bool {

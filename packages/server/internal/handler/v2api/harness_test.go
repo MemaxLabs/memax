@@ -109,8 +109,11 @@ type env struct {
 	ledger *ledger.Ledger
 	h      *v2api.Handler
 	srv    http.Handler
-	svc    *compile.Service
-	store  *mockobjectstore.Store
+	// raw is srv without the spec's checks, for requests no operation
+	// describes (a start key on every route).
+	raw   http.Handler
+	svc   *compile.Service
+	store *mockobjectstore.Store
 	// st is the V1 store over the same database (the auth handler's).
 	st store.Store
 	// server is the real HTTP server live requests go to, made on first use.
@@ -145,7 +148,8 @@ func newEnvOn(t *testing.T, db *testdb.DB, more func(*env) []v2api.Option, ledge
 	// The chain serverapp.authChain builds, minus the Redis-backed rate
 	// limiter and meter (both pass /v2 through when unset).
 	chain := func(h http.Handler) http.Handler {
-		return handler.RequireAuth([]byte(testSecret), authH.ResolveAPIKey, authH.ResolveOAuthGrant)(
+		return handler.RequireAuth([]byte(testSecret), authH.ResolveAPIKey, authH.ResolveOAuthGrant,
+			handler.WithStartKeys(authH.ResolveStartKey), handler.WithCredentialPrefetch(authH))(
 			handler.HubContext(st)(handler.AuthorizeHTTP(h)))
 	}
 	jobs, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Logger: quiet})
@@ -161,7 +165,7 @@ func newEnvOn(t *testing.T, db *testdb.DB, more func(*env) []v2api.Option, ledge
 	// database goes away (cleanups run last-registered first).
 	t.Cleanup(h.Wait)
 	h.Mount(mux, chain)
-	e.h, e.srv = h, spec.Handler(t, mux)
+	e.h, e.srv, e.raw = h, spec.Handler(t, mux), mux
 	return e
 }
 
@@ -230,8 +234,18 @@ type space struct {
 }
 
 // space creates a hub of the given V2 kind with its owner's membership,
-// as V1 does.
+// as V1 does, on the V2 record (hubs.v2_enabled_at), as POST /v2/spaces
+// makes one.
 func (e *env) space(owner uuid.UUID, kind policy.SpaceKind, name string) space {
+	e.t.Helper()
+	sp := e.v1Space(owner, kind, name)
+	e.exec(`UPDATE hubs SET v2_enabled_at = now() WHERE id = $1`, sp.id)
+	return sp
+}
+
+// v1Space is space still on V1: V1 serves it, and its V2 record takes
+// nothing new until its owner switches it (policy.CodeSpaceOnV1).
+func (e *env) v1Space(owner uuid.UUID, kind policy.SpaceKind, name string) space {
 	e.t.Helper()
 	id := uuid.New()
 	hubType := "team"

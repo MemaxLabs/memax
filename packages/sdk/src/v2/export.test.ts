@@ -71,6 +71,69 @@ function keyOf(files: Map<string, Uint8Array>): V2.SigningKey[] {
   return JSON.parse(text(files, "checkpoints.json")).keys;
 }
 
+// The personal golden (personal-layer design §5.5): a Personal space whose
+// home files are on two machines, one unlinked since.
+const personalGolden = fileURLToPath(
+  new URL("./testdata/export-v1/personal", import.meta.url),
+);
+
+describe("the export of a Personal space with home files", () => {
+  const files = load(personalGolden);
+
+  it("reads each home file's root and machine, and the machines' receipts", () => {
+    const p = parseExport(files);
+    expect(p.manifest.space.slug).toBe("personal");
+    const targets = p.targets as Array<{
+      root?: string;
+      label: string;
+      machine?: {
+        label: string;
+        name: string;
+        platform: string;
+        linked_at: string;
+        unlinked_at?: string;
+      };
+    }>;
+    expect(
+      targets.map((t) => [
+        t.root,
+        t.label,
+        t.machine?.name,
+        t.machine?.platform,
+        !!t.machine?.unlinked_at,
+      ]),
+    ).toEqual([
+      [
+        "home",
+        "~/.claude/rules/memax-personal.md",
+        "work-mbp",
+        "darwin",
+        false,
+      ],
+      ["home", "~/.codex/AGENTS.md", "home-linux", "linux", true],
+    ]);
+    const actions = text(files, "receipts.jsonl")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { object_kind: string; action: string });
+    expect(
+      actions.filter((r) => r.object_kind === "machine").map((r) => r.action),
+    ).toEqual(["linked", "linked", "unlinked"]);
+  });
+
+  it("verifies, as any export does", async () => {
+    const r = await verifyExport({ files, keys: keyOf(files) });
+    expect(r.problems).toEqual([]);
+    expect(r).toMatchObject({
+      ok: true,
+      space: { slug: "personal" },
+      sealed: { receipts: 9, checkpoints: 1 },
+      unsealed: { receipts: 3 },
+      records: { memories: 2, tombstones: 0, briefs: 1 },
+    });
+  });
+});
+
 describe("the export format, memax.export.v1", () => {
   const files = load(golden);
 

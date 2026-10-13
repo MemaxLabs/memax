@@ -77,7 +77,11 @@ export function extractManagedBlock(content: string): string | null {
 
 /**
  * Writes `inner` (lines, without markers) as the managed block: in place if
- * the file has one, otherwise appended after a blank line.
+ * the file has one, otherwise appended at the end. A file that ends with a
+ * line break gets the block right after its last line. One that doesn't
+ * gets the line break the block needs and none after the end marker, so
+ * removeManagedBlock can take that line break out again: adding the block
+ * and taking it out gives back the same bytes.
  */
 export function upsertManagedBlock(content: string, inner: string[]): string {
   const lines = splitKeep(content);
@@ -97,36 +101,28 @@ export function upsertManagedBlock(content: string, inner: string[]): string {
     return before + block.join(eol) + lines[at.end].eol + after;
   }
   if (content === "") return block.join(eol) + eol;
-  // End the last line, then leave a blank one before the block. Look at
-  // the lines, not the last characters: `\r\n` is one line break, not two.
-  const last = lines[lines.length - 1];
-  let out = content;
-  if (last.eol === "") out += eol;
-  if (last.text !== "") out += eol;
-  return out + block.join(eol) + eol;
+  // Look at the lines, not the last characters: `\r\n` is one line break.
+  if (lines[lines.length - 1].eol === "")
+    return content + eol + block.join(eol);
+  return content + block.join(eol) + eol;
 }
 
 /**
- * Removes the managed block, and the blank line adding it put before it,
- * leaving everything else exactly as it was.
+ * Removes the managed block, leaving everything else exactly as it was.
  *
- * Adding a block to a file whose last line isn't blank leaves a blank line
- * before it (upsertManagedBlock), so that line goes with the block: an
- * empty line right after a line with text. A blank line the person left
- * there looks the same and goes too; any other blank line stays.
+ * A block that ends the file with no line break after its end marker was
+ * added to a file that had no final line break (upsertManagedBlock), so
+ * the line break before the block goes with it. Every other byte outside
+ * the markers stays, blank lines included.
  */
 export function removeManagedBlock(content: string): string {
   const lines = splitKeep(content);
   const at = locate(lines);
   if (!at) return content;
-  let start = at.start;
-  if (
-    start >= 2 &&
-    lines[start - 1].text === "" &&
-    lines[start - 2].text !== ""
-  )
-    start -= 1;
-  return [...lines.slice(0, start), ...lines.slice(at.end + 1)]
-    .map((l) => l.text + l.eol)
-    .join("");
+  const kept = [...lines.slice(0, at.start), ...lines.slice(at.end + 1)];
+  const last = at.end === lines.length - 1 && lines[at.end].eol === "";
+  if (last && at.start > 0) {
+    kept[at.start - 1] = { text: kept[at.start - 1].text, eol: "" };
+  }
+  return kept.map((l) => l.text + l.eol).join("");
 }

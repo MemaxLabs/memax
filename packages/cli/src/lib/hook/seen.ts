@@ -34,6 +34,10 @@ export interface Seen {
   gates: string[];
   /** Compiles already told as not on disk yet. */
   behind: string[];
+  /** Stale memories already told as being verified (`ref@since`). */
+  verifying?: string[];
+  /** Branch hints already told (branch, memory, condition, change). */
+  hints?: string[];
 }
 
 const KEEP = 200;
@@ -78,6 +82,8 @@ export function writeSeen(path: string, dir: string, seen: Seen): void {
     forgotten: seen.forgotten.slice(0, KEEP),
     gates: seen.gates.slice(0, KEEP),
     behind: seen.behind.slice(0, 20),
+    ...(seen.verifying ? { verifying: seen.verifying.slice(0, KEEP) } : {}),
+    ...(seen.hints ? { hints: seen.hints.slice(0, KEEP) } : {}),
   };
   const tmp = `${path}.${uniqueName()}.tmp`;
   try {

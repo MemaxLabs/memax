@@ -16,11 +16,16 @@
  * the session started, say when `memax init` made the person's first
  * space): the sign-in page reads the profile, which sets the hint, and
  * goes on to `next` for a person with the flag or to V1's home for one
- * without. A short-lived marker (UI_RECHECK_COOKIE) makes that at most
- * once a minute, so a hint that can't be set never loops. V1 paths are
- * never touched. src/proxy.ts applies the decision, and its static
- * `config.matcher` must cover every V2 path listed here (proxy.test.ts
- * checks that).
+ * without. The other way round, a browser with the hint that opens V1's
+ * home (/home, or a signed-in browser's / and /login, which V1 sends
+ * there) goes to its V2 landing instead (V2_LANDING_PATH), so a person
+ * whose flag turned on while they were in V1 reaches V2 the next time
+ * they open the app. A short-lived marker (UI_RECHECK_COOKIE) makes each
+ * of those trips at most once a minute, so a hint that can't be set
+ * never loops. Every other V1 path (a hub, V1's settings, the admin
+ * pages) is never touched. src/proxy.ts applies the decision, and its
+ * static `config.matcher` must cover every path listed here
+ * (proxy.test.ts checks that).
  *
  * Pure and dependency-free: it runs in the proxy on every matched
  * request.
@@ -30,16 +35,47 @@ export const UI_COOKIE = "memax_ui";
 export const UI_COOKIE_V2 = "v2";
 
 /**
- * The re-check marker: set by the proxy when it sends a signed-in
- * browser without the hint to /signin to read its flag again, for
- * UI_RECHECK_SECONDS. While it is there, a V2 path without the hint goes
- * to the V1 home instead. Not a secret, and nothing else reads it.
+ * The re-check marker: set by the proxy when it sends a browser to
+ * /signin to read its flag again (a signed-in one without the hint on a
+ * V2 path, or one with the hint on V1's home), for UI_RECHECK_SECONDS.
+ * While it is there, a V2 path without the hint goes to the V1 home, and
+ * V1's home opens as it is. Not a secret, and nothing else reads it.
  */
 export const UI_RECHECK_COOKIE = "memax_ui_check";
 export const UI_RECHECK_SECONDS = 60;
 
+/**
+ * The public site (plan 25 epic 3.4, §6.9): Landing, Pricing, Security
+ * and Docs, static pages in (ledger)/(public). They are anyone's to read,
+ * so they open for every browser, the hint or not (V2_OPEN_AREAS).
+ */
+export const PUBLIC_AREAS = ["welcome", "pricing", "security", "docs"] as const;
+
+/**
+ * Where the Landing lives. V1's landing keeps "/" until a founder decides
+ * otherwise; the new one is at /welcome.
+ *
+ * To serve it at "/" for signed-out visitors, set LANDING_AT_ROOT to
+ * true. That one line is the whole switch: the proxy then rewrites a
+ * signed-out "/" to /welcome (the address bar keeps "/", and a signed-in
+ * "/" still goes to the person's home), and LANDING_HREF, which the
+ * public pages use for "Memax home", "Product" and the Landing's
+ * canonical URL, becomes "/". /welcome keeps answering, with "/" as its
+ * canonical address.
+ */
+export const LANDING_AT_ROOT = false;
+export const LANDING_PAGE = "/welcome";
+export const LANDING_HREF = LANDING_AT_ROOT ? "/" : LANDING_PAGE;
+
 /** Top-level areas that are V2 in full, with any sub-path (§6.3). */
-const V2_AREAS = new Set(["signin", "device", "unsubscribe", "setup", "join"]);
+const V2_AREAS = new Set<string>([
+  "signin",
+  "device",
+  "unsubscribe",
+  "setup",
+  "join",
+  ...PUBLIC_AREAS,
+]);
 
 /**
  * V2 areas that open without the opt-in. The memax CLI sends anyone to
@@ -48,8 +84,14 @@ const V2_AREAS = new Set(["signin", "device", "unsubscribe", "setup", "join"]);
  * way there goes through /signin (and /signin/callback). Dream's morning
  * email links to /unsubscribe, which needs no sign-in at all. None shows
  * a space: once signed in, a browser without the opt-in lands back in V1.
+ * The public site is open to anyone, signed in or not.
  */
-const V2_OPEN_AREAS = new Set(["signin", "device", "unsubscribe"]);
+const V2_OPEN_AREAS = new Set<string>([
+  "signin",
+  "device",
+  "unsubscribe",
+  ...PUBLIC_AREAS,
+]);
 
 /**
  * OAuthConsent, the Ledger page where a person lets an outside agent (an
@@ -144,6 +186,8 @@ export const RESERVED_SPACE_SLUGS: ReadonlySet<string> = new Set([
   "admin",
   "api",
   "h",
+  // The public site's Landing, until it moves to "/" (LANDING_AT_ROOT)
+  "welcome",
   // V1 top-level routes, until cutover
   "agents",
   "auth",
@@ -221,6 +265,42 @@ export function v1HomePath(hasSession: boolean): string {
 }
 
 /**
+ * V1's signed-out entry pages: a browser with a session skips them for
+ * V1's home, unless the request carries a query (/login?returnTo=…, an
+ * OAuth error), which is flow state the home knows nothing about. The
+ * proxy's session fast path; /register isn't one, since an invite link
+ * (/register?invite=…) must reach its page.
+ */
+export const V1_ENTRY_PATHS: ReadonlySet<string> = new Set(["/", "/login"]);
+
+/**
+ * Where a person who sees V2 starts instead of V1's home: the sign-in
+ * page, which signs them in if they need to and otherwise lands them by
+ * their V2 UI flag (lib/v2/onboarding/routes.ts: FirstRun, an import in
+ * progress, the switch of a space still on V1, or a space's Today). The
+ * profile read it lands with also keeps the hint in step, so a stale
+ * hint ends there: someone without the flag goes on to V1's home.
+ */
+export const V2_LANDING_PATH = "/signin";
+
+/**
+ * Whether a request opens V1's home: /home itself, or an entry page a
+ * signed-in browser skips for it (V1_ENTRY_PATHS).
+ */
+export function opensV1Home({
+  pathname,
+  search,
+  hasSession,
+}: {
+  pathname: string;
+  search: string;
+  hasSession: boolean;
+}): boolean {
+  if (pathname === v1HomePath(true)) return true;
+  return hasSession && search === "" && V1_ENTRY_PATHS.has(pathname);
+}
+
+/**
  * The dev toggle, /dev/ui?v=2|1[&next=/path]: which UI to switch to and
  * where to land. `next` must be a same-origin path; anything else falls
  * back to the default for that UI. Returns null for a missing or
@@ -263,6 +343,8 @@ export function needsV2Opt(path: string): boolean {
 
 export type UiGateDecision =
   | { action: "continue" }
+  /** Serve another page at this address (the Landing at "/"). */
+  | { action: "rewrite"; pathname: string }
   | {
       action: "redirect";
       pathname: string;
@@ -280,6 +362,7 @@ export function decideUiGate({
   uiCookie,
   hasSession,
   rechecked = false,
+  landingAtRoot = LANDING_AT_ROOT,
 }: {
   pathname: string;
   /** The request's query string, "?…" or "". */
@@ -288,10 +371,17 @@ export function decideUiGate({
   hasSession: boolean;
   /** The re-check marker is there: this browser was re-checked a moment ago. */
   rechecked?: boolean;
+  /** Whether "/" serves the public Landing to signed-out visitors (LANDING_AT_ROOT). */
+  landingAtRoot?: boolean;
 }): UiGateDecision {
   const v2Page = v2PageFor(pathname);
   if (v2Page !== null) {
     return { action: "redirect", pathname: v2Page, keepQuery: true };
+  }
+  if (landingAtRoot && pathname === "/" && !hasSession) {
+    // Signed out, "/" is the public Landing; signed in, it stays the way
+    // to the person's home (the proxy's session fast path, below).
+    return { action: "rewrite", pathname: LANDING_PAGE };
   }
   const bare = bareSpaceSlug(pathname);
   if (bare !== null) {
@@ -299,6 +389,17 @@ export function decideUiGate({
     return hasV2Opt(uiCookie)
       ? { action: "redirect", pathname: `/${bare}/today` }
       : { action: "continue" };
+  }
+  if (hasV2Opt(uiCookie) && opensV1Home({ pathname, search, hasSession })) {
+    // V1's home, for a person who sees V2: their V2 landing, which reads
+    // the flag again on the way. Re-checked a moment ago, the flag didn't
+    // land them in V2 after all (or the hint can't be cleared), so V1's
+    // home opens as it is, never a loop. The marker goes on signed out
+    // too: the sign-in page then asks them to sign in, and lands them by
+    // their flag after.
+    return rechecked
+      ? { action: "continue" }
+      : { action: "redirect", pathname: V2_LANDING_PATH, recheck: true };
   }
   if (!isV2Path(pathname) || hasV2Opt(uiCookie) || isOpenV2Path(pathname)) {
     return { action: "continue" };

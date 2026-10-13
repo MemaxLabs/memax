@@ -81,7 +81,9 @@ type briefRow struct {
 	seq           int64
 }
 
-// lockBrief locks the space's Brief, or returns nil when it has none.
+// lockBrief locks the space's Brief, or returns nil when it has none. FOR
+// NO KEY UPDATE, so a compile run naming the Brief (its foreign key's FOR
+// KEY SHARE) never waits on a command that holds it (locks.go).
 func lockBrief(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (*briefRow, error) {
 	var b briefRow
 	err := tx.QueryRow(ctx, `
@@ -89,7 +91,7 @@ func lockBrief(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (*briefRow, er
 		  FROM v2.briefs b
 		  JOIN v2.brief_versions v ON v.brief_id = b.id AND v.version = b.current_version
 		 WHERE b.space_id = $1
-		   FOR UPDATE OF b`, spaceID).Scan(&b.id, &b.version, &b.streamVersion, &b.seq)
+		   FOR NO KEY UPDATE OF b`, spaceID).Scan(&b.id, &b.version, &b.streamVersion, &b.seq)
 	if errNoRows(err) {
 		return nil, nil
 	}
@@ -135,26 +137,34 @@ func attachBriefReceipts(ctx context.Context, tx pgx.Tx, scope Scope, briefs []*
 // ---------------------------------------------------------------------
 
 const targetSelect = `
-	SELECT t.id, t.tenant_id, t.space_id, t.kind, COALESCE(t.path, ''), t.settings, t.delivery, t.sync_state,
+	SELECT t.id, t.tenant_id, t.space_id, t.kind, t.root, t.machine_id, mc.seq, mc.name, COALESCE(t.path, ''),
+	       t.settings, t.delivery, t.sync_state,
 	       t.dirty_gen, t.dirty_at, t.compiled_gen, t.last_compile_id, t.delivered_compile_id,
 	       COALESCE(t.delivered_sha256, ''), t.delivered_files, t.delivered_at, t.stream_version,
 	       t.created_receipt_id, t.last_receipt_id, t.created_at, t.updated_at,
 	       (SELECT count(*) FROM v2.target_observations o WHERE o.target_id = t.id AND o.status = 'open')
-	  FROM v2.targets t`
+	  FROM v2.targets t
+	  LEFT JOIN v2.machines mc ON mc.id = t.machine_id AND mc.space_id = t.space_id`
 
 func scanTarget(row pgx.Row) (*Target, error) {
 	var t Target
 	var settings, files []byte
-	var deliveredID *uuid.UUID
+	var deliveredID, machineID *uuid.UUID
+	var machineSeq *int
+	var machineName *string
 	var deliveredSHA string
 	var deliveredAt *time.Time
-	if err := row.Scan(&t.ID, &t.TenantID, &t.SpaceID, &t.Kind, &t.Path, &settings, &t.Delivery, &t.SyncState,
+	if err := row.Scan(&t.ID, &t.TenantID, &t.SpaceID, &t.Kind, &t.Root, &machineID, &machineSeq, &machineName,
+		&t.Path, &settings, &t.Delivery, &t.SyncState,
 		&t.DirtyGen, &t.DirtyAt, &t.CompiledGen, &t.lastCompileID, &deliveredID,
 		&deliveredSHA, &files, &deliveredAt, &t.Version,
 		&t.CreatedReceiptID, &t.LastReceiptID, &t.CreatedAt, &t.UpdatedAt, &t.OpenDrift); err != nil {
 		return nil, err
 	}
-	t.Label = targetLabel(t.Kind, t.Path)
+	if machineID != nil && machineSeq != nil && machineName != nil {
+		t.Machine = &TargetMachine{ID: *machineID, Label: machineLabel(*machineSeq), Name: *machineName}
+	}
+	t.Label = targetLabelAt(t.Root, t.Kind, t.Path)
 	if err := json.Unmarshal(settings, &t.Settings); err != nil {
 		return nil, fmt.Errorf("ledger: target %s settings: %w", t.ID, err)
 	}
@@ -176,7 +186,7 @@ func scanTarget(row pgx.Row) (*Target, error) {
 func loadTarget(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, lock bool) (*Target, error) {
 	q := targetSelect + ` WHERE t.id = $1 AND t.space_id = ANY($2)`
 	if lock {
-		q += ` FOR UPDATE OF t`
+		q += ` ` + lockWrite + ` OF t`
 	}
 	t, err := scanTarget(tx.QueryRow(ctx, q, id, scope.SpaceIDs()))
 	if errNoRows(err) {
@@ -235,18 +245,28 @@ func fillRuns(ctx context.Context, tx pgx.Tx, scope Scope, targets []*Target) er
 	return nil
 }
 
-// targetLabel is what people see for a target.
+// targetLabel is what people see for a repository target.
 func targetLabel(k TargetKind, path string) string {
-	if k == TargetChatGPT {
+	return targetLabelAt(RootRepo, k, path)
+}
+
+// targetLabelAt is what people see for a target: its path, with ~/ before
+// a home path, or "ChatGPT project".
+func targetLabelAt(root TargetRoot, k TargetKind, path string) string {
+	switch {
+	case k == TargetChatGPT:
 		return "ChatGPT project"
+	case root == RootHome:
+		return "~/" + path
 	}
 	return path
 }
 
 // targetRef is the receipts' object_ref for a target: its label, cut
-// from the left to the 32 characters a receipt's ref holds.
+// from the left to the 32 characters a receipt's ref holds. A home
+// target's ref is its path, never its machine's name.
 func targetRef(t *Target) string {
-	label := targetLabel(t.Kind, t.Path)
+	label := targetLabelAt(t.Root, t.Kind, t.Path)
 	if utf8.RuneCountInString(label) <= 32 {
 		return label
 	}

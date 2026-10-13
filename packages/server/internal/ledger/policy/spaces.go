@@ -6,34 +6,41 @@ import "fmt"
 // to the V2 record. A space isn't part of its own record, so neither
 // writes a receipt; both are people's decisions, never an agent's.
 
-// MaxOwnedProjectSpaces is how many project spaces one person may own. It
-// is a fair-use limit during the free alpha, not a plan limit (D9 plan
-// limits wait for V2 billing, as the Ask limit does).
+// MaxOwnedProjectSpaces is how many project spaces one person may own on
+// any plan: a fair-use limit, not a plan's (D9: Free owns one, Pro as many
+// as they like; plans.go).
 const MaxOwnedProjectSpaces = 50
 
 // The space decision codes; all refusals.
 const (
-	CodeSpaceByPerson = "space_by_person" // agents and API keys don't create or switch spaces
-	CodeSpaceKind     = "space_kind"      // only project spaces are created here
-	CodeSpaceLimit    = "space_limit"     // MaxOwnedProjectSpaces reached
-	CodeSwitchByOwner = "switch_by_owner" // only a space's owner switches it
+	CodeSpaceByPerson  = "space_by_person" // agents and API keys don't create or switch spaces
+	CodeSpaceKind      = "space_kind"      // only project spaces are created here; team spaces come with Team
+	CodePersonalExists = "personal_exists" // each person has one personal space, made with their account
+	CodeSpaceLimit     = "space_limit"     // the plan's project spaces (or MaxOwnedProjectSpaces) are owned
+	CodeSwitchByOwner  = "switch_by_owner" // only a space's owner switches it
 )
 
 // DecideCreateSpace decides whether the actor may create a space of this
 // kind, owning `owned` project spaces already. Only a signed-in person
 // creates spaces, and here only project spaces: each person has one
 // personal space, made at sign-up, and team spaces come with Team (Phase
-// 4).
+// 4). Their plan (Actor.Plan) bounds how many they own, when enforced.
 func DecideCreateSpace(a Actor, kind SpaceKind, owned int) Decision {
 	if a.Kind != ActorPerson || a.Credential != CredentialSession {
 		return refuse(CodeSpaceByPerson, "Only a person creates spaces. Sign in with memax login, or create it on the web.")
 	}
+	if kind == SpacePersonal {
+		return refuse(CodePersonalExists, "You have a personal space already: each person has one, made with their account.")
+	}
 	if kind != SpaceProject {
-		return refuse(CodeSpaceKind, "Only project spaces can be created here. Your personal space already exists, and team spaces come with Team.")
+		return refuse(CodeSpaceKind, "Only project spaces can be created here. Team spaces come with Team.")
+	}
+	if d := spaceLimit(a.Plan, owned); d != nil {
+		return *d
 	}
 	if owned >= MaxOwnedProjectSpaces {
 		return refuse(CodeSpaceLimit, fmt.Sprintf(
-			"You own %d project spaces, the most one person can during the alpha. Use one of them with --space.", MaxOwnedProjectSpaces))
+			"You own %d project spaces, the most one person can. Use one of them with --space.", MaxOwnedProjectSpaces))
 	}
 	return apply()
 }

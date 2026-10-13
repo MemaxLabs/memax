@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { hostname } from "node:os";
 import { getActiveHubID, loadConfig, setActiveHubID } from "../lib/config.js";
 import { getClient, getPublicClient, resetClient } from "../lib/client.js";
-import { saveCredentials } from "../lib/credentials.js";
+import { saveCredentials, tokenSubject } from "../lib/credentials.js";
 import {
   canOpenBrowser,
   deviceLoginFailure,
@@ -87,6 +87,26 @@ export async function signInWithDevice(
 
 /** Saves a new session and picks the personal hub for V1 commands. */
 async function finishSignIn(tokens: TokenPair): Promise<void> {
+  // Someone other than the person this machine's home is linked for: their
+  // Personal space comes off it before anything else, or the next account
+  // would have it in every agent's files.
+  const [{ homeSwitchedPerson }, { openOneShot }, { daemonPaths }] =
+    await Promise.all([
+      import("./link-home.js"),
+      import("./compile.js"),
+      import("../lib/daemon/paths.js"),
+    ]);
+  const paths = daemonPaths();
+  await homeSwitchedPerson(tokenSubject(tokens.access_token), {
+    paths,
+    out: (l) => console.log(l),
+    oneShot: () => openOneShot({ memax: getClient(), paths }),
+    env: process.env,
+  }).catch((err: Error) =>
+    console.log(
+      `  Couldn't take the previous account's Personal space off this machine's home: ${err.message}. Run memax unlink --home.`,
+    ),
+  );
   saveCredentials({
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
@@ -267,6 +287,23 @@ export async function logoutCommand(): Promise<void> {
   }
   clearCredentials();
   resetClient();
+  // Signing this machine out takes the Personal layer off it.
+  const [{ homeSignedOut }, { openOneShot }, { daemonPaths }] =
+    await Promise.all([
+      import("./link-home.js"),
+      import("./compile.js"),
+      import("../lib/daemon/paths.js"),
+    ]);
+  const paths = daemonPaths();
+  await homeSignedOut({
+    paths,
+    out: (l) => console.log(l),
+    oneShot: () => openOneShot({ memax: getClient(), paths }),
+  }).catch((err: Error) =>
+    console.log(
+      `  Couldn't take your Personal space off this machine's home: ${err.message}. Run memax unlink --home.`,
+    ),
+  );
   if (token && !signedOut) {
     console.log(
       "  Logged out here. Memax couldn't be reached to end the session, so it lasts until it expires; sign it out in Settings on memax.app.\n",

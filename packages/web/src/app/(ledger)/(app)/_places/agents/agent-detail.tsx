@@ -5,7 +5,12 @@ import { useParams } from "next/navigation";
 import { AgentStamp, Button, Icon, Kbd, useLedger } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
 import { joinSentences } from "@/lib/v2/copy";
-import { autonomyIn, type AgentDetailView } from "@/lib/v2/data/agents";
+import {
+  autonomyIn,
+  isStartKeyAgent,
+  type AgentDetailView,
+  type StartKeyView,
+} from "@/lib/v2/data/agents";
 import type { SpaceSummary } from "@/lib/v2/data/types";
 import { placeHref } from "@/lib/v2/places";
 import { StatusPage } from "../../../_components/status-page";
@@ -15,13 +20,15 @@ import { PlaceColumn, usePlace } from "../place";
 import {
   CompilesPanel,
   ConnectionPanel,
+  LastStartPanel,
   MayPanel,
   SessionsPanel,
   WeekPanel,
   WritesPanel,
 } from "./agent-panels";
 import { useAgent } from "./queries";
-import { useAgentCommand } from "./use-agent-commands";
+import { useAgentCommand, useRekeyAgent } from "./use-agent-commands";
+import { useToast } from "../../_components/toasts";
 import styles from "./agent-detail.module.css";
 
 /** The agent's page (AgentDetail.png): /[space]/agents/[agent], by connection id. */
@@ -82,16 +89,32 @@ function AgentDetail({
   const vars = { agent: agent.name, space: space.name };
   const here = autonomyIn(agent, space.slug);
   const run = useAgentCommand(space);
+  const rekey = useRekeyAgent(space);
+  const toast = useToast();
   const [confirming, setConfirming] = useState(false);
+  const [rekeying, setRekeying] = useState(false);
+  const [newKey, setNewKey] = useState<StartKeyView | null>(null);
   const [busy, setBusy] = useState(false);
   const disconnectRef = useRef<HTMLButtonElement | null>(null);
+  const rekeyRef = useRef<HTMLButtonElement | null>(null);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const rekeyCancelRef = useRef<HTMLButtonElement | null>(null);
+  const doneRef = useRef<HTMLButtonElement | null>(null);
   const disconnected = agent.state === "disconnected";
+  // A cloud agent on a start key only starts sessions: pausing (which
+  // stops writes) would change nothing, so it gets a new key instead.
+  const startKey = isStartKeyAgent(agent);
 
-  // The confirmation takes focus when it opens; Cancel gives it back.
+  // A confirmation takes focus when it opens; Cancel gives it back.
   useEffect(() => {
     if (confirming) cancelRef.current?.focus();
   }, [confirming]);
+  useEffect(() => {
+    if (rekeying) rekeyCancelRef.current?.focus();
+  }, [rekeying]);
+  useEffect(() => {
+    if (newKey) doneRef.current?.focus();
+  }, [newKey]);
 
   const mono =
     agents[agent.agent]?.mono ?? agent.agent.slice(0, 2).toUpperCase();
@@ -99,7 +122,7 @@ function AgentDetail({
     ? copy.lede.disconnected
     : joinSentences(
         [
-          copy.surface[agent.surface],
+          startKey ? copy.surface.startKey : copy.surface[agent.surface],
           interpolate(
             agent.state === "paused"
               ? copy.lede.paused
@@ -133,6 +156,22 @@ function AgentDetail({
     setConfirming(false);
     disconnectRef.current?.focus();
   };
+  const giveKey = async () => {
+    setBusy(true);
+    const key = await rekey(agent);
+    setBusy(false);
+    setRekeying(false);
+    if (key) setNewKey(key);
+    else rekeyRef.current?.focus();
+  };
+  const cancelRekey = () => {
+    setRekeying(false);
+    rekeyRef.current?.focus();
+  };
+  const doneWithKey = () => {
+    setNewKey(null);
+    rekeyRef.current?.focus();
+  };
 
   const paused = agent.state === "paused";
   return (
@@ -151,15 +190,32 @@ function AgentDetail({
           <p className="mx-page-lede">{lede}</p>
         </div>
         <div className="mx-page-actions">
-          <Button
-            variant="secondary"
-            disabled={Boolean(pauseUnavailable)}
-            disabledReason={pauseUnavailable}
-            pending={busy && !confirming}
-            onClick={() => void command(paused ? "resume" : "pause")}
-          >
-            {paused ? copy.resume : copy.pause}
-          </Button>
+          {startKey ? (
+            <Button
+              ref={rekeyRef}
+              variant="secondary"
+              disabled={Boolean(pauseUnavailable)}
+              disabledReason={pauseUnavailable}
+              aria-expanded={rekeying}
+              aria-controls="agent-rekey"
+              onClick={() => {
+                setNewKey(null);
+                setRekeying(true);
+              }}
+            >
+              {copy.rekey}
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              disabled={Boolean(pauseUnavailable)}
+              disabledReason={pauseUnavailable}
+              pending={busy && !confirming}
+              onClick={() => void command(paused ? "resume" : "pause")}
+            >
+              {paused ? copy.resume : copy.pause}
+            </Button>
+          )}
           <Button
             ref={disconnectRef}
             variant="danger"
@@ -193,7 +249,9 @@ function AgentDetail({
           <p className={styles.confirmBody}>
             {agent.credential.kind === "oauth_grant"
               ? copy.confirm.oauth
-              : copy.confirm.key}
+              : startKey
+                ? copy.confirm.startKey
+                : copy.confirm.key}
           </p>
           <div className={styles.confirmActions}>
             <Button
@@ -220,6 +278,87 @@ function AgentDetail({
         </section>
       ) : null}
 
+      {rekeying ? (
+        <section
+          id="agent-rekey"
+          className={`${styles.confirm} ${styles.confirmQuiet}`}
+          aria-labelledby="agent-rekey-title"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              cancelRekey();
+            }
+          }}
+        >
+          <h2 id="agent-rekey-title" className={styles.confirmTitle}>
+            {interpolate(copy.rekeyConfirm.title, vars)}
+          </h2>
+          <p className={styles.confirmBody}>{copy.rekeyConfirm.body}</p>
+          <div className={styles.confirmActions}>
+            <Button
+              ref={rekeyCancelRef}
+              variant="quiet"
+              size="sm"
+              onClick={cancelRekey}
+              aria-keyshortcuts="Escape"
+            >
+              {copy.rekeyConfirm.cancel}
+              <Kbd className="mx-btn-kbd" aria-hidden="true">
+                Esc
+              </Kbd>
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              pending={busy}
+              onClick={() => void giveKey()}
+            >
+              {copy.rekeyConfirm.confirm}
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
+      {newKey ? (
+        <section
+          className={`${styles.confirm} ${styles.confirmQuiet}`}
+          role="status"
+          aria-labelledby="agent-new-key-title"
+        >
+          <h2 id="agent-new-key-title" className={styles.confirmTitle}>
+            {interpolate(copy.newKey.title, vars)}
+          </h2>
+          <p className={styles.confirmBody}>{copy.newKey.body}</p>
+          <div className={styles.secret}>
+            <code className={styles.secretText}>{newKey.secret}</code>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="copy"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(newKey.secret);
+                  toast({ text: t.ledger.agents.cloud.copiedKey });
+                } catch {
+                  toast({ text: t.ledger.agents.connect.copyFailed });
+                }
+              }}
+            >
+              {t.ledger.agents.cloud.copyKey}
+            </Button>
+            <Button
+              ref={doneRef}
+              variant="primary"
+              size="sm"
+              onClick={doneWithKey}
+            >
+              {copy.newKey.done}
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
       {!agent.credential.active && !disconnected ? (
         <section className={styles.revoked} role="status">
           <span className={styles.revokedIcon}>
@@ -237,6 +376,9 @@ function AgentDetail({
       <div className={styles.grid}>
         <div className={styles.main}>
           <MayPanel detail={detail} space={space} />
+          {detail.lastStart !== undefined ? (
+            <LastStartPanel start={detail.lastStart} />
+          ) : null}
           <WritesPanel detail={detail} space={space} />
           <SessionsPanel detail={detail} />
         </div>

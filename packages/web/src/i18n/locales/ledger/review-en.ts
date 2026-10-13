@@ -134,7 +134,6 @@ export const ledgerReviewEn = {
     conflictDetail:
       "It contradicts another kept memory. Compare both sides to settle it.",
     verify: "Verify",
-    verifyLater: "Verifying a stale fact isn't available yet",
     open: "Open the memory",
   },
   touches: {

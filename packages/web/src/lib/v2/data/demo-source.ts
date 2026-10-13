@@ -1,4 +1,8 @@
+import { freeSlug } from "../space-name";
+import { CommandFailedError } from "./command-error";
+import { createDemoSearch } from "./search-demo";
 import {
+  DEMO_EMPTY_OVERVIEW,
   DEMO_NEXT_REF,
   DEMO_NOW,
   DEMO_OVERVIEWS,
@@ -20,11 +24,19 @@ import { createDemoImports } from "./imports-demo";
 import { createDemoSettings } from "./settings-demo";
 import { DEMO_V1_SPACE } from "./demo-switch-data";
 import { createDemoSwitch } from "./switch-demo";
+import { groupTargets, spaceSyncLine, targetCounts } from "./home-files";
+import { createDemoMachines, type DemoMachines } from "./machines-demo";
 import type { LedgerDataSource } from "./source";
-import { syncLineOf, targetStatus } from "./targets";
+import { syncLineOf } from "./targets";
 import { createDemoTargets } from "./targets-demo";
 import { createDemoToday } from "./today-demo";
-import type { AskEvent, KeepResult, Section, SpaceOverview } from "./types";
+import type {
+  AskEvent,
+  KeepResult,
+  Section,
+  SpaceOverview,
+  SpaceSummary,
+} from "./types";
 
 /**
  * The demo source: the handoff dataset behind the LedgerDataSource
@@ -84,13 +96,24 @@ export function createDemoSource({
   // acme-web is on V1 until switched in this session (switch-demo.ts).
   const switching = createDemoSwitch({ commandDelayMs });
   const dream = createDemoDream({ commandDelayMs });
+  // Spaces NewSpace made in this session, after the dataset's.
+  const madeHere: SpaceSummary[] = [];
+  const made = new Map<string, SpaceSummary>(); // by idempotency key
   const spaces = () => [
     ...DEMO_SPACES,
     { ...DEMO_V1_SPACE, onV2: switching.onV2(DEMO_V1_SPACE.slug) },
+    ...madeHere,
   ];
   // Review and Memories (demo-records.ts); their decisions feed the overview.
   const records = createDemoRecords({ now, commandDelayMs, judging, clock });
   const agents = createDemoAgents();
+  // Personal's machines: an unlink stops every file of the machine, and a
+  // machine that's offline writes its files when it's back.
+  const machines: DemoMachines = createDemoMachines({
+    now,
+    commandDelayMs,
+    stopMachine: (slug, id) => targets.stopMachine(slug, id),
+  });
   const targets = createDemoTargets({
     now,
     commandDelayMs,
@@ -98,6 +121,8 @@ export function createDemoSource({
     nextRef: allocRef,
     propose: records.propose,
     decided: (slug, ref) => records.session.decided(slug, ref) !== undefined,
+    delivers: (slug, target) =>
+      !target.machine || machines.online(slug, target.machine.id),
   });
   const brief = createDemoBrief({
     now,
@@ -137,24 +162,30 @@ export function createDemoSource({
     if (list.length === 0) return merged;
     // The status line follows the targets once this session changes
     // them; the board's "5 agents in sync" stays while nothing drifted
-    // or is held.
-    const line = syncLineOf(list);
+    // or is held. Personal's says how its machines stand.
+    const space = spaces().find((s) => s.slug === slug);
+    const linked = machines.peekList?.(slug) ?? null;
+    const line = space
+      ? spaceSyncLine(space, list, linked, now())
+      : syncLineOf(list);
+    const attention =
+      line?.kind === "drifted" ||
+      line?.kind === "held" ||
+      line?.kind === "machine-drifted" ||
+      line?.kind === "machine-held";
     return {
       ...merged,
       status:
-        line?.kind === "drifted" ||
-        line?.kind === "held" ||
-        base.status.kind !== "in-sync"
+        attention || base.status.kind !== "in-sync"
           ? (line ?? base.status)
           : base.status,
-      targets: {
-        total: list.filter((t) => t.syncState !== "off").length,
-        inSync: list.filter((t) => targetStatus(t).kind === "in_sync").length,
-      },
+      targets: targetCounts(list, linked, now()),
     };
   };
   const overview = (slug: string): SpaceOverview | undefined => {
-    const base = DEMO_OVERVIEWS[slug];
+    const base =
+      DEMO_OVERVIEWS[slug] ??
+      (madeHere.some((s) => s.slug === slug) ? DEMO_EMPTY_OVERVIEW : null);
     if (!base) return undefined;
     const merged = recordsOverview(slug, base);
     // The questions still waiting, and the decisions answers kept.
@@ -178,12 +209,16 @@ export function createDemoSource({
           : merged.memories,
     };
   };
-  /** A Keep recompiles every file the space compiles to (not ChatGPT's copy-out). */
+  /**
+   * A Keep recompiles every file the space compiles to (not ChatGPT's
+   * copy-out), a home file once whatever the number of machines it's on.
+   */
   const files = (slug: string) => {
     const list = targets.peekList?.(slug) ?? [];
     if (list.length === 0) return overview(slug)?.targets?.inSync ?? null;
-    return list.filter((t) => t.delivery !== "copy" && t.syncState !== "off")
-      .length;
+    return groupTargets(
+      list.filter((t) => t.delivery !== "copy" && t.syncState !== "off"),
+    ).length;
   };
   const remembered = new Map<string, KeepResult>();
   // A person's own Remember isn't undoable on the server (no undo journal
@@ -209,6 +244,7 @@ export function createDemoSource({
     memories: records.memories,
     brief,
     targets,
+    machines,
     today,
     gates,
     imports: createDemoImports({
@@ -222,6 +258,38 @@ export function createDemoSource({
     settings: createDemoSettings({ dream, commandDelayMs }),
     account: createDemoAccount({ commandDelayMs }),
     spaces: async () => spaces(),
+    // NewSpace, as the API decides it: a project space, owned by the
+    // viewer; a second personal space and team spaces are refused.
+    async createSpace({ name, kind, repository, idempotencyKey }) {
+      await sleep(commandDelayMs ?? 0);
+      const replay = made.get(idempotencyKey);
+      if (replay) return replay;
+      if (kind !== "project") {
+        throw new CommandFailedError({
+          kind: "refused",
+          code: kind === "personal" ? "personal_exists" : "space_kind",
+          message: null,
+        });
+      }
+      const slug = freeSlug(name, (s) => spaces().some((x) => x.slug === s));
+      const space: SpaceSummary = {
+        id: `0192a7c0-0000-7000-8000-${String(madeHere.length + 101).padStart(12, "0")}`,
+        slug,
+        name: name.trim(),
+        kind: "project",
+        role: "owner",
+        repository: repository.trim() || undefined,
+        kept: 0,
+        agents: 0,
+        people: 1,
+        waiting: 0,
+        createdAt: now().toISOString(),
+      };
+      madeHere.push(space);
+      made.set(idempotencyKey, space);
+      return space;
+    },
+    search: createDemoSearch({ delayMs: commandDelayMs }),
     overview: async (space) => {
       const found = overview(space.slug);
       if (!found) throw new Error(`No demo space "${space.slug}"`);

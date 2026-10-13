@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import chalk from "chalk";
 import type { V2 } from "memax-sdk";
 import { holdDetail } from "../lib/daemon/holds.js";
+import { AGENTS as REGISTRY } from "../lib/agents/agents.js";
 
 export const MARK = {
   kept: "●",
@@ -14,6 +15,19 @@ export const MARK = {
   working: "◌",
   off: "-",
 } as const;
+
+/**
+ * A space on V1 (never switched, or switched back): V1's sync writes its
+ * agent files, so Memax neither compiles nor writes them. The way back is
+ * its owner's.
+ */
+export function onV1Line(space: Pick<V2.Space, "slug" | "role">): string {
+  const back =
+    space.role === "owner"
+      ? `Switch it to V2: ${chalk.bold(`memax switch --space ${space.slug}`)}`
+      : "Its owner can switch it to V2.";
+  return `  ${chalk.yellow(MARK.waiting)} ${space.slug} is on V1, so V1 writes its agent files and Memax leaves them as they are. ${back}`;
+}
 
 export function syncMark(state: V2.SyncState): string {
   switch (state) {
@@ -115,21 +129,10 @@ export function apiFailureMessage(err: unknown, command?: string): string {
   return e?.message ?? String(err);
 }
 
-/** The board's two-letter agent marks. */
+/** The board's two-letter agent marks, from the agents registry. */
 export function agentMark(agent: V2.AgentKind, name: string): string {
-  const marks: Partial<Record<V2.AgentKind, string>> = {
-    "claude-code": "CC",
-    codex: "CX",
-    cursor: "CU",
-    chatgpt: "GPT",
-    claude: "CL",
-    "gemini-cli": "GM",
-    copilot: "CP",
-    opencode: "OC",
-    windsurf: "WS",
-  };
   return (
-    marks[agent] ??
+    REGISTRY.find((a) => a.id === agent)?.mark ??
     (name
       .replace(/[^A-Za-z0-9]/g, "")
       .slice(0, 2)

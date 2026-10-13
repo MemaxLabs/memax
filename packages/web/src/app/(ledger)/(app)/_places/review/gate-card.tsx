@@ -11,6 +11,7 @@ import {
   type GateView,
 } from "@/lib/v2/data/gates";
 import { useSource } from "../../_lib/data";
+import { useNarrow } from "../../_lib/use-narrow";
 import { useSignInAgain } from "../../_lib/sign-in";
 import type { RecordsView } from "../records-view";
 import { memoryHref } from "./hrefs";
@@ -39,6 +40,7 @@ export function GateCard({
   const { l, rc, space, viewer, now, timeZone, locale, agentName } = view;
   const g = l.review.gate;
   const source = useSource();
+  const phone = useNarrow();
   const signInAgain = useSignInAgain();
   const gates = review.gateCards;
   const card = gates.cardOf(gate.ref);
@@ -161,7 +163,9 @@ export function GateCard({
       }))}
       selected={card.choice}
       onSelect={(i) => void gates.choose(gate, i)}
-      onAnswer={() => void gates.answer(gate)}
+      // On a phone a tap on Answer answers (MobileGate.png: "One tap
+      // answers"); elsewhere it asks first, as ↵ does.
+      onAnswer={() => void gates.answer(gate, { direct: phone })}
       pending={card.pending === "answer"}
       space={space.name}
       time={view.time(gate.askedAt)}

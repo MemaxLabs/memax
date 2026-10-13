@@ -1,13 +1,16 @@
 "use client";
 
+import { useEffect } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button, Receipt, Seal, StateMark } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { formatAgo, formatShortDate } from "@/lib/v2/copy";
 import { clashTitle } from "@/lib/v2/records-copy";
 import type { MemoryRecord } from "@/lib/v2/data/memories";
 import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
-import { placeHref } from "@/lib/v2/places";
+import { placeHref, searchHref } from "@/lib/v2/places";
 import { EditClash } from "../../_components/edit-clash";
+import { PhoneHeader } from "../../_components/phone-header";
 import { HeaderSkeleton, PlaceSkeleton } from "../../_components/skeleton";
 import { StatementEditor } from "../../_components/statement-editor";
 import { StatementText } from "../../_components/statement-text";
@@ -37,57 +40,86 @@ export function MemoryPlace({ memoryRef }: { memoryRef: string }) {
   const view = useRecordsView();
   const { l, space } = view;
   const record = useMemoryRecord(space, memoryRef);
-  const { openCommand } = useOverlays();
+  // On a phone the page's own header names the memory (MobileMemory.png).
+  const header = (
+    <PhoneHeader
+      back={{
+        href: placeHref(space.slug, "memories"),
+        label: interpolate(l.app.phone.backTo, {
+          place: l.app.titles.memories,
+        }),
+      }}
+      title={memoryRef}
+      heading={false}
+    />
+  );
 
   if (record.data === undefined) {
     if (record.isError) {
-      return <PlaceError space={space} onRetry={() => void record.refetch()} />;
+      return (
+        <>
+          {header}
+          <PlaceError space={space} onRetry={() => void record.refetch()} />
+        </>
+      );
     }
     return (
-      <div className={`mx-page ${styles.page}`}>
-        <HeaderSkeleton />
-        <PlaceSkeleton
-          title={l.memory.page.lineage}
-          status={view.copy.empty.loadingMeta}
-          label={l.memory.list.loading}
-        />
-      </div>
+      <>
+        {header}
+        <div className={`mx-page ${styles.page}`}>
+          <HeaderSkeleton />
+          <PlaceSkeleton
+            title={l.memory.page.lineage}
+            status={view.copy.empty.loadingMeta}
+            label={l.memory.list.loading}
+          />
+        </div>
+      </>
     );
   }
   if (record.data === null) {
     const nf = l.memory.page.notFound;
     return (
-      <StatusPage
-        variant="sheet"
-        receipt={memoryRef}
-        title={nf.title}
-        description={nf.detail}
-        actions={
-          <>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="search"
-              onClick={() => openCommand("ask")}
-            >
-              {nf.search}
-            </Button>
-            <Button
-              variant="quiet"
-              size="sm"
-              href={placeHref(space.slug, "activity")}
-            >
-              {nf.activity}
-            </Button>
-          </>
-        }
-      />
+      <>
+        {header}
+        <StatusPage
+          variant="sheet"
+          receipt={memoryRef}
+          title={nf.title}
+          description={nf.detail}
+          actions={
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="search"
+                href={searchHref(space.slug)}
+              >
+                {nf.search}
+              </Button>
+              <Button
+                variant="quiet"
+                size="sm"
+                href={placeHref(space.slug, "activity")}
+              >
+                {nf.activity}
+              </Button>
+            </>
+          }
+        />
+      </>
     );
   }
-  if (record.data.lifecycle === "forgotten") {
-    return <Tombstone view={view} record={record.data} />;
-  }
-  return <Memory view={view} record={record.data} />;
+  return (
+    <>
+      {header}
+      {record.data.lifecycle === "forgotten" ? (
+        <Tombstone view={view} record={record.data} />
+      ) : (
+        <Memory view={view} record={record.data} />
+      )}
+    </>
+  );
 }
 
 function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
@@ -116,6 +148,29 @@ function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
     enabled: edit.mode.kind === "view" && !forgotten && !forget.confirming,
   });
   useHotkey("memory.cite", () => void cite(), { enabled: !forgotten });
+  const { openVerify } = useOverlays();
+  useHotkey("memory.verify", () => openVerify(record.ref), {
+    enabled:
+      record.state === "stale" &&
+      edit.mode.kind === "view" &&
+      !forget.confirming,
+  });
+  // `?overlay=verify` (memax verify's link to the web) opens VerifyStale
+  // once, which says so when someone answered it since.
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const verifyAsked = params?.get("overlay") === "verify";
+  useEffect(() => {
+    if (!verifyAsked) return;
+    openVerify(record.ref);
+    const next = new URLSearchParams(params?.toString());
+    next.delete("overlay");
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : (pathname ?? ""), {
+      scroll: false,
+    });
+  }, [verifyAsked, openVerify, record.ref, params, pathname, router]);
 
   const mode = edit.mode;
 
@@ -181,6 +236,7 @@ function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
         forget={forget}
         onEdit={() => edit.start()}
         onCite={() => void cite()}
+        onVerify={() => openVerify(record.ref)}
       />
     );
   }

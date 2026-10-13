@@ -13,6 +13,7 @@ import {
   type DriftResolution,
   type TargetView,
 } from "@/lib/v2/data/targets";
+import { isBlock } from "@/lib/v2/data/home-files";
 import { placeHref } from "@/lib/v2/places";
 import { HeaderSkeleton, PlaceSkeleton } from "../../_components/skeleton";
 import { PlaceError } from "../../_components/status";
@@ -21,6 +22,7 @@ import { StatusPage } from "../../../_components/status-page";
 import { useDrift, useTargets } from "../../_lib/compile";
 import { briefHref } from "../brief";
 import { useRecordsView, type RecordsView } from "../records-view";
+import { useMachineOf } from "../target/home-target";
 import { DriftChanges } from "./drift-changes";
 import { DriftChoice } from "./drift-choice";
 import { useDriftActions } from "./use-drift-actions";
@@ -86,6 +88,8 @@ function Drift({ view, target }: { view: RecordsView; target: TargetView }) {
   const r = l.brief.resolve;
   const drift = useDrift(space, target);
   const actions = useDriftActions(space, target);
+  // A Personal space's home file: one machine's copy, edited there.
+  const machine = useMachineOf(view, target).name;
   const [done, setDone] = useState<{
     mode: DriftMode;
     result: DriftResolution;
@@ -115,16 +119,28 @@ function Drift({ view, target }: { view: RecordsView; target: TargetView }) {
   if (!item) return <Nothing view={view} target={target} />;
   const changes = items.flatMap((i) => i.changes);
   const when = { now, timeZone, locale };
+  const md = l.machines.drift;
+  const editedAt = driftWhen(l.brief, item.observedAt, when);
 
   return (
     <div className={`mx-page ${styles.page}`}>
       <PageHeader
         className={styles.head}
-        eyebrow={interpolate(r.eyebrow, { path: item.path })}
-        title={driftTitle(l.brief, target, agentName)}
-        lede={interpolate(r.lede, {
-          when: driftWhen(l.brief, item.observedAt, when),
-        })}
+        eyebrow={
+          machine
+            ? interpolate(md.eyebrow, { file: target.label, machine })
+            : interpolate(r.eyebrow, { path: item.path })
+        }
+        title={
+          machine
+            ? interpolate(md.title, { file: target.label, machine })
+            : driftTitle(l.brief, target, agentName)
+        }
+        lede={
+          machine
+            ? interpolate(md.lede, { machine, when: editedAt })
+            : interpolate(r.lede, { when: editedAt })
+        }
         actions={
           <StateMark
             state="proposed"
@@ -133,13 +149,29 @@ function Drift({ view, target }: { view: RecordsView; target: TargetView }) {
         }
       />
       {items.map((each) => (
-        <Files key={each.observationId} view={view} item={each} />
+        <Files
+          key={each.observationId}
+          view={view}
+          item={each}
+          machine={machine}
+        />
       ))}
+      {machine && isBlock(target) ? (
+        <p className={styles.blockNote}>
+          {interpolate(l.machines.target.block, { machine })}
+        </p>
+      ) : null}
       <div className={styles.lower}>
-        <DriftChanges view={view} target={target} items={items} />
+        <DriftChanges
+          view={view}
+          target={target}
+          items={items}
+          machine={machine}
+        />
         <DriftChoice
           view={view}
           target={target}
+          machine={machine}
           changes={changes}
           pending={actions.pending}
           onRun={(mode) => void run(mode)}
@@ -150,7 +182,16 @@ function Drift({ view, target }: { view: RecordsView; target: TargetView }) {
 }
 
 /** The two files side by side: lines the edit removed struck, lines it added marked. */
-function Files({ view, item }: { view: RecordsView; item: DriftItemView }) {
+function Files({
+  view,
+  item,
+  machine,
+}: {
+  view: RecordsView;
+  item: DriftItemView;
+  /** A home file's machine: the edit is on it, not in a repository. */
+  machine: string | null;
+}) {
   const { l, timeZone, locale } = view;
   const r = l.brief.resolve;
   const { removed, added } = driftLines(item.changes);
@@ -169,7 +210,11 @@ function Files({ view, item }: { view: RecordsView; item: DriftItemView }) {
         mark="del"
       />
       <FileSide
-        title={r.repository}
+        title={
+          machine
+            ? interpolate(l.machines.drift.observed, { machine })
+            : r.repository
+        }
         meta={
           item.commit
             ? interpolate(r.repositoryMeta, {

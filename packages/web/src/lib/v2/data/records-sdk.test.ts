@@ -4,6 +4,7 @@ import { CommandFailedError, isRetryable, toFailure } from "./command-error";
 import { DEMO_SPACES } from "./demo-dataset";
 import { choiceFor, conflictOf } from "./sdk-conflict";
 import { createSdkMemories } from "./sdk-memories";
+import { registryKey } from "./agents-sdk";
 import { conditionsOf, flagOf, lineageOf, recordOf } from "./sdk-record";
 import {
   actorOf,
@@ -134,8 +135,55 @@ describe("mapping /v2 records", () => {
     });
     expect(listItemOf(stale, receipts, ME).note).toEqual({
       kind: "stale",
+      cause: "source",
       changedAt: "2026-10-05T10:12:00Z",
       source: "PR #198",
+    });
+    // Dream's date flag cites its edition: the note says the date passed,
+    // not that a source changed.
+    const byDate = new Map([
+      ["r1", receipt()],
+      ["r9", { ...flagged, source: { kind: "dream", ref: "D-0214" } }],
+    ]);
+    expect(listItemOf(stale, byDate, ME).note).toEqual({
+      kind: "stale",
+      cause: "date",
+      changedAt: "2026-10-05T10:12:00Z",
+      source: null,
+    });
+    // A check run's flag cites the run, which is no one's to read: the
+    // note says a condition stopped holding.
+    const byCheck = new Map([
+      ["r1", receipt()],
+      [
+        "r9",
+        {
+          ...flagged,
+          actor_kind: "memax" as const,
+          source: {
+            kind: "check",
+            ref: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a90",
+          },
+        },
+      ],
+    ]);
+    expect(listItemOf(stale, byCheck, ME).note).toEqual({
+      kind: "stale",
+      cause: "check",
+      changedAt: "2026-10-05T10:12:00Z",
+      source: null,
+    });
+    // Behind another receipt (an undone verification), the date still says it.
+    const undone = memory({
+      state: "stale",
+      lifecycle: "kept",
+      flags: ["stale"],
+      stale_after: "2026-10-01T00:00:00Z",
+      last_receipt_id: "r1",
+    });
+    expect(listItemOf(undone, byDate, ME).note).toMatchObject({
+      kind: "stale",
+      cause: "date",
     });
   });
 
@@ -159,20 +207,83 @@ describe("mapping /v2 records", () => {
     });
   });
 
-  it("reads conditions in the shapes a writer is likely to send", () => {
+  it("reads typed conditions, then the date to check again", () => {
     expect(
-      conditionsOf([
-        "ADR 004 is unchanged",
-        { subject: "github.com/riverqueue/river", rest: "is in go.mod" },
-        { code: "pnpm-workspace.yaml", text: "has a catalog" },
-        42,
-        {},
-      ]),
+      conditionsOf(
+        [
+          {
+            id: "c1",
+            kind: "dep_present",
+            manifest: "go.mod",
+            name: "github.com/riverqueue/river",
+            origin: "person",
+          },
+          {
+            id: "c2",
+            kind: "path_exists",
+            path: "internal/ask/config.go",
+            origin: "derived",
+            from: "statement",
+          },
+          { id: "c3", kind: "path_exists", glob: "packages/web/**" },
+          {
+            id: "c4",
+            kind: "file_contains",
+            path: "internal/ask/config.go",
+            text: "ASK_MODEL",
+            word: true,
+          },
+          {
+            id: "c5",
+            kind: "pr_state",
+            repo: "MemaxLabs/memax",
+            number: 212,
+            state: "merged",
+          },
+          {
+            id: "c6",
+            kind: "file_unchanged",
+            path: "docs/adr/004-queues.md",
+            blob: "a".repeat(40),
+          },
+          // A kind a later server sends: left out, not guessed at.
+          { kind: "later_kind" } as unknown as V2.Condition,
+        ],
+        "2026-10-01T00:00:00Z",
+      ),
     ).toEqual([
-      { key: "0", code: null, text: "ADR 004 is unchanged" },
-      { key: "1", code: "github.com/riverqueue/river", text: "is in go.mod" },
-      { key: "2", code: "pnpm-workspace.yaml", text: "has a catalog" },
+      {
+        key: "c1",
+        kind: "dep_present",
+        manifest: "go.mod",
+        name: "github.com/riverqueue/river",
+        range: null,
+      },
+      {
+        key: "c2",
+        kind: "path_exists",
+        path: "internal/ask/config.go",
+        glob: null,
+      },
+      { key: "c3", kind: "path_exists", path: null, glob: "packages/web/**" },
+      {
+        key: "c4",
+        kind: "file_contains",
+        path: "internal/ask/config.go",
+        text: "ASK_MODEL",
+        word: true,
+      },
+      {
+        key: "c5",
+        kind: "pr_state",
+        repo: "MemaxLabs/memax",
+        number: 212,
+        state: "merged",
+      },
+      { key: "c6", kind: "file_unchanged", path: "docs/adr/004-queues.md" },
+      { key: "date", kind: "date", at: "2026-10-01T00:00:00Z" },
     ]);
+    expect(conditionsOf([], null)).toEqual([]);
   });
 
   it("builds a memory's page: the Keep for the seal, lineage oldest first", () => {
@@ -258,6 +369,33 @@ describe("mapping /v2 records", () => {
       recordOf(detail({ ...reads, reads: 0, reads_7d: 0, agents: 0 }), ME),
     ).toMatchObject({ reads: 0, reach: { files: null, agents: 0 } });
   });
+
+  it("says when its conditions were last checked, and for which agent's start", () => {
+    const detail = (checked?: V2.MemoryChecked): V2.MemoryDetail => ({
+      memory: memory({ ref: "M-0219", state: "kept", lifecycle: "kept" }),
+      versions: [],
+      receipts: { items: [receipt()], has_more: false },
+      ...(checked ? { checked } : {}),
+    });
+    const run = {
+      at: "2026-10-13T14:31:00Z",
+      branch: "main",
+      commit: "a".repeat(40),
+      observer: "device" as const,
+      trigger: "session_start" as const,
+    };
+    expect(recordOf(detail(), ME).checked).toBeNull();
+    expect(
+      recordOf(detail({ ...run, agent: "gemini-cli" }), ME).checked,
+    ).toEqual({
+      at: run.at,
+      branch: "main",
+      agent: { kind: "agent", agent: registryKey("gemini-cli") },
+    });
+    expect(
+      recordOf(detail({ ...run, trigger: "head_moved" }), ME).checked,
+    ).toEqual({ at: run.at, branch: "main", agent: null });
+  });
 });
 
 describe("command failures", () => {
@@ -271,7 +409,22 @@ describe("command failures", () => {
       refused("external_needs_review"),
       { kind: "refused", code: "external_needs_review" },
     ],
-    [refused("viewer"), { kind: "refused", code: "viewer" }],
+    [refused("viewer"), { kind: "refused", code: "viewer", limit: null }],
+    [
+      new MemaxError("refused", "refused", 403, {
+        policy: {
+          effect: "refuse",
+          code: "seat_needed",
+          message: "Only the owner keeps.",
+          limit: { plan: "pro", upgrade: "team" },
+        },
+      }),
+      {
+        kind: "refused",
+        code: "seat_needed",
+        limit: { plan: "pro", upgrade: "team" },
+      },
+    ],
     [
       new MemaxError("changed", "edit_clash", 412, { current_version: 3 }),
       { kind: "clash", currentVersion: 3 },
@@ -1285,7 +1438,8 @@ describe("the SDK's Memories", () => {
     const memories = createSdkMemories(withTargets as never, () => ME);
     const record = await memories.get({ space: v2, ref: "M-0219" });
     expect(record?.reaches?.map((t) => t.path)).toEqual(["AGENTS.md"]);
-    expect(record?.reach).toEqual({ files: 1, agents: 5 });
+    // A repository's files are on no machine of their own.
+    expect(record?.reach).toEqual({ files: 1, machines: 0, agents: 5 });
     expect(record?.reads).toBe(214);
   });
 

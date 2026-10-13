@@ -35,6 +35,31 @@ export function saveCredentials(creds: Credentials): void {
   });
 }
 
+/**
+ * The person an access token names (its JWT `sub`), read without checking
+ * the signature: only to tell whether two sessions are the same person's.
+ * Null for anything that isn't such a token (an API key).
+ */
+export function tokenSubject(token: string | undefined): string | null {
+  const body = token?.split(".")[1];
+  if (!body) return null;
+  try {
+    const claims = JSON.parse(
+      Buffer.from(body, "base64url").toString("utf8"),
+    ) as { sub?: unknown };
+    return typeof claims.sub === "string" && claims.sub !== ""
+      ? claims.sub
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The person this machine is signed in as, from the saved session. */
+export function currentPerson(): string | null {
+  return tokenSubject(loadCredentials()?.access_token);
+}
+
 export function isTokenExpired(): boolean {
   const creds = loadCredentials();
   if (!creds?.expires_at) return false; // no expiry info → assume valid

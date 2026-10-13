@@ -188,11 +188,14 @@ type Health struct {
 
 // Adapter describes one compiler adapter.
 type Adapter struct {
-	Kind        string  `json:"kind"`
-	Version     int     `json:"version"`
-	Role        string  `json:"role"`
-	DefaultPath *string `json:"default_path"`
-	Default     bool    `json:"default"`
+	Kind    string `json:"kind"`
+	Version int    `json:"version"`
+	Role    string `json:"role"`
+	// Roots are what its paths are relative to: "repo", "home" (a linked
+	// machine's home folder), or both (AGENTS.md).
+	Roots       []string `json:"roots"`
+	DefaultPath *string  `json:"default_path"`
+	Default     bool     `json:"default"`
 	// OptIn: compiled only for a space that asks for it, never by default.
 	OptIn bool `json:"opt_in"`
 }

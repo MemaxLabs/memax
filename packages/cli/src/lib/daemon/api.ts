@@ -3,8 +3,26 @@
 import { createHash } from "node:crypto";
 import type { Memax, V2 } from "memax-sdk";
 
+/** A space's targets as a machine polls them. */
+export interface TargetPoll {
+  targets: V2.Target[];
+  /**
+   * Whether the V2 record serves the space. One switched back to V1 still
+   * lists its targets, but its files are V1's again (its two-way sync
+   * writes them): the daemon leaves them as they are and reports nothing
+   * for them until the space is on V2 again.
+   */
+  onV2: boolean;
+}
+
 export interface DaemonApi {
-  listTargets(space: string, signal?: AbortSignal): Promise<V2.Target[]>;
+  listTargets(space: string, signal?: AbortSignal): Promise<TargetPoll>;
+  /** One machine's home files in a personal space (what a home link polls). */
+  machineTargets(
+    space: string,
+    machine: string,
+    signal?: AbortSignal,
+  ): Promise<TargetPoll>;
   /** The id of the space's newest receipt: it moves whenever the space changes. */
   changeToken(space: string, signal?: AbortSignal): Promise<string>;
   preview(target: string, signal?: AbortSignal): Promise<V2.TargetPreview>;
@@ -36,6 +54,15 @@ export interface DaemonApi {
     key: string,
     signal?: AbortSignal,
   ): Promise<V2.CompileLoadResult>;
+  /** The space's conditions, for its machines to check (checks.ts). */
+  conditions(space: string, signal?: AbortSignal): Promise<V2.SpaceConditions>;
+  /** Reports a check run: results only, never a file's contents. */
+  reportChecks(
+    space: string,
+    input: V2.CheckRunInput,
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<V2.CheckRunResult>;
 }
 
 /** No single request may hold the loop up for longer than this. */
@@ -67,12 +94,40 @@ async function timed<T>(
   }
 }
 
+/**
+ * A repository's targets: what a linked repository's delivery writes. A
+ * personal space's home files (`root: home`) are a machine's, written into
+ * its home folder by that machine's home link, never into a repository.
+ */
+export function repoTargets<T extends Pick<V2.Target, "root">>(ts: T[]): T[] {
+  return ts.filter((t) => t.root !== "home");
+}
+
+/** One machine's home files: what its home link writes, and nothing else. */
+export function homeTargets<T extends Pick<V2.Target, "root" | "machine">>(
+  ts: T[],
+  machine: string,
+): T[] {
+  return ts.filter((t) => t.root === "home" && t.machine?.id === machine);
+}
+
+/** A server from before `on_v2` doesn't say: deliver, as the daemon did. */
+const onV2 = (list: { on_v2?: boolean }) => list.on_v2 !== false;
+
 /** The daemon's calls through memax-sdk, as the CLI (`X-Memax-Via: cli`). */
 export function sdkDaemonApi(memax: Memax): DaemonApi {
   const t = memax.v2.targets;
   return {
     listTargets: (space, outer) =>
-      timed(outer, async (signal) => (await t.list(space, { signal })).items),
+      timed(outer, async (signal) => {
+        const list = await t.list(space, { signal });
+        return { targets: repoTargets(list.items), onV2: onV2(list) };
+      }),
+    machineTargets: (space, machine, outer) =>
+      timed(outer, async (signal) => {
+        const list = await t.list(space, { machine, signal });
+        return { targets: homeTargets(list.items, machine), onV2: onV2(list) };
+      }),
     changeToken: (space, outer) =>
       timed(
         outer,
@@ -117,6 +172,16 @@ export function sdkDaemonApi(memax: Memax): DaemonApi {
     recordCompileLoad: (space, input, key, outer) =>
       timed(outer, (signal) =>
         memax.v2.reads.recordCompileLoad(space, input, {
+          idempotencyKey: key,
+          via: "cli",
+          signal,
+        }),
+      ),
+    conditions: (space, outer) =>
+      timed(outer, (signal) => memax.v2.checks.conditions(space, { signal })),
+    reportChecks: (space, input, key, outer) =>
+      timed(outer, (signal) =>
+        memax.v2.checks.report(space, input, {
           idempotencyKey: key,
           via: "cli",
           signal,

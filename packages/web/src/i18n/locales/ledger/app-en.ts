@@ -32,6 +32,7 @@ export const ledgerAppEn = {
     activity: "Activity",
     decisions: "Decisions",
     dream: "Dream",
+    search: "Search",
     account: "Account",
     notifications: "Notifications",
     security: "Security",
@@ -59,8 +60,19 @@ export const ledgerAppEn = {
       compiling: "Compiling",
       waitingDelivery: "{n} files waiting for the CLI",
       waitingDeliveryOne: "1 file waiting for the CLI",
+      // A personal space's home files, by machine (design §8).
+      machinesInSync: "In sync on {n} machines",
+      machinesInSyncOne: "In sync on 1 machine",
+      machineDrifted: "Hand edit on {machine}",
+      machineHeld: "Held for Review on {machine}",
+      machinesBehind: "On {reached} of {of} machines",
+      noMachines: "Not on any machine yet",
       noAgents: "No agents yet",
       notCompiling: "Not compiling yet",
+      onV1: "Still on V1",
+      // While the space's status loads, and when it couldn't be read.
+      loading: "Loading",
+      failed: "Status didn't load",
     },
     reviewCount: "{n} waiting on you",
     reviewCountOne: "1 waiting on you",
@@ -75,6 +87,21 @@ export const ledgerAppEn = {
         "Nothing you kept was lost. Check your connection, then try again.",
       retry: "Try again",
     },
+  },
+  // Below 640px (MobileReview.png, MobileGate.png, MobileAsk.png,
+  // MobileMemory.png): a page's own header, Review's swipe and the
+  // full-screen Ask.
+  phone: {
+    back: "Back",
+    backTo: "Back to {place}",
+    position: "{n} of {total}",
+    gateTitle: "A question for you",
+    swipe: "Swipe right to keep, left to reject",
+    swipeKeep: "Keep",
+    swipeReject: "Reject",
+    askTitle: "Ask {space}",
+    rememberTitle: "Remember in {space}",
+    closeAsk: "Close Ask",
   },
   spaces: {
     yours: "Your spaces",
@@ -256,6 +283,33 @@ export const ledgerAppEn = {
     loading: "Loading {place}",
     loadingMeta: "Loading",
   },
+  // Every place of a space still on V1 but Today, which is its switch
+  // (_places/space-on-v1.tsx). Not drawn on the boards: in the States
+  // board's Empty language until the designer reviews it.
+  onV1: {
+    title: "{space} is still on V1.",
+    places: {
+      review:
+        "Once it's on V2, what agents propose waits here for a person to keep or reject.",
+      brief:
+        "Once it's on V2, its Brief is what every agent reads, compiled into each one's file.",
+      memories:
+        "Once it's on V2, what's kept in it is listed here with its receipts, and its V1 memories come along as notes.",
+      handoffs:
+        "Once it's on V2, work handed from one agent to the next arrives here.",
+      agents:
+        "Once it's on V2, its agents connect here, each at Read, Propose or Write.",
+      decisions:
+        "Once it's on V2, the decisions it keeps are recorded here, with why and what they rest on.",
+      dream:
+        "Once it's on V2, Dream reads its notes overnight and publishes an edition here.",
+      activity: "Once it's on V2, every change to it leaves a receipt here.",
+    },
+    switch: "Switch to V2",
+    openInV1: "Open in V1",
+    ownerMeta: "Switching changes nothing in V1, and you can switch back.",
+    memberMeta: "Only its owner can switch it to V2.",
+  },
   notFound: {
     searchMemories: "Search memories",
     openActivity: "Open Activity",
@@ -311,11 +365,21 @@ export const ledgerAppEn = {
     },
     limit: {
       title: "You've asked {n} questions this month, all your plan answers.",
-      detail: "Asks start again on {date}. Pro answers as many as you like.",
+      detail: "Asks start again on {date}.",
+      // When Pro lifts the limit (policy limit.upgrade, D9).
+      upgrade: "Pro answers 1,000 a month.",
     },
     rememberInstead: "Remember it instead",
     failed: "Ask didn't answer. Nothing was kept. Try again.",
     tryAgain: "Try again",
+    // A space still on V1 (policy space_on_v1): no Ask or Remember yet.
+    onV1: {
+      title: "{space} is still on V1",
+      owner:
+        "Ask and Remember work here once you switch it to V2. Nothing in V1 changes, and you can switch back.",
+      member: "Ask and Remember work here once its owner switches it to V2.",
+      open: "Open Today",
+    },
   },
   remember: {
     label:
@@ -350,6 +414,8 @@ export const ledgerAppEn = {
     proposed: "Sent {ref} to Review",
     undo: "Undo",
     failed: "That didn't go through. Nothing was kept.",
+    // A Remember refused because the space is still on V1 (space_on_v1).
+    onV1: "{space} is still on V1, so nothing was kept. Its Today says how it switches to V2.",
     copied: "Copied with citations",
     copiedCommand: "Copied the command",
     close: "Close",
@@ -388,8 +454,11 @@ export const ledgerAppEn = {
       "memory.forget": "Forget",
       "today.review": "Start review, on Today",
       "dream.resolve": "Resolve the conflict, on a Dream edition",
+      "verify.choose": "Choose what's true now, verifying a stale fact",
+      "verify.answer": "Answer, verifying a stale fact",
       "memories.remember": "Remember, on Memories",
       "command.keep": "Keep the answer in Ask, or your Brief edits",
+      "search.ask": "Ask instead, from Search",
       "review.stopWaiting": "Stop waiting for the check, in Review",
       "brief.move": "Move a fact down, up, editing the Brief",
       "drift.choose": "Choose what happens to a hand edit",

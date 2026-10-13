@@ -2,11 +2,15 @@
 // same passes, in this process, holding the daemon's lock meanwhile so a
 // daemon starting at the same moment can't write the same files.
 import type { DaemonApi } from "./api.js";
-import { AlreadyRunningError, ControlServer } from "./control.js";
+import {
+  AlreadyRunningError,
+  ControlServer,
+  type HomeOffReason,
+} from "./control.js";
 import { Daemon } from "./daemon.js";
 import type { Logger } from "./log.js";
 import type { DaemonPaths } from "./paths.js";
-import type { DaemonSnapshot } from "./snapshot.js";
+import type { DaemonSnapshot, HomeSnapshot } from "./snapshot.js";
 
 export class OneShotDelivery {
   private constructor(
@@ -38,6 +42,21 @@ export class OneShotDelivery {
   /** One pass: poll the space once and deliver to its linked repositories. */
   sync(spaceId: string): Promise<DaemonSnapshot> {
     return this.daemon.syncOnce(spaceId);
+  }
+
+  /** Runs a linked repository's checks now, as the daemon would. */
+  check(root: string): ReturnType<Daemon["checkNow"]> {
+    return this.daemon.checkNow(root);
+  }
+
+  /** Takes the Personal layer off this machine, as the daemon would. */
+  homeOff(reason: HomeOffReason): Promise<HomeSnapshot | null> {
+    return this.daemon.homeOff(reason);
+  }
+
+  /** A refresh refused for good while this pass ran (lib/client.ts). */
+  signedOut(): void {
+    this.daemon.signedOut();
   }
 
   async close(): Promise<void> {

@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SpaceSummary } from "@/lib/v2/data/types";
 import type { TargetView } from "@/lib/v2/data/targets";
-import { useSource } from "./data";
+import { ledgerQueryKeys, useSource } from "./data";
 import { recordKeys } from "./records";
 
 /**
@@ -58,7 +58,8 @@ export function useBriefVersions(space: SpaceSummary) {
 
 export function useTargets(space: SpaceSummary) {
   const source = useSource();
-  return useQuery({
+  const queryClient = useQueryClient();
+  const query = useQuery({
     queryKey: compileKeys.targets(source.kind, space.slug),
     queryFn: ({ signal }) => source.targets.list({ space, signal }),
     initialData: source.targets.peekList?.(space.slug),
@@ -66,6 +67,19 @@ export function useTargets(space: SpaceSummary) {
     refetchInterval: (query) =>
       compiling(query.state.data) ? COMPILING_POLL_MS : false,
   });
+  // Once the files settle, the status line reads them again: it said
+  // "Compiling" when the command went out, and nothing else refreshes it.
+  const busy = compiling(query.data);
+  const wasBusy = useRef(busy);
+  useEffect(() => {
+    if (wasBusy.current && !busy) {
+      void queryClient.invalidateQueries({
+        queryKey: ledgerQueryKeys.overview(source.kind, space.slug),
+      });
+    }
+    wasBusy.current = busy;
+  }, [busy, queryClient, source.kind, space.slug]);
+  return query;
 }
 
 export function useTargetPreview(

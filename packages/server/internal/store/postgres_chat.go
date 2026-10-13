@@ -1855,12 +1855,12 @@ func (s *PostgresStore) ExpirePendingChatToolApprovals(ctx context.Context) ([]E
 // scanChatSession reads from a Row or Rows-shaped scanner.
 func scanChatSession(r interface{ Scan(...any) error }) (*model.ChatSession, error) {
 	var (
-		s              model.ChatSession
-		writeHubID     *string
-		activeMsgID    *string
-		personaID      *string
-		toolsJSON      []byte
-		hubIDsScanText []string
+		s               model.ChatSession
+		writeHubID      *string
+		activeMsgID     *string
+		personaID       *string
+		toolsJSON       []byte
+		hubIDsScanText  []string
 		pinnedMemoryIDs []string
 	)
 	if err := r.Scan(

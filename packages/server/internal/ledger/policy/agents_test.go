@@ -22,6 +22,9 @@ func TestDecideConnection(t *testing.T) {
 	keyConn := func(from, to Autonomy) Connection {
 		return Connection{Name: "CI", Mine: true, Credential: CredentialAPIKey, From: from, To: to}
 	}
+	cloud := func(from, to Autonomy) Connection {
+		return Connection{Name: "Copilot cloud agent", Mine: true, Credential: CredentialAPIKey, From: from, To: to, Cloud: true}
+	}
 
 	cases := []struct {
 		name    string
@@ -53,6 +56,19 @@ func TestDecideConnection(t *testing.T) {
 		{"resume on the web", web(RoleOwner), ConnectionResume, mine("", ""), project, "", ""},
 		{"pause someone else's agent", web(RoleOwner), ConnectionPause, theirs("", ""), project, CodeNotYourAgent, "Only the person Codex works for can pause it."},
 		{"disconnect someone else's agent", web(RoleOwner), ConnectionDisconnect, theirs("", ""), project, CodeNotYourAgent, ""},
+
+		// Cloud agents: Read from anywhere, above it only on the web, never
+		// at Connect's quiet level, never Write (an API key); a new key for
+		// your own only.
+		{"a cloud agent at read from the CLI", cli(RoleOwner), ConnectionConnect, cloud("", AutonomyRead), project, "", ""},
+		{"a cloud agent proposing needs the web", cli(RoleOwner), ConnectionConnect, cloud("", AutonomyPropose), project, CodeCloudNeedsWeb, "on the web"},
+		{"a cloud agent proposing, on the web", web(RoleOwner), ConnectionConnect, cloud("", AutonomyPropose), project, "", ""},
+		{"a cloud agent raised from the CLI", cli(RoleOwner), ConnectionSetAutonomy, cloud(AutonomyRead, AutonomyPropose), project, CodeCloudNeedsWeb, ""},
+		{"a cloud agent never writes", web(RoleOwner), ConnectionConnect, cloud("", AutonomyWrite), defaultWrite, CodeKeyMaxPropose, ""},
+		{"rekey your cloud agent from the CLI", cli(RoleMember), ConnectionRekey, cloud("", ""), project, "", ""},
+		{"rekey someone else's cloud agent", web(RoleOwner), ConnectionRekey, Connection{Name: "Copilot", Cloud: true}, project, CodeNotYourAgent, ""},
+		{"rekey a V1 key's agent", web(RoleOwner), ConnectionRekey, keyConn("", ""), project, CodeAutonomyNotAllowed, ""},
+		{"an agent can't rekey itself", agent(RoleOwner, AutonomyRead), ConnectionRekey, cloud("", ""), project, CodePersonMustManage, ""},
 
 		// Connecting.
 		{"connect from the CLI at the default", cli(RoleOwner), ConnectionConnect, mine("", AutonomyPropose), project, "", ""},

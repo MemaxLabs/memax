@@ -8,12 +8,15 @@ import (
 )
 
 var (
-	project    = Space{Name: "memax-v2", Kind: SpaceProject}
-	personal   = Space{Name: "Personal", Kind: SpacePersonal}
-	team       = Space{Name: "memax-team", Kind: SpaceTeam}
-	ownersKeep = Space{Name: "memax-v2", Kind: SpaceProject, Rules: Rules{Keep: WhoOwners}}
-	membersFgt = Space{Name: "memax-v2", Kind: SpaceProject, Rules: Rules{Forget: WhoMembers}}
-	teamNoWeb  = Space{Name: "memax-team", Kind: SpaceTeam, Rules: Rules{DecisionsNeedWeb: ptr(false)}}
+	project    = Space{Name: "memax-v2", Kind: SpaceProject, OnV2: true}
+	personal   = Space{Name: "Personal", Kind: SpacePersonal, OnV2: true}
+	team       = Space{Name: "memax-team", Kind: SpaceTeam, OnV2: true}
+	ownersKeep = Space{Name: "memax-v2", Kind: SpaceProject, Rules: Rules{Keep: WhoOwners}, OnV2: true}
+	membersFgt = Space{Name: "memax-v2", Kind: SpaceProject, Rules: Rules{Forget: WhoMembers}, OnV2: true}
+	teamNoWeb  = Space{Name: "memax-team", Kind: SpaceTeam, Rules: Rules{DecisionsNeedWeb: ptr(false)}, OnV2: true}
+	// onV1 spaces: the same space before its owner switches it to V2.
+	v1Project = Space{Name: "acme-web", Kind: SpaceProject}
+	v1Team    = Space{Name: "acme-team", Kind: SpaceTeam}
 )
 
 func ptr[T any](v T) *T { return &v }
@@ -155,6 +158,8 @@ func TestDecide(t *testing.T) {
 		{"team decision edit from the CLI → proposal", person(RoleMember, ViaCLI), ActionEdit, keptDec, team, EffectPropose, CodeDecisionNeedsWeb, false, ""},
 		{"agent at write edits agent-kept work", agent(RoleOwner, AutonomyWrite), ActionEdit, kept, project, EffectApply, "", false, ""},
 		{"agent at write edits person-kept → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, personKept, project, EffectPropose, CodeEditsPersonKept, false, "a person kept M-0219"},
+		{"agent at write edits a stale memory → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, Object{Ref: "M-0219", Lifecycle: lifecycle.Kept, Stale: true}, project, EffectPropose, CodeVerifyByPerson, false, "M-0219 is being verified"},
+		{"person edits a stale memory", person(RoleMember, ViaCLI), ActionEdit, Object{Ref: "M-0219", Lifecycle: lifecycle.Kept, Stale: true}, project, EffectApply, "", false, ""},
 		{"agent at write edits external → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, keptExt, project, EffectPropose, CodeExternalSource, true, ""},
 		{"agent at write edit contradicts → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, Object{Ref: "M-1", Lifecycle: lifecycle.Kept, ContradictsDecision: true}, project, EffectPropose, CodeContradicts, false, ""},
 		// --- the Write-level pre-check (a write that touches a decision in force) ---
@@ -330,7 +335,7 @@ func TestDecideMatrix(t *testing.T) {
 	creds := []Credential{CredentialSession, CredentialOAuth, CredentialAPIKey}
 	actions := []Action{ActionRemember, ActionPropose, ActionKeep, ActionEdit, ActionReject, ActionForget}
 	objects := []Object{newFact, newDecision, newExternal, contradicts, proposal, kept, personKept, keptExt, propExt, propDec}
-	spaces := []Space{project, personal, team, ownersKeep, membersFgt}
+	spaces := []Space{project, personal, team, ownersKeep, membersFgt, v1Project, v1Team}
 	banned := []string{"!", " AI", "magic", "smart", "delete", "Delete"}
 
 	n := 0
@@ -415,7 +420,7 @@ func TestGateMatrix(t *testing.T) {
 	statuses := []AgentStatus{AgentConnected, AgentPaused, AgentNotConnected}
 	creds := []Credential{CredentialSession, CredentialOAuth, CredentialAPIKey}
 	objects := []Object{newGate, gate, mineGate, {WaitingGates: MaxWaitingGates}, {Secrets: []string{"JWT"}}}
-	spaces := []Space{project, personal, team, ownersKeep, teamNoWeb}
+	spaces := []Space{project, personal, team, ownersKeep, teamNoWeb, v1Project}
 	banned := []string{"!", " AI", "magic", "smart", "delete", "Delete"}
 	n := 0
 	for _, kind := range ActorKinds {
@@ -556,6 +561,166 @@ func TestExportMatrix(t *testing.T) {
 	}
 	if d := Decide(agent(RoleOwner, AutonomyWrite), ActionExport, Object{}, project); d.Code != CodeExportByPerson {
 		t.Errorf("agent: %+v", d)
+	}
+}
+
+// TestScope: where a memory applies is a person's call (a member or owner
+// who may keep there, not a viewer or an API key); Memax only narrows it;
+// agents, Dream and the repository never change it; and a team decision
+// needs a person on the web, as editing it does.
+func TestScope(t *testing.T) {
+	t.Parallel()
+	widen := Object{Ref: "M-0219", Widens: true}
+	narrow := Object{Ref: "M-0219"}
+	teamDecision := Object{Ref: "M-0219", Decision: true, Widens: true}
+	key := with(person(RoleOwner, ViaAPI), func(a *Actor) { a.Credential, a.Autonomy = CredentialAPIKey, AutonomyWrite })
+	cases := []struct {
+		name string
+		a    Actor
+		o    Object
+		s    Space
+		want Effect
+		code string
+	}{
+		{"owner widens on the web", person(RoleOwner, ViaWeb), widen, personal, EffectApply, ""},
+		{"owner widens from the CLI", person(RoleOwner, ViaCLI), widen, personal, EffectApply, ""},
+		{"member narrows", person(RoleMember, ViaWeb), narrow, project, EffectApply, ""},
+		{"viewer", person(RoleViewer, ViaWeb), widen, project, EffectRefuse, CodeViewer},
+		{"member where only owners keep", person(RoleMember, ViaWeb), widen,
+			Space{Name: "memax-v2", Kind: SpaceProject, OnV2: true, Rules: Rules{Keep: WhoOwners}}, EffectRefuse, CodeOwnersKeep},
+		{"api key", key, widen, personal, EffectRefuse, CodeKeyCannotReview},
+		{"agent at write", agent(RoleOwner, AutonomyWrite), narrow, personal, EffectRefuse, CodePersonMustReview},
+		{"dream", Actor{Kind: ActorDream, Via: ViaSystem}, narrow, personal, EffectRefuse, CodePersonMustReview},
+		{"repository", Actor{Kind: ActorRepository, Via: ViaGitHub}, narrow, project, EffectRefuse, CodePersonMustReview},
+		{"memax narrows", Actor{Kind: ActorMemax, Via: ViaSystem}, narrow, personal, EffectApply, ""},
+		{"memax never widens", Actor{Kind: ActorMemax, Via: ViaSystem}, widen, personal, EffectRefuse, CodePersonMustReview},
+		{"team decision from the CLI", person(RoleOwner, ViaCLI), teamDecision, team, EffectRefuse, CodeDecisionNeedsWeb},
+		{"team decision on the web", person(RoleOwner, ViaWeb), teamDecision, team, EffectApply, ""},
+		{"team decision, passkey not used", with(person(RoleOwner, ViaWeb), func(a *Actor) { a.Passkey = true }),
+			teamDecision, team, EffectRefuse, CodeNeedsPasskey},
+		{"space on V1", person(RoleOwner, ViaWeb), widen, Space{Name: "acme", Kind: SpacePersonal}, EffectRefuse, CodeSpaceOnV1},
+	}
+	for _, c := range cases {
+		d := Decide(c.a, ActionScope, c.o, c.s)
+		if d.Effect != c.want || d.Code != c.code {
+			t.Errorf("%s: %+v, want %s %q", c.name, d, c.want, c.code)
+		}
+		if strings.Contains(d.Message, "!") || strings.Contains(d.Message, "delete") {
+			t.Errorf("%s: message breaks the voice rules: %s", c.name, d.Message)
+		}
+	}
+}
+
+// TestVerifyMatrix: a person who may keep verifies a stale fact, from any
+// surface for a project fact; agents, API keys and OAuth grants never do,
+// and neither do viewers or members where owners keep. A secret in the new
+// words is refused before anything is written.
+func TestVerifyMatrix(t *testing.T) {
+	t.Parallel()
+	roles := []Role{RoleNone, RoleOwner, RoleMember, RoleViewer}
+	creds := []Credential{CredentialSession, CredentialOAuth, CredentialAPIKey}
+	banned := []string{"!", " AI", "magic", "smart", "delete", "Delete"}
+	for _, kind := range ActorKinds {
+		for _, role := range roles {
+			for _, cred := range creds {
+				for _, via := range []Via{ViaWeb, ViaCLI, ViaMCP, ViaAPI} {
+					a := Actor{Kind: kind, Role: role, Credential: cred, Via: via, Autonomy: AutonomyWrite}
+					d := Decide(a, ActionVerify, kept, project)
+					for _, b := range banned {
+						if strings.Contains(d.Message, b) {
+							t.Fatalf("message breaks the voice rules (%s): %s", b, d.Message)
+						}
+					}
+					want := kind == ActorPerson && cred != CredentialAPIKey && (role == RoleOwner || role == RoleMember)
+					if (d.Effect == EffectApply) != want {
+						t.Fatalf("%+v → %+v, want apply=%v", a, d, want)
+					}
+					if d.Effect != EffectApply && d.Effect != EffectRefuse {
+						t.Fatalf("%+v: verify is applied or refused, got %+v", a, d)
+					}
+				}
+			}
+		}
+	}
+	for _, c := range []struct {
+		name  string
+		actor Actor
+		obj   Object
+		space Space
+		code  string
+	}{
+		{"an agent at write", agent(RoleOwner, AutonomyWrite), kept, project, CodeVerifyByPerson},
+		{"an API key", with(person(RoleOwner, ViaAPI), func(a *Actor) { a.Credential, a.Autonomy = CredentialAPIKey, AutonomyPropose }), kept, project, CodeVerifyByPerson},
+		{"Dream", Actor{Kind: ActorDream, Via: ViaSystem}, kept, project, CodeVerifyByPerson},
+		{"Memax", Actor{Kind: ActorMemax, Via: ViaSystem}, kept, project, CodeVerifyByPerson},
+		{"a viewer", person(RoleViewer, ViaWeb), kept, project, CodeViewer},
+		{"a member where owners keep", person(RoleMember, ViaWeb), kept, ownersKeep, CodeOwnersKeep},
+		{"a team decision from the CLI", person(RoleOwner, ViaCLI), keptDec, team, CodeDecisionNeedsWeb},
+		{"new words with a secret", person(RoleOwner, ViaWeb), Object{Ref: "M-0219", Lifecycle: lifecycle.Kept, Secrets: []string{"AWS access key"}}, project, CodeSecret},
+		{"a space still on V1", person(RoleOwner, ViaWeb), kept, v1Project, CodeSpaceOnV1},
+	} {
+		if d := Decide(c.actor, ActionVerify, c.obj, c.space); d.Effect != EffectRefuse || d.Code != c.code {
+			t.Errorf("%s: %+v, want refused %s", c.name, d, c.code)
+		}
+	}
+	if d := Decide(person(RoleOwner, ViaCLI), ActionVerify, keptDec, project); d.Effect != EffectApply {
+		t.Errorf("a project decision from the CLI: %+v", d)
+	}
+	if d := Decide(person(RoleOwner, ViaWeb), ActionVerify, keptDec, teamNoWeb); d.Effect != EffectApply || d.Suggest != "" {
+		t.Errorf("a team decision where decisions don't need the web: %+v", d)
+	}
+}
+
+// TestReportChecksMatrix: a member's or owner's own session reports checks,
+// from any surface; agents, API keys, OAuth grants, viewers and system
+// actors don't. Only Memax flags from a check.
+func TestReportChecksMatrix(t *testing.T) {
+	t.Parallel()
+	roles := []Role{RoleNone, RoleOwner, RoleMember, RoleViewer}
+	creds := []Credential{CredentialSession, CredentialOAuth, CredentialAPIKey}
+	banned := []string{"!", " AI", "magic", "smart", "delete", "Delete"}
+	for _, kind := range ActorKinds {
+		for _, role := range roles {
+			for _, cred := range creds {
+				for _, via := range []Via{ViaWeb, ViaCLI, ViaMCP, ViaAPI} {
+					a := Actor{Kind: kind, Role: role, Credential: cred, Via: via, Autonomy: AutonomyWrite}
+					d := Decide(a, ActionReportChecks, Object{}, project)
+					for _, b := range banned {
+						if strings.Contains(d.Message, b) {
+							t.Fatalf("message breaks the voice rules (%s): %s", b, d.Message)
+						}
+					}
+					want := kind == ActorPerson && cred == CredentialSession && (role == RoleOwner || role == RoleMember)
+					if (d.Effect == EffectApply) != want {
+						t.Fatalf("%+v → %+v, want apply=%v", a, d, want)
+					}
+					f := Decide(a, ActionFlagStale, Object{}, project)
+					if (f.Effect == EffectApply) != (kind == ActorMemax) {
+						t.Fatalf("flag %+v → %+v", a, f)
+					}
+				}
+			}
+		}
+	}
+	for _, c := range []struct {
+		name  string
+		actor Actor
+		act   Action
+		space Space
+		code  string
+	}{
+		{"an agent", agent(RoleOwner, AutonomyWrite), ActionReportChecks, project, CodeChecksByPerson},
+		{"an API key", with(person(RoleOwner, ViaAPI), func(a *Actor) { a.Credential = CredentialAPIKey }), ActionReportChecks, project, CodeChecksByPerson},
+		{"Memax", Actor{Kind: ActorMemax, Via: ViaSystem}, ActionReportChecks, project, CodeChecksByPerson},
+		{"a viewer", person(RoleViewer, ViaCLI), ActionReportChecks, project, CodeViewer},
+		{"a space still on V1", person(RoleOwner, ViaCLI), ActionReportChecks, v1Project, CodeSpaceOnV1},
+		{"a person flags", person(RoleOwner, ViaWeb), ActionFlagStale, project, CodeFlagByMemax},
+		{"Dream flags from a check", Actor{Kind: ActorDream, Via: ViaSystem}, ActionFlagStale, project, CodeFlagByMemax},
+		{"Memax on a space still on V1", Actor{Kind: ActorMemax, Via: ViaSystem}, ActionFlagStale, v1Project, CodeSpaceOnV1},
+	} {
+		if d := Decide(c.actor, c.act, Object{}, c.space); d.Effect != EffectRefuse || d.Code != c.code {
+			t.Errorf("%s: %+v, want refused %s", c.name, d, c.code)
+		}
 	}
 }
 

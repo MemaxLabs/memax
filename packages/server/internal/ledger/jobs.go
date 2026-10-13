@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -101,13 +102,47 @@ func (w *writer) markDirty(ctx context.Context, spaceID uuid.UUID, targets ...uu
 }
 
 // dirtySQL bumps the generation of the space $1's targets that aren't
-// off (or only the targets $2), and returns their ids.
+// off (or only the targets $2), and returns their ids. It locks them in id
+// order first, in an ordered subselect (an UPDATE takes its rows in the
+// order its plan reaches them, which two UPDATEs needn't share), so two
+// commands bumping one space's targets take them in the same order
+// (locks.go).
 const dirtySQL = `
-	UPDATE v2.targets
-	   SET dirty_gen = dirty_gen + 1, dirty_at = now(), updated_at = now(),
-	       sync_state = CASE WHEN sync_state IN ('in_sync', 'pending_delivery') THEN 'compiling' ELSE sync_state END
-	 WHERE space_id = $1 AND sync_state <> 'off' AND ($2::uuid[] IS NULL OR id = ANY ($2))
-	RETURNING id`
+	UPDATE v2.targets t
+	   SET dirty_gen = t.dirty_gen + 1, dirty_at = now(), updated_at = now(),
+	       sync_state = CASE WHEN t.sync_state IN ('in_sync', 'pending_delivery') THEN 'compiling' ELSE t.sync_state END
+	  FROM (SELECT id FROM v2.targets
+	         WHERE space_id = $1 AND sync_state <> 'off' AND ($2::uuid[] IS NULL OR id = ANY ($2))
+	         ORDER BY id ` + lockWrite + `) l
+	 WHERE t.id = l.id AND t.space_id = $1 AND t.sync_state <> 'off'
+	RETURNING t.id`
+
+// lockAllTargets locks every target of the space, off ones included, in
+// id order (lockDelete for a space's retirement), and bumps those that
+// compile when dirty is set: a Forget's one round of target locks, before
+// it rewrites any. The two statements go out together, in one round trip;
+// the bump locks nothing new.
+func (w *writer) lockAllTargets(ctx context.Context, spaceID uuid.UUID, dirty, retire bool) error {
+	lock := lockWrite
+	if retire {
+		lock = lockDelete
+	}
+	b := &pgx.Batch{}
+	b.Queue(lockTargetsSQL(lock), spaceID)
+	var ids []uuid.UUID
+	if dirty {
+		b.Queue(dirtySQL, spaceID, []uuid.UUID(nil)).Query(func(rows pgx.Rows) error {
+			var err error
+			ids, err = dirtyTargets(rows, nil)
+			return err
+		})
+	}
+	if err := w.tx.SendBatch(ctx, b).Close(); err != nil {
+		return fmt.Errorf("ledger: lock targets: %w", err)
+	}
+	w.queueCompiles(spaceID, ids)
+	return nil
+}
 
 // dirtyTargets reads dirtySQL's answer.
 func dirtyTargets(rows pgx.Rows, err error) ([]uuid.UUID, error) {
@@ -148,7 +183,7 @@ func (w *writer) flush(ctx context.Context) error {
 	}
 	return asLoginRole(ctx, w.tx, w.loginRole, func() error {
 		if w.inserter != nil && len(w.jobs) > 0 {
-			if _, err := w.inserter.InsertManyTx(ctx, w.tx, w.jobs); err != nil {
+			if _, err := w.inserter.InsertManyTx(ctx, w.tx, inInsertOrder(w.jobs)); err != nil {
 				return fmt.Errorf("ledger: enqueue %d job(s): %w", len(w.jobs), err)
 			}
 		}
@@ -159,6 +194,29 @@ func (w *writer) flush(ctx context.Context) error {
 		}
 		return nil
 	})
+}
+
+// inInsertOrder is jobs with the compile jobs first, in target id order,
+// then the rest as queued. A compile job is unique by its target, so two
+// commands that dirty one space's targets insert the same jobs, and the
+// second waits on the first's at the unique index: in one order, as their
+// targets were locked (locks.go), they can't wait on each other. No other
+// job is queued by two commands at once (each names a memory version, an
+// edition or a Forget that one command writes).
+func inInsertOrder(jobs []river.InsertManyParams) []river.InsertManyParams {
+	out := make([]river.InsertManyParams, 0, len(jobs))
+	var rest []river.InsertManyParams
+	for _, j := range jobs {
+		if _, ok := j.Args.(CompileTargetArgs); ok {
+			out = append(out, j)
+		} else {
+			rest = append(rest, j)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b river.InsertManyParams) int {
+		return strings.Compare(a.Args.(CompileTargetArgs).TargetID.String(), b.Args.(CompileTargetArgs).TargetID.String())
+	})
+	return append(out, rest...)
 }
 
 // asLoginRole runs fn as the transaction's login role, then switches back
@@ -234,8 +292,12 @@ func (l *Ledger) SpaceScope(ctx context.Context, spaceID uuid.UUID) (Scope, erro
 	}
 	var g SpaceGrant
 	var kind string
-	err := l.pool.QueryRow(ctx, `SELECT id, tenant_id, space_kind, slug, name FROM public.hubs WHERE id = $1`, spaceID).
-		Scan(&g.SpaceID, &g.TenantID, &kind, &g.Slug, &g.Name)
+	// With the space's plan rows (its team's subscription and its owner's
+	// plan): what Dream runs it at.
+	err := l.pool.QueryRow(ctx, `SELECT h.id, h.tenant_id, h.space_kind, h.slug, h.name, h.v2_enabled_at IS NOT NULL,
+		       `+spacePlansSQL+`
+		  FROM public.hubs h WHERE h.id = $1`, spaceID).
+		Scan(&g.SpaceID, &g.TenantID, &kind, &g.Slug, &g.Name, &g.OnV2, &g.HubPlanID, &g.OwnerPlanID)
 	if errNoRows(err) {
 		// A retired space: its hub is gone, its receipts and seals stay
 		// (migration 044), and the sealer and the verifier still need its

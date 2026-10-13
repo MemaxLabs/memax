@@ -1,5 +1,5 @@
 import type { Memax, V2 } from "memax-sdk";
-import type { MemoryListItem } from "./memories";
+import type { MemoryListItem, MemoryNote } from "./memories";
 import type { Actor, DisplayState, RailReceipt, RecordAction } from "./records";
 import type { JudgeMark, ReviewItem } from "./review";
 
@@ -65,6 +65,7 @@ const RECORD_ACTIONS = new Set<string>([
   "answered",
   "undid",
   "returned",
+  "unflagged",
 ]);
 
 export function isRecordAction(action: string): action is RecordAction {
@@ -207,6 +208,50 @@ function railSource(receipt: V2.Receipt | undefined): string | null {
   return session ? `session ${session}` : null;
 }
 
+/** Receipt sources that name a date: Dream's flags cite their edition, the date sweep the date. */
+const DATE_SOURCES = new Set(["dream", "date"]);
+
+/**
+ * The stale mark's line (Memories.png): a date to check again that passed,
+ * or a source that changed (a pull request, a commit), from the receipt
+ * that flagged it, or from the date itself once that receipt is behind
+ * another (an undone verification).
+ */
+export function staleNoteOf(
+  memory: V2.Memory,
+  last: V2.Receipt | undefined,
+): MemoryNote | null {
+  const flag = last?.action === "flagged" ? last : undefined;
+  const passed =
+    memory.stale_after !== undefined &&
+    Date.parse(memory.stale_after) <= Date.now();
+  if (flag?.source?.kind === "check") {
+    return {
+      kind: "stale",
+      cause: "check",
+      changedAt: flag.occurred_at,
+      source: null,
+    };
+  }
+  if (flag && !DATE_SOURCES.has(flag.source?.kind ?? "")) {
+    return {
+      kind: "stale",
+      cause: "source",
+      changedAt: flag.occurred_at,
+      source: flag.source?.ref ?? null,
+    };
+  }
+  if (flag || passed) {
+    return {
+      kind: "stale",
+      cause: "date",
+      changedAt: flag?.occurred_at ?? memory.stale_after ?? memory.updated_at,
+      source: null,
+    };
+  }
+  return null;
+}
+
 export function listItemOf(
   memory: V2.Memory,
   receipts: ReadonlyMap<string, V2.Receipt>,
@@ -223,12 +268,8 @@ export function listItemOf(
     receipt: railOf(last, viewerId) ?? railOf(created, viewerId),
     source: railSource(created),
     note:
-      state === "stale" && last?.action === "flagged"
-        ? {
-            kind: "stale",
-            changedAt: last.occurred_at,
-            source: last.source?.ref ?? null,
-          }
+      state === "stale"
+        ? staleNoteOf(memory, last)
         : state === "merged" && mergedIntoOf(memory)
           ? {
               kind: "merged",

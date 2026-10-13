@@ -822,6 +822,10 @@ func (l *Ledger) RunSwitch(ctx context.Context, spaceID uuid.UUID) (*SpaceSwitch
 	if start < 0 {
 		start = len(SwitchSteps)
 	}
+	// The steps write the Brief, targets, the import, connections and gates
+	// into the record before the last one puts the space on V2: policy lets
+	// them through on V1 (policy.Space.Switching), and nothing else.
+	ctx = withSwitch(ctx, spaceID)
 	for _, step := range SwitchSteps[start:] {
 		if step == SwitchStepSpace {
 			continue // StartSwitch set the kind and repository

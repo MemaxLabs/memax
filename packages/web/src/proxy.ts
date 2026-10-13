@@ -6,8 +6,11 @@
  * set): requests for V2 Ledger paths without the `memax_ui=v2` cookie
  * (the person's V2 UI flag, as the web app's server last read it)
  * redirect to the V1 home, or a signed-in browser once to /signin to read
- * the flag again. Every other path falls through to the V1 rules below
- * unchanged.
+ * the flag again; and V1's home, opened with the cookie, goes to the V2
+ * landing instead. The public site (/welcome, /pricing, /security,
+ * /docs) opens for every browser, and with LANDING_AT_ROOT on, a
+ * signed-out "/" is rewritten to the public Landing. Every other path
+ * falls through to the V1 rules below unchanged.
  *
  * Plan 24 phase 4b retired v1 across the board. Legacy `/memories`
  * paths now unconditionally redirect to their v2 equivalents so URLs
@@ -49,6 +52,7 @@ import {
   UI_COOKIE,
   UI_RECHECK_COOKIE,
   UI_RECHECK_SECONDS,
+  V1_ENTRY_PATHS,
 } from "@/lib/ui-gate";
 
 // Path predicates — minimal regex set. Keep this file cheap: it runs
@@ -62,13 +66,12 @@ const V1_MEMORIES_TOPIC_RE = /^\/memories\/topics\/([^/]+)\/?$/;
 // self-contained; lib/session-presence.ts and proxy.test.ts both pin
 // it.
 //
-// /register is deliberately NOT in this set: invite links arrive as
-// /register?invite=TOKEN and a redirect would swallow the token
-// before the page can capture it — a stale presence cookie must never
-// cost someone their invite. The register page itself forwards
-// already-signed-in users onward.
+// The entry pages it skips (lib/ui-gate's V1_ENTRY_PATHS) leave out
+// /register on purpose: invite links arrive as /register?invite=TOKEN
+// and a redirect would swallow the token before the page can capture
+// it — a stale presence cookie must never cost someone their invite.
+// The register page itself forwards already-signed-in users onward.
 const SESSION_PRESENCE_COOKIE = "memax_session_presence";
-const SIGNED_OUT_ENTRY_PATHS = new Set(["/", "/login"]);
 
 function v1ToV2Path(pathname: string): string | null {
   // /memories or /memories/ — the overview
@@ -91,10 +94,13 @@ export function proxy(request: NextRequest) {
 
   // V2 gating first: a V2 path without the opt-in cookie goes to the
   // V1 home, or, signed in, once to /signin?next= to read the person's
-  // V2 UI flag again. Query strings are dropped on the way to V1; they
-  // belong to the V2 route. Two redirects carry it: the re-check's
-  // `next`, and V1's retired consent page, which sends every browser on
-  // to the Ledger one (OAuthConsent) with the same request.
+  // V2 UI flag again; V1's home with the cookie goes once to the V2
+  // landing (also /signin, which lands a signed-in person by their
+  // flag), ahead of the session fast path below. Query strings are
+  // dropped on the way to V1; they belong to the V2 route. Two redirects
+  // carry it: the re-check's `next`, and V1's retired consent page,
+  // which sends every browser on to the Ledger one (OAuthConsent) with
+  // the same request.
   const gate = decideUiGate({
     pathname,
     search: request.nextUrl.search,
@@ -102,6 +108,13 @@ export function proxy(request: NextRequest) {
     hasSession,
     rechecked: request.cookies.has(UI_RECHECK_COOKIE),
   });
+  if (gate.action === "rewrite") {
+    // The public Landing at "/" (lib/ui-gate.ts LANDING_AT_ROOT): the
+    // page is served at this address, query and all.
+    const target = new URL(gate.pathname, request.nextUrl.origin);
+    target.search = request.nextUrl.search;
+    return NextResponse.rewrite(target);
+  }
   if (gate.action === "redirect") {
     const target = new URL(gate.pathname, request.nextUrl.origin);
     if (gate.keepQuery) target.search = request.nextUrl.search;
@@ -131,7 +144,7 @@ export function proxy(request: NextRequest) {
   // /login?returnTo=…, OAuth error params, etc. encode flow state the
   // /home resolver knows nothing about; redirecting would discard it.
   if (
-    SIGNED_OUT_ENTRY_PATHS.has(pathname) &&
+    V1_ENTRY_PATHS.has(pathname) &&
     request.nextUrl.search === "" &&
     hasSession
   ) {
@@ -153,20 +166,24 @@ export function proxy(request: NextRequest) {
 }
 
 // Static on purpose (Next reads it at build time, so it can't import
-// lib/ui-gate). It matches the V1 paths above plus every V2 path in
-// lib/ui-gate.ts; proxy.test.ts fails if the two drift. Everything
-// else (/h/*, /brain, /agents, /pulse, /register, /api/*, _next, …)
-// skips the proxy entirely so it stays cheap.
+// lib/ui-gate). It matches the V1 paths above, V1's home, plus every V2
+// path in lib/ui-gate.ts; proxy.test.ts fails if the two drift.
+// Everything else (/h/*, /brain, /agents, /pulse, /settings,
+// /register, /admin, /api/*, _next, …) skips the proxy entirely so it
+// stays cheap.
 //
 // The space pattern lists lib/ui-gate's V2_SPACE_PLACES. The bare
 // /[space] pattern (redirected to its Today) leaves out every reserved
 // slug in lib/ui-gate's RESERVED_SPACE_SLUGS, so V1's own one-segment
-// routes (/home, /brain, /settings…) still skip the proxy.
+// routes (/brain, /settings…) still skip the proxy; /home runs it
+// through its own entry above.
 export const config = {
   matcher: [
-    // V1: signed-out entry surfaces and the legacy /memories tree
+    // V1: signed-out entry surfaces, the home they lead to (a person who
+    // sees V2 starts there instead), and the legacy /memories tree
     "/",
     "/login",
+    "/home",
     "/memories",
     "/memories/:path*",
     // V2 Ledger areas
@@ -177,11 +194,16 @@ export const config = {
     "/oauth/:path*",
     "/setup/:path*",
     "/join/:path*",
+    // The public site, open to every browser
+    "/welcome/:path*",
+    "/pricing/:path*",
+    "/security/:path*",
+    "/docs/:path*",
     "/settings/:path+",
     "/dev/ledger/:path*",
     // V2 spaces: /[space]/<place>/…
     "/:space/:place(today|review|brief|memories|handoffs|agents|decisions|dream|activity|search|settings)/:path*",
     // A bare /[space], which opens on its Today
-    "/:space((?!(?:account|admin|agents|api|assets|auth|billing|blog|brain|changelog|dev|device|discover|docs|download|dreams|h|help|home|images|inbox|invite|join|legal|login|logout|mcp|memories|oauth|pricing|privacy|public|pulse|register|security|settings|setup|share|signin|signout|signup|static|status|support|terms|v1|v2|waitlist)(?:/|$))[a-z0-9][a-z0-9-]*)",
+    "/:space((?!(?:account|admin|agents|api|assets|auth|billing|blog|brain|changelog|dev|device|discover|docs|download|dreams|h|help|home|images|inbox|invite|join|legal|login|logout|mcp|memories|oauth|pricing|privacy|public|pulse|register|security|settings|setup|share|signin|signout|signup|static|status|support|terms|v1|v2|waitlist|welcome)(?:/|$))[a-z0-9][a-z0-9-]*)",
   ],
 };

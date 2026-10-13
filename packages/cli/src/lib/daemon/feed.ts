@@ -11,10 +11,10 @@
 // moves, while something is in flight (a compile run writes no receipt),
 // after a wake, and every few minutes regardless.
 import type { V2 } from "memax-sdk";
-import { failureOf } from "./api.js";
+import { failureOf, type TargetPoll } from "./api.js";
 
 export interface FeedHandlers {
-  fetch(signal: AbortSignal): Promise<V2.Target[]>;
+  fetch(signal: AbortSignal): Promise<TargetPoll>;
   /** A cheap token that changes whenever the space does. */
   probe?(signal: AbortSignal): Promise<string>;
   /**
@@ -23,7 +23,7 @@ export interface FeedHandlers {
    * follow a change the targets don't show, such as a gate or a Forget.
    */
   onTargets(
-    targets: V2.Target[],
+    poll: TargetPoll,
     info: { changed: boolean },
   ): Promise<{ busy: boolean }>;
   onError(err: unknown, retryInMs: number): void;
@@ -172,14 +172,14 @@ export class PollingFeed implements TargetFeed {
       if (full) {
         const changed = this.needFull || !this.lastBusy;
         this.needFull = false;
-        const targets = await this.h.fetch(signal);
-        const { busy } = await this.h.onTargets(targets, { changed });
+        const poll = await this.h.fetch(signal);
+        const { busy } = await this.h.onTargets(poll, { changed });
         this.lastFull = Date.now();
         this.lastBusy = busy;
         // The token read before this list, or none: the next probe then
         // refetches once and settles.
         this.lastToken = token;
-        delay = this.nextDelay(targets, busy);
+        delay = this.nextDelay(poll.targets, busy);
       } else {
         delay = this.idleDelay(Date.now());
       }

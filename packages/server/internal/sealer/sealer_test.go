@@ -48,7 +48,7 @@ func newFixture(t *testing.T) *fixture {
 	_, pool := testdb.Acquire(t)
 	f := &fixture{t: t, pool: pool, l: ledger.New(pool, ledger.WithLogger(quiet)), owner: uuid.New(), space: uuid.New()}
 	f.exec(`INSERT INTO users (id, email, name) VALUES ($1, $2, 'zz')`, f.owner, f.owner.String()+"@seal.test")
-	f.exec(`INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind) VALUES ($1, 'memax-v2', $2, 'team', $3, 'project')`,
+	f.exec(`INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind, v2_enabled_at) VALUES ($1, 'memax-v2', $2, 'team', $3, 'project', now())`,
 		f.space, f.space.String(), f.owner)
 	f.exec(`INSERT INTO hub_members (hub_id, user_id, role) VALUES ($1, $2, 'owner')`, f.space, f.owner)
 	f.tenant = f.owner
@@ -375,8 +375,11 @@ func TestInFlightReceiptIsSealedInItsPlace(t *testing.T) {
 	if len(sealed) != 3 || sealed[0] != before.LastReceiptID || sealed[1] != inflight || sealed[2] != after.LastReceiptID {
 		t.Fatalf("sealed %v; want before, the late commit, after", sealed)
 	}
+	// The late commit and the receipt after it are sealed together or
+	// apart, as the sealer's runs fall (2 checkpoints or 3); either way the
+	// chain verifies and each receipt is in exactly one checkpoint.
 	v := f.verify(s)
-	if !v.OK() || v.Receipts != 3 || v.Checkpoints != 2 {
+	if !v.OK() || v.Receipts != 3 || v.Checkpoints < 2 || v.Checkpoints > 3 {
 		t.Errorf("verify = %+v", v)
 	}
 	if n := f.count(`SELECT sum(receipts) FROM v2.receipt_checkpoints WHERE space_id = $1`, f.space); n != 3 {
@@ -660,7 +663,7 @@ func TestOnlyTheSealerWritesSeals(t *testing.T) {
 	}
 	// And the sealer itself never sees another space's receipts.
 	other := uuid.New()
-	f.exec(`INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind) VALUES ($1, 'other', $2, 'team', $3, 'project')`, other, other.String(), f.owner)
+	f.exec(`INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind, v2_enabled_at) VALUES ($1, 'other', $2, 'team', $3, 'project', now())`, other, other.String(), f.owner)
 	if res, err := f.l.SealSpace(ctx, other, signer, 10); err != nil || res.Sealed != 0 {
 		t.Errorf("sealing a space with no receipts: %+v %v", res, err)
 	}

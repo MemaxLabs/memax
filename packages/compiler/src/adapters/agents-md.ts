@@ -7,12 +7,28 @@
  *
  * Codex concatenates AGENTS.md files from the git root down and truncates
  * past `project_doc_max_bytes` (32 KiB), so the budget never exceeds 32 KiB.
+ *
+ * A personal space's canonical copy is `~/.memax/personal/AGENTS.md`: what
+ * OpenCode's `instructions`, the Cursor hook and people read. Like the home
+ * files it holds shared facts only (never path- or agent-scoped ones), says
+ * the personal intro line, and defaults to 6 KiB. Personal spaces never
+ * compiled before, so no project file changes.
  */
+import { agent, capOf } from "@memaxlabs/agents";
 import { compose, headerComment } from "../document.js";
 import { parseFile } from "../parse.js";
 import { select } from "../select.js";
 import { basename } from "../text.js";
 import type { Adapter } from "./adapter.js";
+import {
+  HOME_BUDGET,
+  PERSONAL_INTRO_LINE,
+  personalFacts,
+  proseOn,
+} from "./home.js";
+
+/** Codex stops reading AGENTS.md past its project_doc_max_bytes. */
+const CODEX = agent("codex");
 
 export const INTRO_LINE =
   "Every line cites a memory. Ask the memax MCP server for anything else.";
@@ -27,30 +43,45 @@ export const agentsMd: Adapter = {
   kind: "agents_md",
   version: 1,
   role: "canonical",
-  tool: "Codex",
+  tool: CODEX.name,
   defaultPath: "AGENTS.md",
   pathHint: "ending in AGENTS.md",
   acceptsPath: (path) => basename(path) === "AGENTS.md",
-  limits: { bytes: { value: 32 * 1024, tool: "Codex" } },
+  roots: ["repo", "home"],
+  defaultBudget: (model) =>
+    model.space.kind === "personal" ? HOME_BUDGET : null,
+  limits: {
+    bytes: {
+      value: capOf(CODEX.id, { repo: "agents_md" }).bytes!,
+      tool: CODEX.name,
+    },
+  },
   reads: () => null,
   parse: parseFile,
 
   render(model, target, limit) {
-    const selection = select(model, target, {
-      // Agent-only facts go to that agent's own file; path-scoped facts get
-      // subsections here unless the scoped targets carry them (`omit`).
-      accepts: (f) =>
-        f.agents.length === 0 &&
-        (f.paths.length === 0 || target.scoped === "inline"),
-      prose: true,
-    });
+    const personal = model.space.kind === "personal";
+    const shared = personalFacts(null);
+    const selection = personal
+      ? select(model, target, {
+          accepts: shared,
+          prose: proseOn(model, shared),
+        })
+      : select(model, target, {
+          // Agent-only facts go to that agent's own file; path-scoped facts
+          // get subsections here unless the scoped targets carry them.
+          accepts: (f) =>
+            f.agents.length === 0 &&
+            (f.paths.length === 0 || target.scoped === "inline"),
+          prose: true,
+        });
     const { title, summary } = model.brief;
     const head = [
       headerComment(model),
       `# ${title}`,
       "",
       ...(summary ? [summary] : []),
-      INTRO_LINE,
+      personal ? PERSONAL_INTRO_LINE : INTRO_LINE,
     ];
     const doc = compose(
       selection,

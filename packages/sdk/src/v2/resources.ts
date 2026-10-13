@@ -1,5 +1,5 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`, `.imports`,
-// `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.gates`,
+// `.receipts`, `.reads`, `.sessionStarts`, `.checks`, `.agents`, `.briefs`, `.targets`, `.machines`, `.gates`,
 // `.notices`, `.devices`, `.sessions`, `.dream`, `.notes`, `.settings` and `.account`. Thin, typed
 // wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
@@ -17,6 +17,8 @@ import type {
   PasskeySignIn,
   PublicKeyCredentialJSON,
   AgentCommandInput,
+  CloudAgentResult,
+  CreateCloudAgentInput,
   AskEvent,
   AskInput,
   AgentCommandResult,
@@ -24,6 +26,8 @@ import type {
   AgentList,
   AutonomyInput,
   CheckpointPage,
+  CheckRunInput,
+  CheckRunResult,
   Brief,
   BriefResult,
   BriefVersionPage,
@@ -33,6 +37,9 @@ import type {
   CommandResult,
   CompileLoadInput,
   CompileLoadResult,
+  SessionStart,
+  SessionStartInput,
+  SpaceConditions,
   CompileRunPage,
   ConfigureTargetInput,
   Conflict,
@@ -64,6 +71,9 @@ import type {
   ForgetCarry,
   ForgetInput,
   ForgetPreview,
+  StaleReport,
+  VerifyInput,
+  VerifyResult,
   ForgetRequestResult,
   ForgetResult,
   NoticeList,
@@ -96,6 +106,9 @@ import type {
   ReviewInput,
   ReviewPage,
   ReviseBriefInput,
+  ScopeInput,
+  SearchPage,
+  MemoryKind,
   RestoreBriefResult,
   Section,
   Session,
@@ -118,6 +131,10 @@ import type {
   TargetResult,
   UndoInput,
   WithdrawGateInput,
+  LinkMachineInput,
+  MachineList,
+  MachineResult,
+  RenameMachineInput,
 } from "./types.js";
 
 /** Options every command takes. */
@@ -632,6 +649,21 @@ export class V2MemoriesResource {
   }
 
   /**
+   * Set which repositories a memory applies in (`scope.repos`, as
+   * "owner/name"); `repos: []` is everywhere, which is how a person widens
+   * a personal fact `memax init` tied to one repository. The words don't
+   * change. It follows Keep's rules (agents and API keys are refused), and
+   * the scope it already has throws `invalid_request` (400).
+   */
+  async scope(
+    ref: string,
+    input: ScopeInput,
+    opts: ReviewOptions,
+  ): Promise<CommandResult> {
+    return this.command(ref, "scope", input, opts, opts.ifMatch);
+  }
+
+  /**
    * Both sides of one of this memory's conflicts, their latest receipts,
    * and the four answers with what each does and whether you may take it
    * (ReviewConflict).
@@ -738,6 +770,42 @@ export class V2MemoriesResource {
   }
 
   /**
+   * Why a memory is stale, for VerifyStale: its words and the version to
+   * send as `ifMatch`, the receipt that flagged it, its latest keep and the
+   * reads since, and the typed causes. `stale: false` once someone answered
+   * it. What a Forget would do is {@link previewForget}.
+   */
+  async stale(ref: string, opts?: GetMemoryOptions): Promise<StaleReport> {
+    return this.req("GET", `/v2/memories/${seg(ref)}/stale`, {
+      query: { space: opts?.space },
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Answer a stale flag. `still_true` clears it with a `verified` receipt;
+   * `update` writes `input.statement` (`edited`) and then `verified`. A date
+   * to check again that passed moves to `input.stale_after`, or goes. Both
+   * are undoable by you, within 10 minutes. `forget` is {@link forget}, with
+   * `input.carries` and `input.note`, and its result has the tombstone.
+   * `opts.ifMatch` is the version you checked. Only a person who may keep
+   * verifies; agents and API keys get a MemaxError `refused`
+   * (`verify_by_person`).
+   */
+  async verify(
+    ref: string,
+    input: VerifyInput,
+    opts: EditOptions,
+  ): Promise<VerifyResult> {
+    return this.req("POST", `/v2/memories/${seg(ref)}:verify`, {
+      query: { space: opts.space },
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
+      signal: opts.signal,
+    });
+  }
+
+  /**
    * A forgotten memory's tombstone: who forgot it and when, what went with
    * it, each step of the Forget with where it stands, and the copies Memax
    * can't reach. Never words. Throws `not_found` when it isn't forgotten.
@@ -759,8 +827,8 @@ export class V2MemoriesResource {
 
   private async command(
     ref: string,
-    verb: "keep" | "reject" | "edit" | "restore",
-    input: ReviewInput | EditInput,
+    verb: "keep" | "reject" | "edit" | "restore" | "scope",
+    input: ReviewInput | EditInput | ScopeInput,
     opts: CommandOptions & MemoryRefOptions,
     ifMatch: number | undefined,
   ): Promise<CommandResult> {
@@ -870,6 +938,69 @@ export class V2ReadsResource {
   }
 }
 
+export class V2SessionStartsResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /**
+   * A cloud agent's session start: name the compile (`C-`) each committed
+   * file's header holds, with its drift hash, and hear what changed in the
+   * record since: per file the cited lines added or changed (words from
+   * the latest compile only) and the memories gone, what a person forgot
+   * (refs and dates), decisions waiting for a person, and the agent's
+   * notices, each told once. A file whose compile isn't one of the
+   * space's is left out. It counts as a compile load under the key, once.
+   */
+  async start(
+    space: string,
+    input: SessionStartInput,
+    opts: CommandOptions,
+  ): Promise<SessionStart> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/session-starts`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+}
+
+export class V2ChecksResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /**
+   * Every kept memory's conditions, for a member's machine to check
+   * against the repository's committed tree on its default branch: each
+   * typed, with its hash (send it back with the result) and whether it is
+   * armed. No statements.
+   */
+  async conditions(
+    space: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<SpaceConditions> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/conditions`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Report a check run: the results at one commit of the default branch,
+   * as pushed, from a clone of the space's repository (results only,
+   * never a file's contents). An armed condition that now fails marks its
+   * memory stale, as Memax; `flagged` names them. A member's or owner's
+   * own session only; the same key records a run once.
+   */
+  async report(
+    space: string,
+    input: CheckRunInput,
+    opts: CommandOptions,
+  ): Promise<CheckRunResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/check-runs`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+}
+
 export class V2AgentsResource {
   constructor(private readonly req: RequestFn) {}
 
@@ -948,6 +1079,43 @@ export class V2AgentsResource {
     opts: CommandOptions,
   ): Promise<AgentCommandResult> {
     return this.command(agent, "disconnect", input, opts);
+  }
+
+  /**
+   * Connect a cloud agent (Claude Code's cloud sessions, Copilot's cloud
+   * agent, Codex Cloud) to one project or team space, with a start key:
+   * a key that only starts its sessions there (`sessionStarts.start`), at
+   * Read, for 180 days. `result.key.secret` is shown once and never
+   * stored: give it to the agent as a secret (`MEMAX_START_KEY`), never
+   * commit it. A retry with the same key answers without it. Only a person
+   * makes one; `autonomy: "propose"` needs them on the web.
+   */
+  async connectCloud(
+    input: CreateCloudAgentInput,
+    opts: CommandOptions,
+  ): Promise<CloudAgentResult> {
+    return this.req("POST", "/v2/cloud-agents", {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Give a cloud agent a new start key under the same connection: the old
+   * one stops working at once, and the new one's secret is in the result,
+   * once. Only the person the agent works for.
+   */
+  async rekey(
+    agent: string,
+    input: AgentCommandInput,
+    opts: CommandOptions,
+  ): Promise<CloudAgentResult> {
+    return this.req("POST", `/v2/agents/${seg(agent)}:rekey`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
   }
 
   private async command(
@@ -1034,12 +1202,17 @@ export class V2BriefsResource {
 export class V2TargetsResource {
   constructor(private readonly req: RequestFn) {}
 
-  /** Where the space compiles to, each target with its sync state. */
+  /**
+   * Where the space compiles to, each target with its sync state. With
+   * `machine`, only that machine's home files (what its daemon polls);
+   * that also notes the machine as seen.
+   */
   async list(
     space: string,
-    opts?: { signal?: AbortSignal },
+    opts?: { machine?: string; signal?: AbortSignal },
   ): Promise<TargetList> {
     return this.req("GET", `/v2/spaces/${seg(space)}/targets`, {
+      query: opts?.machine ? { machine: opts.machine } : undefined,
       signal: opts?.signal,
     });
   }
@@ -1171,6 +1344,74 @@ export class V2TargetsResource {
     opts: CommandOptions,
   ): Promise<DriftResolutionResult> {
     return this.req("POST", `/v2/targets/${seg(target)}/drift:${mode}`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+}
+
+/**
+ * `memax.v2.machines`: the computers your Personal space is written to,
+ * each with its own home files (`~/.claude/rules/memax-personal.md`, a
+ * block in `~/.codex/AGENTS.md`, `~/.memax/personal/AGENTS.md`). Only you,
+ * signed in, link, rename and unlink them; an agent's key is refused
+ * `machines_by_person`.
+ */
+export class V2MachinesResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /** The space's machines, linked or not, by number. */
+  async list(
+    space: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<MachineList> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/machines`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Link this machine (by the CLI's device id) with the files you approved
+   * on it: the machine, the space's first Brief when it has none, and one
+   * home file per approved file, compiling. Linking again converges; when
+   * nothing changes, nothing is written and `receipts` is empty.
+   */
+  async link(
+    space: string,
+    input: LinkMachineInput,
+    opts: CommandOptions,
+  ): Promise<MachineResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/machines`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** Rename a machine; `ifMatch` is its version. */
+  async rename(
+    machine: string,
+    input: RenameMachineInput,
+    opts: VersionedCommandOptions,
+  ): Promise<MachineResult> {
+    return this.req("PATCH", `/v2/machines/${seg(machine)}`, {
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Take your Personal space off a machine: every file of it stops, and its
+   * daemon removes what Memax wrote there, leaving what was edited by hand.
+   */
+  async unlink(
+    machine: string,
+    input: ReviewInput,
+    opts: CommandOptions,
+  ): Promise<MachineResult> {
+    return this.req("POST", `/v2/machines/${seg(machine)}:unlink`, {
       body: input,
       extraHeaders: commandHeaders(opts),
       signal: opts.signal,
@@ -1787,9 +2028,12 @@ export class V2Resource {
   readonly review: V2ReviewResource;
   readonly receipts: V2ReceiptsResource;
   readonly reads: V2ReadsResource;
+  readonly sessionStarts: V2SessionStartsResource;
+  readonly checks: V2ChecksResource;
   readonly agents: V2AgentsResource;
   readonly briefs: V2BriefsResource;
   readonly targets: V2TargetsResource;
+  readonly machines: V2MachinesResource;
   readonly gates: V2GatesResource;
   readonly notices: V2NoticesResource;
   readonly imports: V2ImportsResource;
@@ -1800,16 +2044,21 @@ export class V2Resource {
   readonly settings: V2SettingsResource;
   readonly account: V2AccountResource;
   private readonly openStream?: OpenFn;
+  private readonly req: RequestFn;
 
   constructor(req: RequestFn, open?: OpenFn) {
+    this.req = req;
     this.spaces = new V2SpacesResource(req, open);
     this.memories = new V2MemoriesResource(req);
     this.review = new V2ReviewResource(req);
     this.receipts = new V2ReceiptsResource(req);
     this.reads = new V2ReadsResource(req);
+    this.sessionStarts = new V2SessionStartsResource(req);
+    this.checks = new V2ChecksResource(req);
     this.agents = new V2AgentsResource(req);
     this.briefs = new V2BriefsResource(req);
     this.targets = new V2TargetsResource(req);
+    this.machines = new V2MachinesResource(req);
     this.gates = new V2GatesResource(req);
     this.notices = new V2NoticesResource(req);
     this.imports = new V2ImportsResource(req);
@@ -1820,6 +2069,33 @@ export class V2Resource {
     this.settings = new V2SettingsResource(req);
     this.account = new V2AccountResource(req);
     this.openStream = open;
+  }
+
+  /**
+   * Search your spaces: the memories that match `q`, best first, across
+   * every space you belong to that is on the V2 record (or the ones
+   * `spaces` names), by the same hybrid search as recall and the agents'
+   * `memax_search`. A person finds what was kept and what waits in Review;
+   * an agent finds what was kept. Each hit is the memory (without sources
+   * or links) and the receipts that wrote it and last changed it. A
+   * search ranks its 50 best matches: page with `limit` and `cursor`.
+   *
+   * ```ts
+   * const page = await memax.v2.search("deploy", { spaces: ["memax-v2"] });
+   * ```
+   */
+  async search(q: string, opts?: SearchOptions): Promise<SearchPage> {
+    return this.req("GET", "/v2/search", {
+      query: {
+        q,
+        space: opts?.spaces,
+        kind: opts?.kind,
+        include_notes: opts?.includeNotes || undefined,
+        cursor: opts?.cursor,
+        limit: opts?.limit,
+      },
+      signal: opts?.signal,
+    });
   }
 
   /**
@@ -1867,6 +2143,21 @@ export class V2Resource {
     }
     if (opts?.signal?.aborted) throw abortError(opts.signal);
   }
+}
+
+/** Options for {@link V2Resource.search}. */
+export interface SearchOptions {
+  /** Only these spaces, by id or slug (at most 20); none searches them all. */
+  spaces?: string[];
+  /** Only facts or only decisions. */
+  kind?: MemoryKind;
+  /** Also your notes that match; the first page carries them. */
+  includeNotes?: boolean;
+  /** The `next_cursor` of the page before. */
+  cursor?: string;
+  /** 1 to 50; defaults to 20. */
+  limit?: number;
+  signal?: AbortSignal;
 }
 
 /** Options for {@link V2Resource.ask}. */

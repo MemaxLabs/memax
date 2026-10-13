@@ -1,8 +1,9 @@
 /**
  * The places of a V2 space and their URLs (plan §6.3, HANDOFF §6). The
  * rail order is Today, Review, Briefs, Memories, Handoffs, Agents; a
- * team space adds Decisions after Memories. Activity has a route but no
- * rail item; Dream's editions are reached from Today, and light it.
+ * team space adds Decisions after Memories. Activity and Search have a
+ * route but no rail item; Dream's editions are reached from Today, and
+ * light it.
  */
 import type { SpaceKind } from "./data/types";
 
@@ -17,6 +18,7 @@ export const PLACE_ROUTES = [
   "agents",
   "dream",
   "activity",
+  "search",
 ] as const;
 
 export type PlaceRoute = (typeof PLACE_ROUTES)[number];
@@ -59,11 +61,11 @@ export function routeOfRail(place: RailPlace): PlaceRoute {
   return RAIL_ROUTE[place];
 }
 
-/** Which rail item a route lights up; Activity lights none, an edition Today. */
+/** Which rail item a route lights up; Activity and Search light none, an edition Today. */
 export function railOfRoute(
   route: PlaceRoute | undefined,
 ): RailPlace | undefined {
-  if (!route || route === "activity") return undefined;
+  if (!route || route === "activity" || route === "search") return undefined;
   if (route === "dream") return "today";
   return route === "brief" ? "briefs" : route;
 }
@@ -81,6 +83,26 @@ export function spaceHasPlace(kind: SpaceKind, route: PlaceRoute): boolean {
 
 export function placeHref(space: string, route: PlaceRoute): string {
   return `/${encodeURIComponent(space)}/${route}`;
+}
+
+/**
+ * Search across spaces, from a space: /memax-v2/search?q=deploy. The
+ * space is where the frame stays; the search covers every space.
+ */
+export function searchHref(space: string, query?: string): string {
+  const base = placeHref(space, "search");
+  const q = query?.trim();
+  return q ? `${base}?q=${encodeURIComponent(q)}` : base;
+}
+
+/**
+ * Where a space still on V1 opens in V1: its memories, under V1's hub
+ * routes (/h/<slug>/memories), which name a person's own personal space
+ * "personal". A V1 page, so following it is a full load into V1.
+ */
+export function v1SpaceHref(space: { slug: string; kind: SpaceKind }): string {
+  const slug = space.kind === "personal" ? "personal" : space.slug;
+  return `/h/${encodeURIComponent(slug)}/memories`;
 }
 
 /**

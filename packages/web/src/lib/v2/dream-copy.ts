@@ -23,7 +23,7 @@ import type {
 } from "./data/dream";
 import type { Actor } from "./data/records";
 import type { MemoryListItem } from "./data/memories";
-import { actorName } from "./records-copy";
+import { actorName, planLimitText } from "./records-copy";
 import { weekdayName } from "./today-copy";
 
 export type DreamCopy = Translations["ledger"]["dream"];
@@ -182,15 +182,28 @@ export function conflictNote(
   });
 }
 
-/** "Its source changed on Sep 11 in PR #198. Verify it.", or its date passed. */
-export function staleNote(w: DreamWords, m: MemoryListItem): string {
+/**
+ * Why a memory is stale: "Its source changed on Sep 11 in PR #198. Verify
+ * it.", a condition that stopped holding, or its date passed; and, for one
+ * an edition reminds of, that it has waited a month.
+ */
+export function staleNote(
+  w: DreamWords,
+  m: MemoryListItem,
+  waiting = false,
+): string {
   const n = w.dc.needsYou;
+  if (waiting) return n.staleWaiting;
   const note = m.note;
+  const date =
+    note?.kind === "stale"
+      ? formatShortDate(new Date(note.changedAt), w.timeZone, w.locale)
+      : "";
+  if (note?.kind === "stale" && note.cause === "check") {
+    return interpolate(n.staleCheck, { date });
+  }
   if (note?.kind === "stale" && note.source && !/^D-\d+$/.test(note.source)) {
-    return interpolate(n.staleSource, {
-      date: formatShortDate(new Date(note.changedAt), w.timeZone, w.locale),
-      source: note.source,
-    });
+    return interpolate(n.staleSource, { date, source: note.source });
   }
   return n.staleDate;
 }
@@ -270,6 +283,10 @@ export function runFailureText(w: DreamWords, failure: CommandFailure): string {
   }
   if (failure.kind === "refused" && failure.code === "dream_run_by_owner") {
     return r.runOwner;
+  }
+  if (failure.kind === "refused" && failure.code === "dream_cadence") {
+    // The space's plan's cap: a week on a weekly plan, a day on a nightly one.
+    return planLimitText(w.rc, failure, {}, w.locale) ?? r.runCap;
   }
   return failure.kind === "unreachable" ? r.unreachable : r.failed;
 }

@@ -260,12 +260,103 @@ describe("the Brief through memax.v2.briefs", () => {
 });
 
 describe("targets through memax.v2.targets", () => {
+  it("reads a personal space's home files with their machine, a URL segment per machine and their readers", async () => {
+    const home = (id: string, n: number, over: Partial<V2.Target> = {}) =>
+      ({
+        id,
+        kind: "codex_user",
+        root: "home",
+        path: ".codex/AGENTS.md",
+        label: "~/.codex/AGENTS.md",
+        machine: { id: `m${n}`, label: `machine-${n}`, name: `mbp-${n}` },
+        settings: {
+          include: "kept_and_open",
+          stale: "mark",
+          size_budget: 6144,
+          user_owned: true,
+          read_by: ["codex"],
+        },
+        holds: [],
+        open_drift: 0,
+        ...over,
+      }) as unknown as V2.Target;
+    const repo = {
+      ...home("t0", 0),
+      kind: "agents_md",
+      root: "repo",
+      path: "AGENTS.md",
+      label: "AGENTS.md",
+      machine: undefined,
+    } as V2.Target;
+    const items = [repo, home("t1", 1), home("t2", 2)];
+    const views = items.map((t) => targetOf(t, items));
+    expect(views.map((v) => v.slug)).toEqual([
+      "agents-md",
+      "codex-user-machine-1",
+      "codex-user-machine-2",
+    ]);
+    expect(views[0]).toMatchObject({ root: "repo", machine: null, readBy: [] });
+    expect(views[2]).toMatchObject({
+      root: "home",
+      label: "~/.codex/AGENTS.md",
+      machine: { id: "m2", label: "machine-2", name: "mbp-2" },
+      readBy: ["codex"],
+    });
+    // Gemini's file, read by Antigravity and Gemini CLI: registry keys.
+    const gemini = home("t4", 1, {
+      kind: "gemini_user",
+      path: ".gemini/AGENTS.md",
+      label: "~/.gemini/AGENTS.md",
+      settings: {
+        include: "kept_and_open",
+        stale: "mark",
+        size_budget: 6144,
+        user_owned: true,
+        read_by: ["antigravity", "gemini-cli"],
+      },
+    });
+    expect(targetOf(gemini, [gemini]).readBy).toEqual([
+      "antigravity",
+      "gemini",
+    ]);
+    // Two copies of one kind on one machine fall back to their ids.
+    const twice = [
+      home("t1", 1),
+      home("t3", 1, { path: ".codex/AGENTS.override.md" }),
+    ];
+    expect(twice.map((t) => targetOf(t, twice).slug)).toEqual(["t1", "t3"]);
+  });
+
+  it("lists every target, home files too", async () => {
+    const list = vi.fn().mockResolvedValue({
+      items: [
+        {
+          ...answer,
+          id: "t9",
+          root: "home",
+          kind: "claude_user",
+          machine: { id: "m1", label: "machine-1", name: "mbp" },
+        },
+        answer,
+      ],
+    });
+    const client = fakeClient({ targets: { list } });
+    const views = await createSdkTargets(client).list({ space: SPACE });
+    expect(views.map((v) => [v.id, v.root])).toEqual([
+      ["t9", "home"],
+      ["t1", "repo"],
+    ]);
+  });
+
   const target = {
     id: "t1",
     slug: "agents-md",
     kind: "agents_md",
     label: "AGENTS.md",
     path: "AGENTS.md",
+    root: "repo",
+    machine: null,
+    readBy: [],
     reads: null,
     syncState: "in_sync",
     delivery: "local",
@@ -280,6 +371,7 @@ describe("targets through memax.v2.targets", () => {
     space_id: "s1",
     tenant_id: "n1",
     kind: "agents_md",
+    root: "repo",
     path: "AGENTS.md",
     label: "AGENTS.md",
     settings: { include: "kept_and_open", stale: "omit", size_budget: 20480 },

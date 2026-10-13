@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/stalesweep"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream/dreamtest"
@@ -118,6 +120,15 @@ func (w *world) keep(key, statement string, mod func(*ledger.NewMemory)) *ledger
 	return m
 }
 
+// sweepDates runs the date sweep on the space: what is past its date is
+// flagged stale by Memax.
+func (w *world) sweepDates() {
+	w.t.Helper()
+	if _, err := stalesweep.FlagSpace(context.Background(), w.l, ledger.StaleSpaceArgs{SpaceID: w.space, Slot: time.Now()}); err != nil {
+		w.t.Fatal(err)
+	}
+}
+
 func (w *world) propose(key, statement string) *ledger.Memory {
 	m := w.apply(&ledger.Propose{Meta: w.meta(), NewMemory: ledger.NewMemory{SpaceID: w.space, Statement: statement,
 		Section: ledger.SectionConventions}}).Memory
@@ -150,6 +161,8 @@ func (w *world) seed() {
 		nm.Kind, nm.Section, nm.Decision = ledger.KindDecision, ledger.SectionDecisions, &ledger.DecisionFields{Area: "package manager"}
 	})
 	w.keep("haiku", "Ask memax answers with the Haiku tier.", func(nm *ledger.NewMemory) { nm.StaleAfter = &past })
+	// The hourly date sweep flags it, as Memax; Dream reports it.
+	w.sweepDates()
 	w.keep("fly", "Deploys go to Fly.io in iad and ams.", nil)
 	w.propose("cards", "Review cards show the diff against the memory they replace.")
 	w.propose("cards2", "Review cards show the diff against the memory they replace!")
@@ -214,7 +227,7 @@ func TestRunPublishesAnEdition(t *testing.T) {
 	}
 	ed := out.Edition
 	want := map[ledger.DreamActionKind]int{ledger.DreamFold: 1, ledger.DreamPropose: 1, ledger.DreamDedupe: 2,
-		ledger.DreamConflict: 1, ledger.DreamStale: 1, ledger.DreamBrief: 1}
+		ledger.DreamConflict: 1, ledger.DreamStale: 0, ledger.DreamBrief: 1}
 	for k, n := range want {
 		if ed.Counts[k] != n {
 			t.Errorf("%s: %d, want %d (all %v; skipped %v; considered %v)", k, ed.Counts[k], n, ed.Counts, ed.Stats.Skipped, ed.Stats.Considered)
@@ -229,8 +242,33 @@ func TestRunPublishesAnEdition(t *testing.T) {
 	if fly := w.get(w.m["fly"].ID); !fly.Flags.Has(lifecycle.Conflict) {
 		t.Errorf("the kept facts that disagree weren't flagged: %v", fly.Flags)
 	}
-	if h := w.get(w.m["haiku"].ID); !h.Flags.Has(lifecycle.Stale) {
-		t.Error("the fact past its date wasn't flagged stale")
+	// Dream flags no date: the sweep did, as Memax, and the edition lists
+	// it, citing that flag.
+	h := w.get(w.m["haiku"].ID)
+	if !h.Flags.Has(lifecycle.Stale) {
+		t.Error("the fact past its date isn't stale")
+	}
+	var flag uuid.UUID
+	if err := w.pool.QueryRow(context.Background(), `SELECT id FROM v2.receipts WHERE stream_id = $1 AND action = 'flagged'
+	                                                       AND actor_kind = 'memax'`, h.ID).Scan(&flag); err != nil {
+		t.Fatalf("the sweep's flag: %v", err)
+	}
+	full, err := w.l.GetEdition(context.Background(), w.scope(), w.space, ed.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var surfaced []string
+	for _, x := range full.Surfaced {
+		surfaced = append(surfaced, x.Kind+" "+x.Memory.Ref)
+		if x.Memory.ID == h.ID && (x.Kind != ledger.SurfacedStale || x.Receipt == nil || *x.Receipt != flag) {
+			t.Errorf("haiku surfaced as %+v, want stale citing %s", x, flag)
+		}
+	}
+	if !slices.Contains(surfaced, ledger.SurfacedStale+" "+h.Ref) {
+		t.Errorf("surfaced %v, want %s as stale", surfaced, h.Ref)
+	}
+	if ed.NeedsYou != 2 {
+		t.Errorf("needs you %d, want the conflict and the stale fact", ed.NeedsYou)
 	}
 	brief, err := w.l.GetBrief(context.Background(), w.scope(), w.space)
 	if err != nil {
@@ -265,6 +303,118 @@ func TestRunPublishesAnEdition(t *testing.T) {
 	third := run(t, e, w, time.Now().Add(time.Second).Truncate(time.Second))
 	if !third.Ran || third.Edition.NotesRead != 1 || third.Edition.Counts[ledger.DreamFold] != 1 {
 		t.Errorf("the next note: %+v", third.Edition)
+	}
+}
+
+// A space switched back to V1 after its run was queued: no model call, no
+// edition, no error for River to retry (policy.CodeSpaceOnV1).
+func TestRunOnASpaceBackOnV1(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.seed()
+	w.exec(`UPDATE hubs SET v2_enabled_at = NULL WHERE id = $1`, w.space)
+	o := oracle()
+	out := run(t, engine(w, o, v2dream.Config{}), w, time.Now().Add(-time.Minute).Truncate(time.Second))
+	if out.Ran || out.Reason != v2dream.ReasonOnV1 || len(o.Calls()) != 0 {
+		t.Fatalf("a run on V1: %+v, %d model calls", out, len(o.Calls()))
+	}
+	if n := w.count(`SELECT count(*) FROM v2.dream_editions WHERE space_id = $1`, w.space); n != 0 {
+		t.Errorf("%d editions on a space on V1", n)
+	}
+}
+
+// Dream reports what went stale and flags nothing: a memory the date sweep
+// flagged since the last edition is new input (an edition with no model
+// call), listed as stale citing the sweep's flag; a month later, still
+// waiting, it is listed once more (stale_waiting); after that, nothing new.
+func TestRunReportsWhatWentStale(t *testing.T) {
+	t.Parallel()
+	start := time.Now().UTC()
+	var mu sync.Mutex
+	clock := start
+	now := func() time.Time { mu.Lock(); defer mu.Unlock(); return clock }
+	set := func(d time.Duration) { mu.Lock(); clock = start.Add(d); mu.Unlock() }
+	w := newWorld(t, ledger.WithClock(now))
+	soon := start.Add(time.Hour)
+	m := w.keep("haiku", "Ask memax answers with the Haiku tier.", func(nm *ledger.NewMemory) { nm.StaleAfter = &soon })
+	e := engine(w, nil, v2dream.Config{}, v2dream.WithClock(now))
+	slot := func() time.Time { return now().Truncate(time.Second) }
+	surfaced := func(ed *ledger.DreamEdition) []string {
+		full, err := w.l.GetEdition(context.Background(), w.scope(), w.space, ed.Ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, x := range full.Surfaced {
+			out = append(out, x.Kind+" "+x.Memory.Ref)
+		}
+		return out
+	}
+
+	if first := run(t, e, w, slot()); !first.Ran || len(surfaced(first.Edition)) != 0 {
+		t.Fatalf("the first edition: %+v", first)
+	}
+	set(2 * time.Hour)
+	w.sweepDates()
+	if !w.get(m.ID).Flags.Has(lifecycle.Stale) {
+		t.Fatal("the sweep didn't flag the memory past its date")
+	}
+	second := run(t, e, w, slot())
+	if !second.Ran {
+		t.Fatalf("a memory that went stale isn't new input: %+v", second)
+	}
+	if got := surfaced(second.Edition); !slices.Equal(got, []string{ledger.SurfacedStale + " " + m.Ref}) {
+		t.Errorf("surfaced %v", got)
+	}
+	if second.Edition.Counts[ledger.DreamStale] != 0 || second.Edition.NeedsYou != 1 {
+		t.Errorf("counts %v, needs you %d", second.Edition.Counts, second.Edition.NeedsYou)
+	}
+
+	set(31 * 24 * time.Hour)
+	third := run(t, e, w, slot())
+	if !third.Ran {
+		t.Fatalf("a month of waiting isn't new input: %+v", third)
+	}
+	if got := surfaced(third.Edition); !slices.Equal(got, []string{ledger.SurfacedStaleWaiting + " " + m.Ref}) {
+		t.Errorf("a month on, surfaced %v", got)
+	}
+	set(32 * 24 * time.Hour)
+	if fourth := run(t, e, w, slot()); fourth.Ran || fourth.Reason != v2dream.ReasonNoInput {
+		t.Errorf("reminded twice: %+v", fourth)
+	}
+}
+
+// An edition's cap can leave entries unpublished. Advancing its Until
+// must not lose them, and catching up must not repeat an entry it did list.
+func TestRunCatchesUpStaleEntries(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	past := time.Now().Add(-time.Hour)
+	for _, key := range []string{"haiku", "sonnet"} {
+		w.keep(key, "Ask uses the "+key+" tier.", func(nm *ledger.NewMemory) { nm.StaleAfter = &past })
+	}
+	w.sweepDates()
+	snap, err := w.l.DreamSnapshot(context.Background(), w.scope(), w.space, ledger.DreamSnapshotOptions{})
+	if err != nil || len(snap.Surfaced) != 2 {
+		t.Fatalf("snapshot: %+v %v", snap, err)
+	}
+	w.apply(&ledger.PublishEdition{
+		Meta:    ledger.Meta{Actor: ledger.Actor{Kind: policy.ActorDream}, Scope: w.scope(), Via: policy.ViaSystem, IdempotencyKey: uuid.NewString()},
+		SpaceID: w.space, Slot: snap.Now, Until: snap.Now, StartedAt: snap.Now, Trigger: ledger.DreamScheduled,
+		Surfaced: snap.Surfaced[:1],
+	})
+	e := engine(w, nil, v2dream.Config{})
+	out := run(t, e, w, snap.Now.Add(time.Minute))
+	if !out.Ran {
+		t.Fatalf("the unpublished stale entry wasn't new input: %+v", out)
+	}
+	ed, err := w.l.GetEdition(context.Background(), w.scope(), w.space, out.Edition.Ref)
+	if err != nil || len(ed.Surfaced) != 1 || ed.Surfaced[0].Memory.ID != snap.Surfaced[1].Memory ||
+		ed.Surfaced[0].Receipt == nil || *ed.Surfaced[0].Receipt != snap.Surfaced[1].Receipt {
+		t.Fatalf("catch-up: %+v %v", ed, err)
+	}
+	if next := run(t, e, w, snap.Now.Add(2*time.Minute)); next.Ran || next.Reason != v2dream.ReasonNoInput {
+		t.Errorf("an entry repeated: %+v", next)
 	}
 }
 
@@ -394,7 +544,7 @@ func TestMorningEmail(t *testing.T) {
 		t.Fatalf("sent %d emails, want the owner's and the member's, once", len(sent.got))
 	}
 	msg := sent.got[0]
-	if !strings.Contains(msg.Subject, "3 notes became 2 facts") || !strings.Contains(msg.Subject, "need you") {
+	if !strings.Contains(msg.Subject, "3 notes became 2 facts") || !strings.Contains(msg.Subject, "2 things need you") {
 		t.Errorf("subject %q", msg.Subject)
 	}
 	for _, want := range []string{"Waiting on you", "Deploys go to Fly.io in iad and ams.", "Start review", "/memax-v2-", "Unsubscribe"} {

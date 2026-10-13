@@ -49,6 +49,8 @@ export const recordKeys = {
     ["v2", kind, "spaces", slug, "memory", ref] as const,
   tombstone: (kind: string, slug: string, ref: string) =>
     ["v2", kind, "spaces", slug, "memory", ref, "tombstone"] as const,
+  stale: (kind: string, slug: string, ref: string) =>
+    ["v2", kind, "spaces", slug, "memory", ref, "stale"] as const,
   forgetPreview: (kind: string, slug: string, ref: string, version: number) =>
     [
       "v2",
@@ -221,6 +223,18 @@ export function useTombstone(space: SpaceSummary, ref: string) {
     initialData: peek,
     refetchInterval: (query) =>
       query.state.data?.status === "propagating" ? TOMBSTONE_POLL_MS : false,
+  });
+}
+
+/** Why a memory is stale, read when VerifyStale opens. */
+export function useStaleWhy(space: SpaceSummary, ref: string) {
+  const source = useSource();
+  const peek = source.memories.peekStale?.(space.slug, ref);
+  return useQuery({
+    queryKey: recordKeys.stale(source.kind, space.slug, ref),
+    queryFn: ({ signal }) => source.memories.stale({ space, ref, signal }),
+    initialData: peek,
+    staleTime: 0,
   });
 }
 

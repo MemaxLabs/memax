@@ -24,10 +24,13 @@ export function DriftChanges({
   view,
   target,
   items,
+  machine = null,
 }: {
   view: RecordsView;
   target: TargetView;
   items: DriftItemView[];
+  /** A home file's machine: where the edit was made, in place of a commit. */
+  machine?: string | null;
 }) {
   const { l } = view;
   const r = l.brief.resolve;
@@ -58,9 +61,10 @@ export function DriftChanges({
               action={r.handEdit}
               time={view.time(item.observedAt)}
               source={
-                item.commit
+                machine ??
+                (item.commit
                   ? interpolate(r.commit, { commit: item.commit })
-                  : item.path
+                  : item.path)
               }
               note={noteOf(r, change)}
             >

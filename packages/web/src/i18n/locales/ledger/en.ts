@@ -17,6 +17,11 @@ import { ledgerRecordsEn } from "./records-en";
 import { ledgerReviewEn } from "./review-en";
 import { ledgerSettingsEn } from "./settings-en";
 import { ledgerTodayEn } from "./today-en";
+import { ledgerVerifyEn } from "./verify-en";
+import { ledgerMachinesEn } from "./machines-en";
+import { ledgerNewSpaceEn } from "./new-space-en";
+import { ledgerSearchEn } from "./search-en";
+import { ledgerPublicEn } from "./public-en";
 
 export const ledgerEn = {
   meta: {
@@ -49,6 +54,10 @@ export const ledgerEn = {
   records: ledgerRecordsEn,
   review: ledgerReviewEn,
   memory: ledgerMemoryEn,
+  verify: ledgerVerifyEn,
+  machines: ledgerMachinesEn,
+  search: ledgerSearchEn,
+  newSpace: ledgerNewSpaceEn,
   brief: ledgerBriefEn,
   today: ledgerTodayEn,
   dream: ledgerDreamEn,
@@ -56,6 +65,7 @@ export const ledgerEn = {
   consent: ledgerConsentEn,
   settings: ledgerSettingsEn,
   account: ledgerAccountEn,
+  public: ledgerPublicEn,
   devTokens: {
     breadcrumb: "Ledger · Dev fixture",
     title: "Tokens and type",

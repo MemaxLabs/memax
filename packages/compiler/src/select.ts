@@ -49,8 +49,11 @@ export interface Selection {
 export interface SelectOptions {
   /** Whether a fact belongs to this file at all. */
   accepts(fact: Fact): boolean;
-  /** Whether the Brief's connective prose belongs to this file. */
-  prose: boolean;
+  /**
+   * Whether the Brief's connective prose belongs to this file: all of it,
+   * none of it, or each line by what it cites.
+   */
+  prose: boolean | ((cites: string[]) => boolean);
 }
 
 const WELL_KNOWN = Object.keys(DEFAULT_HEADINGS);
@@ -68,11 +71,19 @@ export function select(
     (target.sections ? target.sections.includes(key) : key !== "overview") &&
     !(key === "open" && target.include === "kept_only");
 
+  // A file that judges prose line by line takes only some of it. A memory
+  // cited only by prose it leaves out isn't represented here, so it goes to
+  // the end of its own section like any memory the Brief doesn't place.
+  const judged = typeof options.prose === "function" ? options.prose : null;
+  const takesProse = (cites: string[]) =>
+    judged ? judged(cites) : options.prose === true;
+
   const placed = new Set<string>();
   for (const s of model.brief.sections) {
     for (const item of s.items) {
       if (item.kind === "memory") placed.add(item.ref);
-      else item.cites.forEach((r) => placed.add(r));
+      else if (!judged || judged(item.cites))
+        item.cites.forEach((r) => placed.add(r));
     }
   }
 
@@ -103,7 +114,7 @@ export function select(
     for (const item of s.items) {
       order += 1;
       if (item.kind === "prose") {
-        if (options.prose)
+        if (takesProse(item.cites))
           prose.push(proseEntry(index, order, item.text, item.cites));
         continue;
       }

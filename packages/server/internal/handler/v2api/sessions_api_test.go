@@ -223,8 +223,8 @@ func TestSwitchOnRotatedSessions(t *testing.T) {
 	t.Parallel()
 	e := newSessionsEnv(t)
 	zz := e.user("zz")
-	fromCLI := e.space(zz, policy.SpacePersonal, "cli-switch")
-	fromWeb := e.space(zz, policy.SpaceProject, "web-switch")
+	fromCLI := e.v1Space(zz, policy.SpacePersonal, "cli-switch")
+	fromWeb := e.v1Space(zz, policy.SpaceProject, "web-switch")
 
 	// The CLI: signed in, then refreshed (rotated), as the daemon does.
 	_, cli := e.signIn(zz, sessions.KindCLI, "memax CLI")

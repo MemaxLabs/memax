@@ -40,6 +40,23 @@ type Metrics struct {
 	// EscalationFailed counts verdicts on decisions the strong tier didn't
 	// confirm.
 	LLMFailed, EscalationFailed atomic.Int64
+	// Refused counts model calls a tier declined (stop_reason refusal),
+	// verdicts and import checks alike; each went on to the next tier.
+	Refused atomic.Int64
+}
+
+// refused counts and logs the calls a tier declined (metric judge_refusal).
+func (j *Judge) refused(ctx context.Context, what, ref string, byTier map[string]int) {
+	n := 0
+	for _, k := range byTier {
+		n += k
+	}
+	if n == 0 {
+		return
+	}
+	j.Metrics.Refused.Add(int64(n))
+	j.cfg.Log.WarnContext(ctx, "judge: a model tier declined; the next tier answered or the call failed", "metric", "judge_refusal",
+		what, ref, "refused", byTier)
 }
 
 // Option configures a Judge.
@@ -222,6 +239,7 @@ func (j *Judge) stage1(ctx context.Context, cmd *ledger.RecordVerdict, mode ledg
 	}
 	cls, err := j.classifier.Classify(ctx, p, in)
 	run.Calls = cls.Calls
+	j.refused(ctx, "memory", m.Ref, cls.Refused)
 	run.Timings["llm_ms"], run.Timings["strong_ms"] = cls.LLM, cls.Strong
 	if err != nil {
 		// Never block Review: the proposal stays unflagged, the failure is
@@ -266,7 +284,7 @@ func (j *Judge) stage1(ctx context.Context, cmd *ledger.RecordVerdict, mode ledg
 		v.Relation = ledger.RelationUnrelated
 	}
 	if j.cfg.Conditions && mode == ledger.JudgeProposal {
-		cmd.Conditions = validConditions(cls.Conditions, m.Statement, m.Sources, j.now())
+		cmd.Conditions = validConditions(cls.Conditions, m.Statement, m.Sources)
 	}
 }
 

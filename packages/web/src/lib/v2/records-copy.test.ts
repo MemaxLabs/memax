@@ -7,6 +7,8 @@ import {
   expiryText,
   failureText,
   noteText,
+  planLimitText,
+  spaceFailureText,
   undoFailureText,
   undoneText,
   railTime,
@@ -88,10 +90,20 @@ describe("row notes (Memories.png)", () => {
     [
       {
         kind: "stale" as const,
+        cause: "source" as const,
         changedAt: at("16:00", "2026-09-11"),
         source: "PR #198",
       },
       "Its source changed on Sep 11 · PR #198",
+    ],
+    [
+      {
+        kind: "stale" as const,
+        cause: "date" as const,
+        changedAt: at("03:12", "2026-10-05"),
+        source: null,
+      },
+      "Its date to check again has passed",
     ],
     [
       {
@@ -145,6 +157,35 @@ describe("why a command didn't go through", () => {
         { ...ctx, locale: "zh" },
       ),
     ).toBe("M-0430 没保留上。查看者可以提议和评论，保留要由成员来。");
+  });
+
+  it("says a space still on V1 changes once it switches, for every command", () => {
+    const onV1 = {
+      kind: "refused",
+      code: "space_on_v1",
+      message: null,
+    } as const;
+    expect(
+      failureText(EN, onV1, { ...ctx, space: "acme-web", locale: "en" }),
+    ).toBe(
+      "M-0430 wasn't kept. acme-web is still on V1, so nothing here changes until it switches to V2. Its owner switches it from its Today.",
+    );
+    expect(
+      failureText(ZH, onV1, { ...ctx, space: "acme-web", locale: "zh" }),
+    ).toBe(
+      "M-0430 没保留上。acme-web 还在 V1 上，切换到 V2 之前这里什么都不会改动。所有者可以在它的今天页切换。",
+    );
+    // Answering a gate and declining a forget request use Keep's words for it.
+    for (const command of ["answer", "declineForget", "reject"] as const) {
+      expect(
+        failureText(EN, onV1, {
+          command,
+          ref: "G-0012",
+          space: "acme-web",
+          locale: "en",
+        }),
+      ).toContain("acme-web is still on V1");
+    }
   });
 
   it("falls back to the server's message for a code it doesn't know", () => {
@@ -419,5 +460,146 @@ describe("what an undo says (no mark)", () => {
     const chinese = undoFailureText(ZH, failure, { command, ref: "M-0430" });
     expect(chinese).not.toBe(english);
     expect(chinese).toMatch(/[一-鿿]/);
+  });
+});
+
+describe("why NewSpace didn't make a space", () => {
+  it.each([
+    [
+      { kind: "refused", code: "personal_exists", message: null } as const,
+      "acme wasn't made. You have a personal space already, and each person has one.",
+    ],
+    [
+      { kind: "refused", code: "space_kind", message: null } as const,
+      "acme wasn't made. Team spaces come with Team. Make a project space for now.",
+    ],
+    [
+      { kind: "refused", code: "space_limit", message: null } as const,
+      "acme wasn't made. You own 50 project spaces, the most one person can.",
+    ],
+    [
+      {
+        kind: "refused",
+        code: "something_new",
+        message: "Not today.",
+      } as const,
+      "acme wasn't made. Memax refused it: Not today.",
+    ],
+    [
+      {
+        kind: "refused",
+        code: "space_limit",
+        message: null,
+        limit: { plan: "free", allowed: 1, used: 1, upgrade: "pro" },
+      } as const,
+      "acme wasn't made. You own the project space Free has. Pro has as many as you like.",
+    ],
+    [
+      { kind: "rate-limited", retryAfter: 3 } as const,
+      "acme wasn't made. That was a lot at once. Wait 3 seconds, then try again.",
+    ],
+    [
+      { kind: "unreachable" } as const,
+      "acme wasn't made. It didn't reach Memax, so nothing changed. Try again.",
+    ],
+  ] as const)("%j", (failure, english) => {
+    expect(spaceFailureText(EN, failure, { name: "acme", locale: "en" })).toBe(
+      english,
+    );
+    const chinese = spaceFailureText(ZH, failure, {
+      name: "acme",
+      locale: "zh",
+    });
+    expect(chinese).not.toBe(english);
+    expect(chinese).toMatch(/[一-鿿]/);
+  });
+});
+
+describe("why a plan limit refused a command", () => {
+  const refused = (code: string, limit: Record<string, unknown> | null) =>
+    ({ kind: "refused", code, message: null, limit }) as never;
+  it.each([
+    [
+      "space_limit",
+      { plan: "free", allowed: 1, used: 1, upgrade: "pro" },
+      "You own the project space Free has. Pro has as many as you like.",
+    ],
+    [
+      "space_limit",
+      { plan: "free", allowed: 3, used: 3, upgrade: "pro" },
+      "You own the 3 project spaces Free has. Pro has as many as you like.",
+    ],
+    [
+      "agent_kind_limit",
+      { plan: "free", allowed: 3, used: 3, upgrade: "pro" },
+      "You've connected the 3 kinds of agent Free has. Pro connects as many as you like, and another machine running one you have doesn't count.",
+    ],
+    [
+      "ask_limit",
+      { plan: "pro", allowed: 1000, used: 1000 },
+      "You've asked the 1,000 questions Pro answers this month. Asks start again on the 1st.",
+    ],
+    [
+      "seat_needed",
+      { plan: "pro", upgrade: "team" },
+      "Only the owner keeps in acme-web on Pro. Members need a Team seat to keep. On Team, every member holds a seat.",
+    ],
+    [
+      "dream_cadence",
+      { plan: "free", allowed: 1, used: 1, upgrade: "pro" },
+      "Dream has run now as often as Free allows this week. It still runs on its own. Pro runs it nightly.",
+    ],
+    [
+      "dream_cadence",
+      { plan: "pro", allowed: 3, used: 3 },
+      "Dream has run now as often as Pro allows today. It still runs on its own.",
+    ],
+  ])("%s %j", (code, limit, english) => {
+    const failure = refused(code, limit);
+    expect(planLimitText(EN, failure, { space: "acme-web" }, "en")).toBe(
+      english,
+    );
+    const chinese = planLimitText(ZH, failure, { space: "acme-web" }, "zh");
+    expect(chinese).toMatch(/[一-鿿]/);
+    expect(chinese).not.toContain("{");
+  });
+
+  it("leaves a refusal without a plan limit to its code's words", () => {
+    expect(
+      planLimitText(EN, refused("space_limit", null), {}, "en"),
+    ).toBeNull();
+    expect(
+      planLimitText(
+        EN,
+        refused("viewer", { plan: "pro", upgrade: "team" }),
+        {},
+        "en",
+      ),
+    ).toBeNull();
+  });
+
+  it("words a Keep a member can't make for the seat, before the code's words", () => {
+    const failure = refused("seat_needed", { plan: "pro", upgrade: "team" });
+    expect(
+      failureText(EN, failure, {
+        command: "keep",
+        ref: "M-0219",
+        space: "acme-web",
+        locale: "en",
+      }),
+    ).toBe(
+      "M-0219 wasn't kept. Only the owner keeps in acme-web on Pro. Members need a Team seat to keep. On Team, every member holds a seat.",
+    );
+    // Without the limit (an older server), the code still says why.
+    expect(
+      failureText(EN, refused("seat_needed", null), {
+        command: "keep",
+        ref: "M-0219",
+        space: "acme-web",
+        locale: "en",
+      }),
+    ).toBe(
+      "M-0219 wasn't kept. Only the owner keeps in acme-web on this plan. Members need a Team seat to keep.",
+    );
   });
 });

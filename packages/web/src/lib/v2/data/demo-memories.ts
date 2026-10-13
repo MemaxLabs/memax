@@ -5,11 +5,13 @@ import {
   DEMO_MEMORY_PAGES,
   DEMO_RECORDS,
   DEMO_SECTION_COUNTS,
+  DEMO_STALE,
   DEMO_TOMBSTONES,
   DEMO_TOTALS,
 } from "./demo-memories-data";
 import { DEMO_CARDS, DEMO_FOLD, ZZ } from "./demo-review-data";
 import { DEMO_TARGETS } from "./demo-targets-data";
+import { reachOf } from "./home-files";
 import { reachesTarget } from "./targets";
 import type { Decided, DemoJournal } from "./demo-records";
 import type {
@@ -19,8 +21,10 @@ import type {
   MemoryListItem,
   MemoryPage,
   MemoryRecord,
+  StaleWhy,
   TombstoneStepLine,
   TombstoneView,
+  VerifyResult,
 } from "./memories";
 import type { DecisionResult } from "./records";
 import type { ReviewItem } from "./review";
@@ -86,6 +90,8 @@ export function createDemoMemories({
   const forgotNow = new Map<string, TombstoneView>();
   /** Forget requests a person kept the memory against this session. */
   const declined = new Set<string>();
+  /** Where memories apply (scope.repos), as changed this session. */
+  const scopes = new Map<string, string[]>();
 
   /** Every row of a space, with this session's decisions, edits and new memories (on the first page). */
   function rowsOf(slug: string): MemoryListItem[][] {
@@ -116,12 +122,12 @@ export function createDemoMemories({
             },
           };
         }
-        if (done?.outcome === "kept") {
+        if (done?.outcome === "kept" || done?.outcome === "verified") {
           next = {
             ...next,
             state: "kept",
             note: null,
-            receipt: { by: ZZ, action: "kept", at: stamp() },
+            receipt: { by: ZZ, action: done.outcome, at: stamp() },
           };
         }
         const gone = forgotNow.get(id(slug, row.ref));
@@ -185,7 +191,8 @@ export function createDemoMemories({
           ? { ...DEMO_RECORDS[ref], merged: null }
           : (DEMO_RECORDS[ref] ?? {});
     const edit = edits.get(id(slug, ref));
-    const keptNow = decided.get(id(slug, ref))?.outcome === "kept";
+    const outcome = decided.get(id(slug, ref))?.outcome;
+    const keptNow = outcome === "kept" || outcome === "verified";
     // Stale is a flag on a kept memory; the demo's conflict is a proposal.
     const lifecycle =
       row.state === "stale"
@@ -193,6 +200,18 @@ export function createDemoMemories({
         : row.state === "conflict"
           ? "proposed"
           : row.state;
+    const reaches =
+      lifecycle === "kept"
+        ? (DEMO_TARGETS[slug] ?? []).filter(
+            (t) =>
+              // A stopped file holds nothing any more (the SDK's rule).
+              t.syncState !== "off" &&
+              reachesTarget(ref, t, DEMO_TARGETS[slug] ?? []),
+          )
+        : null;
+    // Personal's home files say the machines they're on (Memory's head
+    // and Reaches); a repository's reach is the board's, below.
+    const home = reaches?.some((t) => t.root === "home") ?? false;
     const base: MemoryRecord = {
       ref,
       version: edit?.version ?? extra.version ?? 1,
@@ -206,7 +225,7 @@ export function createDemoMemories({
           : null,
       latest: row.receipt,
       reads: null,
-      reach: null,
+      reach: home && reaches ? { ...reachOf(reaches), agents: null } : null,
       lineage: row.receipt
         ? [
             {
@@ -232,12 +251,7 @@ export function createDemoMemories({
       merged: null,
       sources: [],
       // The demo's compiled files that hold its words, or read one that does.
-      reaches:
-        lifecycle === "kept"
-          ? (DEMO_TARGETS[slug] ?? []).filter((t) =>
-              reachesTarget(ref, t, DEMO_TARGETS[slug] ?? []),
-            )
-          : null,
+      reaches,
       conditions: [],
       checked: null,
       forgotten: row.forgotten,
@@ -250,7 +264,10 @@ export function createDemoMemories({
       // No words, no seal, no lineage of words: the tombstone says the rest.
       return { ...base, kept: null, merged: null, sources: [], reaches: null };
     }
-    return keptNow ? base : { ...base, ...extra, statement: base.statement };
+    const repos = scopes.get(id(slug, ref)) ?? extra.repos ?? [];
+    return keptNow
+      ? { ...base, repos }
+      : { ...base, ...extra, statement: base.statement, repos };
   }
 
   /** The demo's tombstone: the board's M-0201, or one forgotten this session. */
@@ -387,8 +404,118 @@ export function createDemoMemories({
     };
   }
 
+  /**
+   * Why a demo memory is stale: the board's M-0187, or, for another stale
+   * row, its date to check again that passed.
+   */
+  function staleOf(slug: string, ref: string): StaleWhy | null {
+    const found = record(slug, ref);
+    if (!found) return null;
+    const drawn = DEMO_STALE[`${slug}/${ref}`];
+    const stale = found.state === "stale";
+    const base: StaleWhy = drawn ?? {
+      ref,
+      version: found.version,
+      statement: found.statement,
+      kind: "fact",
+      stale,
+      since: found.latest?.at ?? null,
+      flaggedBy: found.latest?.by ?? null,
+      kept: found.kept ? { ...found.kept, action: "kept" } : null,
+      readsSince: found.reads,
+      causes: stale
+        ? [{ kind: "date", staleAfter: found.latest?.at ?? stamp() }]
+        : [],
+      suggestion: null,
+    };
+    return {
+      ...base,
+      version: found.version,
+      statement: found.statement,
+      stale,
+      causes: stale ? base.causes : [],
+    };
+  }
+
   const memories: MemoriesSource = {
     peekList: (slug, filter) => listPage(slug, filter, undefined),
+    peekStale: (slug, ref) => staleOf(slug, ref),
+    async stale({ space, ref }) {
+      return staleOf(space.slug, ref);
+    },
+    verify(input) {
+      const { space, ref, version, answer, idempotencyKey } = input;
+      if (answer === "forget") {
+        return memories
+          .forget({
+            space,
+            ref,
+            version,
+            carries: input.carries ?? [],
+            note: input.note,
+            idempotencyKey,
+          })
+          .then((): VerifyResult => ({ ref, answer, version, receipt: null }));
+      }
+      return command(idempotencyKey, (): VerifyResult => {
+        const found = record(space.slug, ref);
+        if (!found) throw new CommandFailedError({ kind: "not-found" });
+        if (found.state !== "stale") {
+          throw new CommandFailedError({ kind: "decided" });
+        }
+        if (found.version !== version) {
+          throw new CommandFailedError({
+            kind: "clash",
+            currentVersion: found.version,
+          });
+        }
+        const key = id(space.slug, ref);
+        const before = { edit: edits.get(key), decided: decided.get(key) };
+        const statement = input.statement?.trim();
+        const update = answer === "update" && statement;
+        if (update) edits.set(key, { statement, version: version + 1 });
+        const queued = queueOf(space.slug).find((i) => i.ref === ref);
+        decided.set(key, {
+          slug: space.slug,
+          outcome: "verified",
+          item: queued ?? {
+            ref,
+            version,
+            statement: found.statement,
+            section: found.section,
+            state: "stale",
+            lifecycle: "kept",
+            external: false,
+            by: found.latest?.by ?? null,
+            action: "flagged",
+            at: found.latest?.at ?? stamp(),
+            returned: null,
+            session: null,
+            updates: null,
+            conflictsWith: null,
+            judge: null,
+            intoSpace: null,
+          },
+        });
+        const receipt = journal.record({
+          slug: space.slug,
+          command: "verify",
+          ref,
+          revert: () => {
+            if (before.edit) edits.set(key, before.edit);
+            else edits.delete(key);
+            if (before.decided) decided.set(key, before.decided);
+            else decided.delete(key);
+          },
+        });
+        return {
+          ref,
+          answer,
+          version: update ? version + 1 : version,
+          receipt,
+        };
+      });
+    },
     peekRecord: (slug, ref) => record(slug, ref),
     peekTombstone: (slug, ref) => tombstoneOf(slug, ref),
     async tombstone({ space, ref }) {
@@ -510,6 +637,31 @@ export function createDemoMemories({
           receipt,
           ...(held ? { judgePending: true } : {}),
         };
+      });
+    },
+    scope({ space, ref, version, repos, idempotencyKey }) {
+      return command(idempotencyKey, () => {
+        const found = record(space.slug, ref);
+        if (!found) throw new CommandFailedError({ kind: "not-found" });
+        if (found.version !== version) {
+          throw new CommandFailedError({
+            kind: "clash",
+            currentVersion: found.version,
+          });
+        }
+        const key = id(space.slug, ref);
+        const had = scopes.get(key);
+        scopes.set(key, [...repos]);
+        const receipt = journal.record({
+          slug: space.slug,
+          command: "scope",
+          ref,
+          revert: () => {
+            if (had) scopes.set(key, had);
+            else scopes.delete(key);
+          },
+        });
+        return { ref, version, repos: [...repos], receipt };
       });
     },
   };

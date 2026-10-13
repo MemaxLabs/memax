@@ -1,0 +1,5 @@
+{
+  "format": "memax.gates.v1",
+  "note": "A waiting gate keeps its stored status; it has expired once expires_at is past.",
+  "gates": []
+}

@@ -10,15 +10,19 @@ import { useSpaces } from "./data";
 export function useFrameLocation(): {
   slug: string | undefined;
   route: PlaceRoute | undefined;
+  /** The path goes past the place: a memory's page, an edition, a target. */
+  detail: boolean;
   inSettings: boolean;
 } {
   const params = useParams<{ space?: string }>();
   const pathname = usePathname() ?? "";
   const segments = pathname.split("/").filter(Boolean);
   const slug = params?.space;
+  const route = slug && isPlaceRoute(segments[1]) ? segments[1] : undefined;
   return {
     slug,
-    route: slug && isPlaceRoute(segments[1]) ? segments[1] : undefined,
+    route,
+    detail: route !== undefined && segments.length > 2,
     inSettings: segments[0] === "settings",
   };
 }

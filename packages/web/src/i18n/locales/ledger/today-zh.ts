@@ -66,6 +66,8 @@ export const ledgerTodayZh: Translations["ledger"]["today"] = {
   },
   empty: {
     title: "这里还什么都没有",
+    // 眉标写上空间是什么时候建的：“刚刚创建”。
+    created: "{when}创建",
     lede: "连接一个 Agent，Memax 会读一读它对 {where} 已经知道的内容。所有内容都先作为提议进来。",
     steps: "三步完成第一次编译",
     connect: "在这个仓库里连接 Agent",
@@ -158,6 +160,12 @@ export const ledgerTodayZh: Translations["ledger"]["today"] = {
     loadFailed: "迁移内容没有加载出来。",
     retry: "重试",
     back: "已切换回去：{space} 又回到了 V1。它的 V2 记录会保留，下次切换时接着用。",
+    start: {
+      title: "或者新建一个项目空间",
+      detail:
+        "在你的仓库里运行 memax init，它会根据 Agent 已有的文件，在 V2 上建一个项目空间。",
+      action: "从一个仓库开始",
+    },
     targets: {
       agents_md: "AGENTS.md",
       claude_md: "CLAUDE.md",

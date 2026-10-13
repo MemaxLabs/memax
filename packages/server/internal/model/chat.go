@@ -100,7 +100,7 @@ type ChatSession struct {
 	// PersonaID binds the memax agent's identity for this session:
 	// "" inherits the chat_default_persona_id setting, "none" explicitly
 	// disables the persona, anything else is a personas.id owned by the user.
-	PersonaID     string     `json:"persona_id,omitempty"`
+	PersonaID string `json:"persona_id,omitempty"`
 
 	// PinnedMemoryIDs seeds the session with specific memories the
 	// agent must see (plan 25 P3): a chat opened from a board card
@@ -108,15 +108,15 @@ type ChatSession struct {
 	// knowing what the user is looking at instead of having to
 	// rediscover it through recall. Rendered into the system prompt
 	// by the chat worker, capped at creation.
-	PinnedMemoryIDs []string `json:"pinned_memory_ids,omitempty"`
-	LockedAt      *time.Time `json:"locked_at,omitempty"`
-	MessageCount  int        `json:"message_count"`
-	PinnedAt      *time.Time `json:"pinned_at,omitempty"`
-	ArchivedAt    *time.Time `json:"archived_at,omitempty"`
-	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	DeletedAt     *time.Time `json:"deleted_at,omitempty"`
+	PinnedMemoryIDs []string   `json:"pinned_memory_ids,omitempty"`
+	LockedAt        *time.Time `json:"locked_at,omitempty"`
+	MessageCount    int        `json:"message_count"`
+	PinnedAt        *time.Time `json:"pinned_at,omitempty"`
+	ArchivedAt      *time.Time `json:"archived_at,omitempty"`
+	LastMessageAt   *time.Time `json:"last_message_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
 }
 
 // ChatMessage is one turn in a conversation. Tool calls and

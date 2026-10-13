@@ -56,6 +56,19 @@ export interface SpaceSummary {
    * doesn't say (the demo, whose spaces all are).
    */
   onV2?: boolean;
+  /** When the space was made (ISO), where the source says: EmptySpace's "created just now". */
+  createdAt?: string;
+}
+
+/** What NewSpace sends: a space of a kind, named, maybe for a repository. */
+export interface NewSpaceInput {
+  name: string;
+  /** Personal and team spaces are refused (personal_exists, space_kind); the API makes project spaces. */
+  kind: SpaceKind;
+  /** "owner/name", or empty. */
+  repository: string;
+  /** One per intent; the same key on a retry (spec: Idempotency-Key). */
+  idempotencyKey: string;
 }
 
 /** The rail's status line (plan §6.4): "5 agents in sync", "Cursor file drifted". */
@@ -74,9 +87,21 @@ export type SyncLine =
   | { kind: "compiling" }
   /** Compiled, but the CLI hasn't written these files to disk yet. */
   | { kind: "waiting-delivery"; files: number }
+  /** A personal space's home files match their compile on every machine they're on. */
+  | { kind: "machines-in-sync"; machines: number }
+  /** A home file has a hand edit on this machine (its name, as the person calls it). */
+  | { kind: "machine-drifted"; machine: string }
+  /** A pulled hand edit holds a home file on this machine until Review decides. */
+  | { kind: "machine-held"; machine: string }
+  /** The latest compile is on `reached` of the `of` machines; the rest haven't written it yet. */
+  | { kind: "machines-behind"; reached: number; of: number }
+  /** A personal space linked to no machine: nothing writes it into an agent's own files. */
+  | { kind: "no-machines" }
   | { kind: "no-agents" }
   /** PLACEHOLDER: the API serves no compile targets yet. */
-  | { kind: "not-compiling" };
+  | { kind: "not-compiling" }
+  /** The space is still on V1: nothing compiles from it until it switches. */
+  | { kind: "on-v1" };
 
 /** Everything the frame and the page headers show about one space. */
 export interface SpaceOverview {
@@ -118,7 +143,10 @@ export interface SpaceOverview {
     rewrittenAt: string | null;
   } | null;
   agents: { connected: number; active: number } | null;
-  /** Compiled files. */
+  /**
+   * Compiled files. A personal space's home files count once per file,
+   * whatever the number of machines it's on (home-files.ts).
+   */
   targets: { total: number; inSync: number } | null;
   activity: { any: boolean };
   /** Decisions in force (team spaces). */
@@ -171,9 +199,16 @@ export type AskEvent =
   /** Answers are off on this server: the kept memories that match, and no answer. */
   | { type: "off"; sources: AskSource[] }
   /** The plan's asks this month are used up (D9); they start again at resetAt. */
-  | { type: "limit"; limit: number; resetAt: string }
+  /**
+   * The month's asks are used up (policy ask_limit): how many, when they
+   * start again, and the plan that answers more (policy limit.upgrade;
+   * null when none does, or limits aren't the plan's).
+   */
+  | { type: "limit"; limit: number; resetAt: string; upgrade: string | null }
   /** The source can't ask at all (no /v2 Ask on this server). */
-  | { type: "unavailable" };
+  | { type: "unavailable" }
+  /** The space is still on V1, and Ask answers only from the V2 record (policy space_on_v1). */
+  | { type: "onV1" };
 
 /** What Remember shows while the person types: the synchronous near-duplicate check (plan §5.8). */
 export interface RememberCheck {
@@ -229,3 +264,28 @@ export interface KeepResult {
 export function waitingOnYou(overview: SpaceOverview): number {
   return overview.waiting + (overview.gatesWaiting ?? 0);
 }
+
+/**
+ * The overview of a space still on V1 (SpaceSummary.onV2 false): it has
+ * no V2 record, so nothing waits in Review, nothing is kept or compiled
+ * and no agent is connected on V2, and nothing needs reading to say so.
+ * The status line says it's on V1. Unknowns stay null, as everywhere.
+ */
+export const SPACE_ON_V1_OVERVIEW: Readonly<SpaceOverview> = {
+  waiting: 0,
+  gatesWaiting: 0,
+  oldestWaitingAt: null,
+  reviewFilters: null,
+  lastReview: null,
+  waitingBreakdown: null,
+  openHandoffs: 0,
+  handoffs: 0,
+  status: { kind: "on-v1" },
+  dream: null,
+  memories: { any: false, kept: 0, forgotten: 0 },
+  brief: null,
+  agents: { connected: 0, active: 0 },
+  targets: { total: 0, inSync: 0 },
+  activity: { any: false },
+  decisions: null,
+};

@@ -174,6 +174,64 @@ test("Disconnect is confirmed inline, and Escape backs out", async ({
   );
 });
 
+test("a cloud agent connects with a start key shown once, then gets a new one", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: baseURL,
+  });
+  await page.goto("/memax-v2/agents?overlay=connect");
+  await page
+    .getByRole("dialog", { name: "Connect an agent" })
+    .getByRole("button", { name: "Connect a cloud agent" })
+    .click();
+  await expect(page).toHaveURL("/memax-v2/agents?overlay=connect-cloud");
+  const dialog = page.getByRole("dialog", { name: "Connect a cloud agent" });
+  await expect(dialog).toBeVisible();
+  // Claude Code is chosen first; arrows choose, and ↵ on a choice makes the key.
+  const claude = dialog.getByRole("radio", { name: /^Claude Code/ });
+  await expect(claude).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  const copilot = dialog.getByRole("radio", { name: /^Copilot/ });
+  await expect(copilot).toBeFocused();
+  await expect(copilot).toHaveAttribute("aria-checked", "true");
+  await expect(dialog.locator("pre")).toContainText(
+    '[ -n \\"$MEMAX_START_KEY\\" ]',
+  );
+  await page.keyboard.press("Enter");
+  const key = dialog.locator("code", { hasText: /^mxk_[0-9a-f]{64}$/ });
+  await expect(key).toBeVisible();
+  const secret = (await key.textContent())!;
+  await dialog.getByRole("button", { name: "Copy the key" }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    secret,
+  );
+  expect(page.url()).not.toContain(secret);
+  await expect(dialog.locator("pre")).not.toContainText("mxk_");
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await expect(dialog).toBeHidden();
+
+  // It's in the table, and its page offers a new key instead of Pause.
+  await page.getByRole("link", { name: /^Copilot cloud agent/ }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Copilot cloud agent · memax-v2",
+  );
+  await expect(page.getByRole("region", { name: "Last start" })).toContainText(
+    "No start yet.",
+  );
+  await expect(page.getByRole("button", { name: "Pause" })).toHaveCount(0);
+  await page.getByRole("button", { name: "New start key" }).click();
+  await page
+    .getByRole("region", { name: /a new start key\?/ })
+    .getByRole("button", { name: "Give it a new key" })
+    .click();
+  const next = page.locator("code", { hasText: /^mxk_[0-9a-f]{64}$/ });
+  await expect(next).toBeVisible();
+  expect(await next.textContent()).not.toBe(secret);
+});
+
 // Self-baselines of each board's route on the demo dataset.
 const SHOTS = [
   {
@@ -189,7 +247,14 @@ const SHOTS = [
     path: "/memax-v2/agents?overlay=connect",
     heading: "Agents",
     height: 980,
-    dialog: true,
+    dialog: "Connect an agent",
+  },
+  {
+    name: "connect-cloud-agent",
+    path: "/memax-v2/agents?overlay=connect-cloud",
+    heading: "Agents",
+    height: 1200,
+    dialog: "Connect a cloud agent",
   },
   {
     name: "keys",
@@ -211,7 +276,7 @@ for (const shot of SHOTS) {
       );
       if ("dialog" in shot) {
         await expect(
-          page.getByRole("dialog", { name: "Connect an agent" }),
+          page.getByRole("dialog", { name: shot.dialog }),
         ).toBeVisible();
       }
       await settle(page);

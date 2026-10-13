@@ -83,6 +83,17 @@ type Plan struct {
 	SeatMinimum          int  `json:"seat_minimum"`             // hub plan: billing floor for paid subscriptions
 	SeatBilled           bool `json:"seat_billed"`              // hub plan: whether seat count is billed externally
 
+	// The V2 plan the row is (migration 067, D9), and its limits. -1 is
+	// no limit. V2's policy reads them through internal/v2plans; V1 reads
+	// none of them.
+	V2Tier                string `json:"v2_tier"`                 // free | pro | team | enterprise
+	ProjectSpaceLimit     int    `json:"project_space_limit"`     // project spaces a person may own
+	AgentKindLimit        int    `json:"agent_kind_limit"`        // distinct agent kinds a person may connect
+	V2AskLimit            int    `json:"v2_ask_limit"`            // V2 asks a month
+	DreamCadence          string `json:"dream_cadence"`           // weekly | nightly
+	DreamNightlySpaces    int    `json:"dream_nightly_spaces"`    // an owner's busiest spaces that dream nightly
+	ActivityRetentionDays int    `json:"activity_retention_days"` // how far back Activity's reads and compiles go
+
 	RateLimitRPM      int            `json:"rate_limit_rpm"`
 	RateLimitHeavyRPM int            `json:"rate_limit_heavy_rpm"`
 	RateLimitLightRPM int            `json:"rate_limit_light_rpm"`

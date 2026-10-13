@@ -23,6 +23,8 @@ import {
   removeMcpToml,
 } from "./setup-mcp.js";
 import { setupHooks, removeHooks } from "./setup-hooks.js";
+import { agent } from "../lib/agents/agents.js";
+import type { AgentId } from "../lib/agents/types.js";
 import {
   injectInstructions,
   removeInstructions,
@@ -34,6 +36,23 @@ import {
 export type { AgentDef, MemaxBin };
 
 // --- Agent definitions ---
+
+/**
+ * Where an agent of the registry (lib/agents/, from @memaxlabs/agents)
+ * keeps its MCP servers, as these writers want it.
+ */
+function mcpOf(
+  id: AgentId,
+  home: string,
+  cwd: string,
+): Pick<AgentDef, "configPath" | "format" | "mcpKey"> {
+  const m = agent(id).mcp!;
+  return {
+    configPath: join(m.root === "home" ? home : cwd, ...m.file.split("/")),
+    format: m.format === "toml" ? "toml" : "json-mcpServers",
+    mcpKey: m.key,
+  };
+}
 
 export function getAgents(): AgentDef[] {
   const home = homedir();
@@ -63,9 +82,7 @@ export function getAgents(): AgentDef[] {
     {
       name: "Claude Code",
       id: "claude-code",
-      configPath: join(home, ".claude", "settings.json"),
-      format: "json-mcpServers",
-      mcpKey: "mcpServers",
+      ...mcpOf("claude-code", home, cwd),
       hasHooks: true,
       globalInstructionFile: join(home, ".claude", "CLAUDE.md"),
       detect: () =>
@@ -76,9 +93,7 @@ export function getAgents(): AgentDef[] {
     {
       name: "Cursor",
       id: "cursor",
-      configPath: join(home, ".cursor", "mcp.json"),
-      format: "json-mcpServers",
-      mcpKey: "mcpServers",
+      ...mcpOf("cursor", home, cwd),
       hasHooks: false,
       globalInstructionFile: null,
       detect: () =>
@@ -88,9 +103,7 @@ export function getAgents(): AgentDef[] {
     {
       name: "Windsurf",
       id: "windsurf",
-      configPath: join(home, ".codeium", "windsurf", "mcp_config.json"),
-      format: "json-mcpServers",
-      mcpKey: "mcpServers",
+      ...mcpOf("windsurf", home, cwd),
       hasHooks: false,
       globalInstructionFile: null,
       detect: () =>
@@ -101,9 +114,7 @@ export function getAgents(): AgentDef[] {
     {
       name: "Gemini CLI",
       id: "gemini",
-      configPath: join(home, ".gemini", "settings.json"),
-      format: "json-mcpServers",
-      mcpKey: "mcpServers",
+      ...mcpOf("gemini-cli", home, cwd),
       hasHooks: true,
       globalInstructionFile: join(home, ".gemini", "GEMINI.md"),
       detect: () =>
@@ -117,9 +128,7 @@ export function getAgents(): AgentDef[] {
     {
       name: "GitHub Copilot CLI",
       id: "copilot",
-      configPath: join(home, ".copilot", "mcp-config.json"),
-      format: "json-mcpServers",
-      mcpKey: "mcpServers",
+      ...mcpOf("copilot", home, cwd),
       hasHooks: false,
       globalInstructionFile: null,
       detect: () =>
@@ -152,9 +161,7 @@ export function getAgents(): AgentDef[] {
     {
       name: "Codex CLI",
       id: "codex",
-      configPath: join(home, ".codex", "config.toml"),
-      format: "toml",
-      mcpKey: "mcp_servers",
+      ...mcpOf("codex", home, cwd),
       hasHooks: false,
       globalInstructionFile: join(home, ".codex", "AGENTS.md"),
       detect: () => existsSync(join(home, ".codex")) || commandExists("codex"),
@@ -191,9 +198,7 @@ export function getAgents(): AgentDef[] {
     {
       name: "OpenCode",
       id: "opencode",
-      configPath: join(cwd, ".opencode", "opencode.jsonc"),
-      format: "json-mcpServers",
-      mcpKey: "mcp",
+      ...mcpOf("opencode", home, cwd),
       hasHooks: false,
       globalInstructionFile: null,
       detect: () =>

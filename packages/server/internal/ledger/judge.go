@@ -255,12 +255,12 @@ type Verdict struct {
 	// answer and the answer it suggests ("" for none). They are kept only
 	// with a verdict that flags a conflict, and the question and labels
 	// are purged at Forget, like the rationale.
-	Question  string
-	Labels    ConflictLabels
-	Suggested string
-	Tier            string
-	Model           string
-	Candidates      []VerdictCandidate
+	Question   string
+	Labels     ConflictLabels
+	Suggested  string
+	Tier       string
+	Model      string
+	Candidates []VerdictCandidate
 	// Error is a code (llm_failed, escalation_failed, …), never words.
 	Error string
 	// Timings are in milliseconds.
@@ -290,8 +290,10 @@ type RecordVerdict struct {
 	// AlsoConflicts are further decisions in force the memory contradicts
 	// (flagged only): each gets its conflicts_with link too.
 	AlsoConflicts []uuid.UUID
-	// Conditions are the "stays true while" conditions the judge proposes.
-	// They are written only on a proposal that has none.
+	// Conditions are the "stays true while" conditions the judge proposes,
+	// typed (conditions.Condition) without ids. They are attached, as the
+	// judge's, only to a proposal the judge hasn't attached any to; what
+	// Memax derived or a person attached stays beside them.
 	Conditions json.RawMessage
 }
 
@@ -410,7 +412,13 @@ func validErrorCode(s string) bool {
 
 // recordVerdict applies RecordVerdict.
 func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, error) {
-	mem, grant, sp, replay, err := w.open(ctx, c.Memory.String())
+	// The memories the outcome points at are locked with the memory, in
+	// one statement: the outcome reads them, and links to them.
+	var also []uuid.UUID
+	if c.Outcome != OutcomeNone && c.Outcome != OutcomeFailed {
+		also = append([]uuid.UUID{c.Target}, c.AlsoConflicts...)
+	}
+	mem, grant, sp, replay, err := w.openWith(ctx, c.Memory.String(), lockAlso{ids: also})
 	if err != nil || replay != nil {
 		return deref(replay), err
 	}
@@ -439,8 +447,8 @@ func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, e
 	var target *Memory
 	var conflicts []*Memory
 	if outcome != OutcomeNone && outcome != OutcomeFailed {
-		ids := append([]uuid.UUID{c.Target}, c.AlsoConflicts...)
-		locked, err := lockMemories(ctx, w.tx, w.meta.Scope, ids, "FOR SHARE")
+		ids := also
+		locked, err := w.lockMemories(ctx, ids)
 		if err != nil {
 			return Result{}, err
 		}
@@ -590,16 +598,17 @@ func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, e
 			}
 		}
 	}
-	conditions := mem.Conditions
-	if c.Mode == JudgeProposal && outcome != OutcomeFolded && outcome != OutcomeSuppressed &&
-		len(c.Conditions) > 2 && strings.TrimSpace(string(mem.Conditions)) == "[]" {
-		conditions = c.Conditions
+	conds := mem.Conditions
+	if c.Mode == JudgeProposal && outcome != OutcomeFolded && outcome != OutcomeSuppressed {
+		if conds, err = judgeConditions(mem.Conditions, c.Conditions); err != nil {
+			return Result{}, err
+		}
 	}
 	if _, err := w.tx.Exec(ctx, `
 		UPDATE v2.memories
 		   SET lifecycle = $2, flags = $3, conditions = $4, stream_version = $5, last_receipt_id = $6, updated_at = now()
 		 WHERE id = $1 AND space_id = $7`,
-		mem.ID, string(next.Lifecycle), next.Flags.Strings(), []byte(conditions), rc.StreamVersion, rc.ID, sp.ID); err != nil {
+		mem.ID, string(next.Lifecycle), next.Flags.Strings(), []byte(conds), rc.StreamVersion, rc.ID, sp.ID); err != nil {
 		return Result{}, fmt.Errorf("ledger: update memory: %w", err)
 	}
 	// A kept memory in conflict compiles with an "In conflict" marker, and
@@ -874,29 +883,6 @@ func (m *Memory) area() string {
 		return ""
 	}
 	return textsig.NormalizeKey(m.Decision.Area)
-}
-
-// lockMemories loads memories by id with a row lock (lock is "FOR
-// UPDATE" or "FOR SHARE"), in id order so two commands that lock the
-// same memories can't deadlock on each other.
-func lockMemories(ctx context.Context, tx pgx.Tx, scope Scope, ids []uuid.UUID, lock string) (map[uuid.UUID]*Memory, error) {
-	sorted := slices.Clone(ids)
-	slices.SortFunc(sorted, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-	sorted = slices.Compact(sorted)
-	rows, err := tx.Query(ctx, memorySelect+` WHERE m.id = ANY ($1) AND m.space_id = ANY ($2) ORDER BY m.id `+lock+` OF m`,
-		sorted, scope.SpaceIDs())
-	if err != nil {
-		return nil, fmt.Errorf("ledger: lock memories: %w", err)
-	}
-	ms, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (*Memory, error) { return scanMemory(r) })
-	if err != nil {
-		return nil, fmt.Errorf("ledger: lock memories: %w", err)
-	}
-	out := make(map[uuid.UUID]*Memory, len(ms))
-	for _, m := range ms {
-		out[m.ID] = m
-	}
-	return out, nil
 }
 
 // ---------------------------------------------------------------------

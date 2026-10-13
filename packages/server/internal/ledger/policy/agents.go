@@ -15,6 +15,9 @@ const (
 	ConnectionPause       ConnectionAction = "pause"
 	ConnectionResume      ConnectionAction = "resume"
 	ConnectionDisconnect  ConnectionAction = "disconnect"
+	// ConnectionRekey replaces a cloud agent's start key with a new one
+	// under the same connection.
+	ConnectionRekey ConnectionAction = "rekey"
 )
 
 // Connection is the connection a change applies to, as DecideConnection
@@ -31,6 +34,16 @@ type Connection struct {
 	// connected there), and To the level asked for (Connect and
 	// SetAutonomy).
 	From, To Autonomy
+	// Cloud is a cloud agent's connection (surface cloud): it runs
+	// unattended on other people's words (issues, comments, web pages), so
+	// it starts at Read and only a person on the web raises it, never at
+	// Connect's quiet level.
+	Cloud bool
+	// NewKind is set when Connect makes a connection of a kind of agent
+	// the person has none of yet (claude-code, codex...), and Kinds counts
+	// the kinds they have connected: their plan (Actor.Plan) bounds it.
+	NewKind bool
+	Kinds   int
 }
 
 // AgentCeiling is the most a person with role r may let their agent do in
@@ -80,6 +93,19 @@ func quietLevel(r Role, s Space) Autonomy {
 //
 // Decide's rules for writes apply on top: an agent at Write still
 // proposes what cites an external source.
+//
+// On a plan with limits enforced (plans.go), a new kind of agent is
+// refused past the person's plan (agent_kind_limit), and a member without
+// a seat in the space connects and raises agents as a viewer does
+// (seat_needed). Memax's connections (the V1 backfill, the switch) connect
+// credentials people already had, and are never refused on a plan.
+//
+// These rules hold in a space still on V1 too (Decide's onV1 doesn't
+// apply): a connection is the agent's identity across the person's spaces,
+// not the space's record. V1's tools don't read it until the switch, which
+// connects the members' V1 credentials and keeps the connections it finds;
+// OAuth consent connects a new grant to the space chosen, on V1 or V2; and
+// pausing or disconnecting an agent must work wherever it is connected.
 func DecideConnection(a Actor, act ConnectionAction, c Connection, s Space) Decision {
 	if !a.Kind.Valid() {
 		return refuse(CodeUnknownActor, "Memax doesn't recognise who is making this change. Sign in again.")
@@ -94,8 +120,33 @@ func DecideConnection(a Actor, act ConnectionAction, c Connection, s Space) Deci
 	if a.Kind != ActorPerson || a.Credential != CredentialSession {
 		return refuse(CodePersonMustManage, "Only a person can change what an agent may do. Change it in Agents.")
 	}
+	if act == ConnectionConnect && c.NewKind {
+		if d := agentKindLimit(a.Plan, name, c.Kinds); d != nil {
+			return *d
+		}
+	}
+	if a.SpacePlan.Seatless(a.Role) {
+		viewer := a
+		viewer.Role, viewer.SpacePlan = RoleViewer, Plan{}
+		d := DecideConnection(viewer, act, c, s)
+		if d.Code == CodeAutonomyNotAllowed {
+			d = seatNeeded(d, a.SpacePlan, s)
+			d.Message = fmt.Sprintf("Only the owner of %s lets an agent write there until members have Team seats, so %s can propose at most.",
+				spaceName(s), name)
+		}
+		return d
+	}
 
 	switch act {
+	case ConnectionRekey:
+		if !c.Mine {
+			return refuse(CodeNotYourAgent, fmt.Sprintf("Only the person %s works for can give it a new key.", name))
+		}
+		if !c.Cloud {
+			return refuse(CodeAutonomyNotAllowed, fmt.Sprintf(
+				"Only a cloud agent's start key is replaced here. Create a new key for %s in Settings.", name))
+		}
+		return apply()
 	case ConnectionPause, ConnectionDisconnect, ConnectionResume:
 		if !c.Mine {
 			return refuse(CodeNotYourAgent, fmt.Sprintf("Only the person %s works for can %s it.", name, act))
@@ -142,6 +193,16 @@ func DecideConnection(a Actor, act ConnectionAction, c Connection, s Space) Deci
 	if c.To.Above(AgentCeiling(a.Role, s.Rules)) {
 		return refuse(CodeAutonomyNotAllowed, fmt.Sprintf(
 			"Only people who keep in %s can let an agent write there, so %s can propose at most.", spaceName(s), name))
+	}
+	if c.Cloud && c.To.Above(AutonomyRead) {
+		// No quiet level: a cloud agent above Read is a person's choice
+		// on the web, every time.
+		if d := needsPerson(a, CodeCloudNeedsWeb, fmt.Sprintf(
+			"%s runs in the cloud on other people's words, so letting it propose needs you on the web. Change it in Agents at memax.app.", name),
+			"letting "+name+" propose"); d != nil {
+			return *d
+		}
+		return applyChecked(a)
 	}
 	quiet := act == ConnectionConnect && !c.To.Above(quietLevel(a.Role, s))
 	if quiet {

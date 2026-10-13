@@ -48,6 +48,8 @@ export {
   V2ReviewResource,
   V2ReceiptsResource,
   V2ReadsResource,
+  V2SessionStartsResource,
+  V2ChecksResource,
   V2AgentsResource,
   V2BriefsResource,
   V2TargetsResource,
@@ -90,6 +92,8 @@ export {
   splitDocument,
   verifyExport,
 } from "./v2/export.js";
+export { OKF_VERSION, toOkf } from "./v2/okf.js";
+export { renameSuggestion } from "./v2/suggest.js";
 export type {
   ExportFiles,
   ExportManifest,
@@ -119,6 +123,7 @@ export type {
   GateRefOptions as V2GateRefOptions,
   GateCommandOptions as V2GateCommandOptions,
   AskOptions as V2AskOptions,
+  SearchOptions as V2SearchOptions,
   SpaceExport as V2SpaceExport,
   SettingsEditOptions as V2SettingsEditOptions,
   SessionCommandOptions as V2SessionCommandOptions,

@@ -76,7 +76,16 @@ export function createSdkAsk(
       if (refused?.code === "ask_limit" && err instanceof MemaxError) {
         const limit = Number(err.details?.limit ?? 0);
         const resetAt = String(err.details?.reset_at ?? "");
-        yield { type: "limit", limit, resetAt };
+        yield {
+          type: "limit",
+          limit,
+          resetAt,
+          upgrade: refused.limit?.upgrade ?? null,
+        };
+        return;
+      }
+      if (refused?.code === "space_on_v1") {
+        yield { type: "onV1" };
         return;
       }
       if (err instanceof MemaxError && err.code === "unavailable") {

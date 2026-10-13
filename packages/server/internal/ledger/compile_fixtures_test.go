@@ -29,7 +29,7 @@ func newCompileFixture(t *testing.T) *fixture {
 	}
 	logs := &syncBuffer{}
 	return &fixture{
-		t: t, pool: pool, logs: logs,
+		t: t, pool: pool, logs: logs, inserter: client,
 		l: ledger.New(pool, ledger.WithLogger(slog.New(slog.NewTextHandler(logs, nil))), ledger.WithJobs(client)),
 	}
 }

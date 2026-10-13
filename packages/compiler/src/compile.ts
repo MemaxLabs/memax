@@ -6,7 +6,7 @@ import { adapters, getAdapter } from "./adapters/index.js";
 import type { Adapter, Output } from "./adapters/adapter.js";
 import type { Limit } from "./document.js";
 import { sha256Hex, byteLength } from "./hash.js";
-import type { Target } from "./model.js";
+import type { Model, Target } from "./model.js";
 import { byCodeUnit, kib, plural, thousands } from "./text.js";
 import type {
   CompiledCopy,
@@ -45,7 +45,7 @@ export function compile(input: CompileInput): CompileResult {
 
   for (const target of sorted) {
     const adapter = getAdapter(target.kind);
-    const limit = limitFor(adapter, target, warnings);
+    const limit = limitFor(adapter, model, target, warnings);
     const outputs = adapter.render(model, target, limit);
     const texts = outputs.map((output) => {
       const text = toText(adapter, output);
@@ -94,10 +94,12 @@ export function compile(input: CompileInput): CompileResult {
 
 function limitFor(
   adapter: Adapter,
+  model: Model,
   target: Target,
   warnings: CompileWarning[],
 ): Limit {
-  const requested = target.budget ?? DEFAULT_BUDGET;
+  const requested =
+    target.budget ?? adapter.defaultBudget?.(model) ?? DEFAULT_BUDGET;
   const cap = adapter.limits.bytes;
   if (cap && requested > cap.value) {
     warnings.push({

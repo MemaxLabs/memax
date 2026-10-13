@@ -7,6 +7,7 @@
 // the daemon and the CLI's auth (lib/client.ts).
 import {
   getClient,
+  onSignedOut,
   setClientFetch,
   setClientRateLimitRetries,
 } from "./lib/client.js";
@@ -63,6 +64,12 @@ export async function runDaemon(argv: string[]): Promise<number> {
     version: cliVersion(),
     apiUrl: loadConfig().api_url,
     onStopped: () => process.exit(0),
+  });
+  // A refresh the server refused for good: this machine was signed out,
+  // so the Personal layer comes off it (personal-layer design §6.6).
+  onSignedOut((s) => {
+    log.warn("this machine was signed out", { code: s.code });
+    daemon.signedOut();
   });
   try {
     await daemon.start();

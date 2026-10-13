@@ -25,6 +25,8 @@ export interface CitedLine {
   /** The line as it reads, cleaned of hidden characters. */
   text: string;
   hash: string;
+  /** The heading it is under (`Preferences`), when there is one. */
+  heading?: string;
 }
 
 export interface CompiledFile {
@@ -76,6 +78,7 @@ export function parseCompiled(
   let header: RegExpExecArray | null = null;
   const out: CitedLine[] = [];
   const seen = new Map<string, number>();
+  let heading: string | undefined;
   for (const raw of lines) {
     const line = raw.trim();
     if (!header) {
@@ -85,6 +88,8 @@ export function parseCompiled(
         continue;
       }
     }
+    const title = /^#{2,4}\s+(.+)$/.exec(line);
+    if (title) heading = cleanLine(title[1]).text;
     if (line === "" || line.startsWith("#") || line.startsWith("<!--"))
       continue;
     const cites = CITES.exec(line);
@@ -99,6 +104,7 @@ export function parseCompiled(
       refs,
       text,
       hash: lineHash(text),
+      ...(heading ? { heading } : {}),
     });
   }
   if (!header) return null;

@@ -20,6 +20,7 @@ const planColumns = `id, scope, display_name, tier_order, entitlement_rank, mont
 	memory_limit, push_limit, recall_limit, ask_limit, max_attachment_bytes, storage_bytes_limit, ask_model,
 	dreams_enabled, basic_dream_limit, lucid_dream_limit, review_inbox, max_team_hubs,
 	max_owned_free_team_hubs, max_hub_members, seat_minimum, seat_billed,
+	v2_tier, project_space_limit, agent_kind_limit, v2_ask_limit, dream_cadence, dream_nightly_spaces, activity_retention_days,
 	rate_limit_rpm, rate_limit_heavy_rpm, rate_limit_light_rpm,
 	features, active, created_at, updated_at`
 
@@ -32,6 +33,7 @@ func scanPlan(scan func(dest ...any) error) (model.Plan, error) {
 		&p.MemoryLimit, &p.PushLimit, &p.RecallLimit, &p.AskLimit, &p.MaxAttachmentBytes, &p.StorageBytesLimit, &p.AskModel,
 		&p.DreamsEnabled, &p.BasicDreamLimit, &p.LucidDreamLimit, &p.ReviewInbox, &p.MaxTeamHubs,
 		&p.MaxOwnedFreeTeamHubs, &p.MaxHubMembers, &p.SeatMinimum, &p.SeatBilled,
+		&p.V2Tier, &p.ProjectSpaceLimit, &p.AgentKindLimit, &p.V2AskLimit, &p.DreamCadence, &p.DreamNightlySpaces, &p.ActivityRetentionDays,
 		&p.RateLimitRPM, &p.RateLimitHeavyRPM, &p.RateLimitLightRPM,
 		&featuresJSON, &p.Active, &p.CreatedAt, &p.UpdatedAt,
 	); err != nil {

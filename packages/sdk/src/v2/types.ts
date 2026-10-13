@@ -23,9 +23,19 @@ export type DecisionOption = Schemas["DecisionOption"];
 export type Receipt = Schemas["Receipt"];
 export type ReceiptSource = Schemas["ReceiptSource"];
 export type PolicyDecision = Schemas["PolicyDecision"];
+/** The plan limit a refusal met: the plan, its allowance and use, the plan that lifts it. */
+export type PlanLimit = Schemas["PlanLimit"];
+/** A V2 plan: free, pro, team or enterprise. */
+export type PlanTier = Schemas["PlanTier"];
 
 // Responses (the `data` of each envelope)
 export type SpaceList = Schemas["SpaceList"];
+/** What the space switcher says about a space on V2: kept, waiting, agents. */
+export type SpaceCounts = Schemas["SpaceCounts"];
+/** One page of a search across your spaces (`memax.v2.search`). */
+export type SearchPage = Schemas["SearchPage"];
+/** One memory a search found, with the receipts that wrote and last changed it. */
+export type SearchHit = Schemas["SearchHit"];
 export type MemoryPage = Schemas["MemoryPage"];
 export type ReviewPage = Schemas["ReviewPage"];
 export type ReceiptPage = Schemas["ReceiptPage"];
@@ -62,6 +72,15 @@ export type RestoreBriefResult = Schemas["RestoreBriefResult"];
 export type BriefDrop = Schemas["BriefDrop"];
 export type BriefVersionPage = Schemas["BriefVersionPage"];
 export type Target = Schemas["Target"];
+/** `repo`, or `home`: one linked machine's home folder (a personal space). */
+export type TargetRoot = Schemas["TargetRoot"];
+/** The machine a home file is on. */
+export type TargetMachine = Schemas["TargetMachine"];
+/** A computer your Personal space is written to. */
+export type Machine = Schemas["Machine"];
+export type MachineList = Schemas["MachineList"];
+/** A machine and its home files after a machine command. */
+export type MachineResult = Schemas["MachineResult"];
 export type TargetSettings = Schemas["TargetSettings"];
 export type TargetList = Schemas["TargetList"];
 export type TargetResult = Schemas["TargetResult"];
@@ -120,6 +139,32 @@ export type ForgetCarry = Schemas["ForgetCarry"];
 /** An agent's request that a person forget a memory. */
 export type ForgetRequestRecord = Schemas["ForgetRequestRecord"];
 export type ForgetRequestResult = Schemas["ForgetRequestResult"];
+
+// Verify (plan 25 §5.9): a person's answer to a stale flag
+/** still_true, update or forget. */
+export type VerifyAnswer = Schemas["VerifyAnswer"];
+/** What Verify did: the receipts, and the tombstone for forget. */
+export type VerifyResult = Schemas["VerifyResult"];
+/** Why a memory is stale: the flag's receipt, the causes, the keep before. */
+export type StaleReport = Schemas["StaleReport"];
+/** One typed reason a memory is stale: a date that passed, or a check. */
+export type StaleCause = Schemas["StaleCause"];
+/** A space's conditions, as its machines check them (no words). */
+export type SpaceConditions = Schemas["SpaceConditions"];
+/** A memory marked stale, as a space's machines hear of it: when and why. */
+export type StaleMemory = Schemas["StaleMemory"];
+export type CheckedCondition = Schemas["CheckedCondition"];
+/** A machine's check run of a space's conditions, and one result. */
+export type CheckRunInput = Schemas["CheckRunRequest"];
+export type CheckResultInput = Schemas["CheckResultInput"];
+export type CheckEvidence = Schemas["CheckEvidence"];
+/** A recorded check run, and the memories it marked stale. */
+export type CheckRun = Schemas["CheckRun"];
+export type CheckRunResult = Schemas["CheckRunResult"];
+/** A typed "stays true while" condition (path_exists, file_contains, …). */
+export type Condition = Schemas["Condition"];
+/** Who attached a condition: derived by Memax, the judge, Dream or a person. */
+export type ConditionOrigin = Schemas["ConditionOrigin"];
 /** Something an agent is told once: a memory or a space it read was forgotten. */
 export type Notice = Schemas["Notice"];
 export type NoticeList = Schemas["NoticeList"];
@@ -139,8 +184,19 @@ export type Read = Schemas["Read"];
 export type ReadPage = Schemas["ReadPage"];
 /** How a memory has been read, and by which agents (MemoryDetail.reads). */
 export type MemoryReads = Schemas["MemoryReads"];
+/** When a memory's conditions were last checked, where and for whom. */
+export type MemoryChecked = Schemas["MemoryChecked"];
 export type MemoryReader = Schemas["MemoryReader"];
 export type CompileLoadResult = Schemas["CompileLoadResult"];
+/**
+ * A cloud session start's answer (`memax.v2.sessionStarts.start`): what
+ * changed since the compiles the repository holds.
+ */
+export type SessionStart = Schemas["SessionStart"];
+export type SessionStartFile = Schemas["SessionStartFile"];
+export type SessionStartLine = Schemas["SessionStartLine"];
+export type SessionStartForget = Schemas["SessionStartForget"];
+export type SessionStartGate = Schemas["SessionStartGate"];
 
 // Ask
 /** One event of an answer's stream (`memax.v2.ask`), discriminated by `event`. */
@@ -209,22 +265,33 @@ export type AgentList = Schemas["AgentList"];
 export type AgentDetail = Schemas["AgentDetail"];
 export type AgentWeek = Schemas["AgentWeek"];
 export type AgentSession = Schemas["AgentSession"];
+export type AgentStart = Schemas["AgentStart"];
 export type AgentCommandResult = Schemas["AgentCommandResult"];
+/** A cloud agent's connection, and its start key's secret (shown once). */
+export type CloudAgentResult = Schemas["CloudAgentResult"];
+export type StartKey = Schemas["StartKey"];
 
 // Request bodies
 export type RememberInput = Schemas["RememberRequest"];
 export type NearDuplicatesInput = Schemas["NearDuplicatesRequest"];
 export type EditInput = Schemas["EditRequest"];
 export type ReviewInput = Schemas["ReviewRequest"];
+/** Which repositories a memory applies in; `repos: []` is everywhere. */
+export type ScopeInput = Schemas["ScopeRequest"];
 export type SourceInput = Schemas["SourceInput"];
 export type AutonomyInput = Schemas["AutonomyRequest"];
 export type AgentCommandInput = Schemas["AgentCommandRequest"];
+/** Connect a cloud agent to a space, with a start key. */
+export type CreateCloudAgentInput = Schemas["CreateCloudAgentRequest"];
 export type ReviseBriefInput = Schemas["ReviseBriefRequest"];
 export type BriefSectionInput = Schemas["BriefSectionInput"];
 export type BriefItemInput = Schemas["BriefItemInput"];
 export type CreateTargetInput = Schemas["CreateTargetRequest"];
 export type ConfigureTargetInput = Schemas["ConfigureTargetRequest"];
 export type TargetSettingsInput = Schemas["TargetSettingsInput"];
+export type LinkMachineInput = Schemas["LinkMachineRequest"];
+export type MachineFileInput = Schemas["MachineFileInput"];
+export type RenameMachineInput = Schemas["RenameMachineRequest"];
 export type ObservationInput = Schemas["ObservationRequest"];
 export type DeliveryInput = Schemas["DeliveryRequest"];
 export type ResolveDriftInput = Schemas["ResolveDriftRequest"];
@@ -241,7 +308,11 @@ export type AnswerGateInput = Schemas["AnswerGateRequest"];
 export type WithdrawGateInput = Schemas["ReviewRequest"];
 /** A session start's report of the compile its agent loaded. */
 export type CompileLoadInput = Schemas["CompileLoadRequest"];
+/** A cloud session start: the compiled files the session loaded, by compile. */
+export type SessionStartInput = Schemas["SessionStartRequest"];
+export type SessionStartFileInput = Schemas["SessionStartFileInput"];
 export type ForgetInput = Schemas["ForgetRequest"];
+export type VerifyInput = Schemas["VerifyRequest"];
 export type AckNoticesInput = Schemas["AckNoticesRequest"];
 export type CreateSpaceInput = Schemas["CreateSpaceRequest"];
 
@@ -278,6 +349,14 @@ export type SettleImportConflictInput = Schemas["SettleImportConflictRequest"];
 export type BulkReviewInput = Schemas["BulkReviewRequest"];
 
 // Vocabulary
+/**
+ * Where a memory applies: `paths` (a scoped rule's globs), `agents`, and
+ * `repos`, the repositories it applies in ("owner/name"). A home file
+ * leaves out a memory with `repos` or `paths`.
+ */
+export type MemoryScope = Schemas["MemoryScope"];
+/** A repository as "owner/name", such as "acme/web". */
+export type RepoKey = Schemas["RepoKey"];
 export type Section = Schemas["Section"];
 export type MemoryKind = Schemas["MemoryKind"];
 export type State = Schemas["State"];

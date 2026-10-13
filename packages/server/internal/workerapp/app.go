@@ -55,9 +55,11 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/reads"
 	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
 	"github.com/MemaxLabs/memax/packages/server/internal/sealer"
+	"github.com/MemaxLabs/memax/packages/server/internal/stalesweep"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2switch"
 )
@@ -246,6 +248,16 @@ func New(ctx context.Context) (*App, error) {
 	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
 	dreamCfg := v2dream.ConfigFromEnv(os.LookupEnv)
 	v2Opts := []ledger.Option{ledger.WithJobs(insertClient), ledger.WithDreamUndoWindow(dreamCfg.UndoWindow)}
+	// The V2 plans (D9): Dream's cadence and run-now cap follow each space's
+	// plan once V2_PLAN_LIMITS enforces them.
+	enforce, err := v2plans.EnforceFromEnv(os.LookupEnv)
+	if err != nil {
+		slog.Error("worker: V2 plan limits stay off", "error", err)
+	}
+	if p := v2plans.New(planRegistry, enforce); p != nil {
+		v2Opts = append(v2Opts, ledger.WithPlans(p))
+		logEnabled("V2 plan limits", enforce)
+	}
 	if embedCfg.Enabled() {
 		v2Opts = append(v2Opts, ledger.WithIndexJobs())
 	}
@@ -361,6 +373,10 @@ func New(ctx context.Context) (*App, error) {
 			"every", v2Sealer.Interval().String(), "copies", blobStore != nil)
 	}
 	sealer.AddWorkers(workers, v2Sealer)
+
+	// V2 dates (the stale-detection design §2.3): every hour, kept memories
+	// whose date to check again passed are flagged stale, as Memax.
+	stalesweep.AddWorkers(workers, v2Ledger)
 
 	river.AddWorker(workers, &queue.MemoryProcessWorker{
 		Store:         s,
@@ -578,6 +594,7 @@ func New(ctx context.Context) (*App, error) {
 	periodicJobs = append(periodicJobs, reads.PeriodicJobs()...)
 	periodicJobs = append(periodicJobs, sealer.PeriodicJobs(v2Sealer)...)
 	periodicJobs = append(periodicJobs, v2dream.PeriodicJobs(v2Dream)...)
+	periodicJobs = append(periodicJobs, stalesweep.PeriodicJobs()...)
 	if compileSvc != nil {
 		periodicJobs = append(periodicJobs, compile.PeriodicJobs()...)
 		slog.Info("compile sweep scheduled", "every", compile.SweepInterval.String())
@@ -2136,6 +2153,8 @@ func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob
 			ledger.QueueSwitch: {MaxWorkers: v2switch.MaxWorkers},
 			// Dream editions: a few spaces at a time, mostly waiting on the model.
 			ledger.QueueDream: {MaxWorkers: v2dream.MaxWorkers},
+			// The hourly date sweep: short, database-bound jobs, one per space.
+			ledger.QueueStale: {MaxWorkers: stalesweep.MaxWorkers},
 		},
 		Workers: workers,
 		// Global worker middleware: every job's Work() runs inside a

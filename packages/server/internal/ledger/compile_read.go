@@ -6,6 +6,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
 
 // Reads of the Brief, targets, compile runs and observations. Like the
@@ -107,27 +109,32 @@ func (l *Ledger) ListTargets(ctx context.Context, scope Scope, spaceID uuid.UUID
 	}
 	var out []Target
 	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, targetSelect+`
-			 WHERE t.space_id = $1 AND t.space_id = ANY($2)
-			 ORDER BY array_position($3::text[], t.kind), t.path NULLS LAST, t.id`,
-			spaceID, scope.SpaceIDs(), kindsOrder())
-		if err != nil {
-			return fmt.Errorf("ledger: list targets: %w", err)
-		}
-		targets, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (*Target, error) { return scanTarget(r) })
-		if err != nil {
-			return fmt.Errorf("ledger: list targets: %w", err)
-		}
-		if err := fillTargets(ctx, tx, scope, targets); err != nil {
-			return err
-		}
-		out = make([]Target, len(targets))
-		for i, t := range targets {
-			out[i] = *t
-		}
-		return nil
+		var err error
+		out, err = listTargetsWhere(ctx, tx, scope, `t.space_id = $1`, spaceID)
+		return err
 	})
 	return out, err
+}
+
+// listTargetsWhere lists the targets in scope that where selects (its
+// arguments from $1), in the compiler's order, each with its latest run.
+func listTargetsWhere(ctx context.Context, tx pgx.Tx, scope Scope, where string, args ...any) ([]Target, error) {
+	n := len(args)
+	args = append(args, scope.SpaceIDs(), kindsOrder())
+	rows, err := tx.Query(ctx, targetSelect+fmt.Sprintf(`
+		 WHERE %s AND t.space_id = ANY($%d)
+		 ORDER BY array_position($%d::text[], t.kind), t.root, t.path NULLS LAST, t.id`, where, n+1, n+2), args...)
+	if err != nil {
+		return nil, fmt.Errorf("ledger: list targets: %w", err)
+	}
+	targets, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (*Target, error) { return scanTarget(r) })
+	if err != nil {
+		return nil, fmt.Errorf("ledger: list targets: %w", err)
+	}
+	if err := fillTargets(ctx, tx, scope, targets); err != nil {
+		return nil, err
+	}
+	return derefTargets(targets), nil
 }
 
 func kindsOrder() []string {
@@ -160,10 +167,13 @@ type CompileRunQuery struct {
 }
 
 // CompileRunPage is one page of a target's runs, newest first.
+// RetentionDays is how far back its space's plan lists them (0: as far as
+// they are kept).
 type CompileRunPage struct {
-	Runs       []CompileRun
-	NextCursor string
-	HasMore    bool
+	Runs          []CompileRun
+	NextCursor    string
+	HasMore       bool
+	RetentionDays int
 }
 
 // ListCompileRuns pages through a target's compile runs, newest first.
@@ -178,13 +188,19 @@ func (l *Ledger) ListCompileRuns(ctx context.Context, scope Scope, q CompileRunQ
 	}
 	var page CompileRunPage
 	err = l.Read(ctx, scope, func(tx pgx.Tx) error {
-		if _, err := loadTarget(ctx, tx, scope, q.TargetID, false); err != nil {
+		t, err := loadTarget(ctx, tx, scope, q.TargetID, false)
+		if err != nil {
 			return err
 		}
+		// The space's plan says how far back Activity goes (D9).
+		g, _ := scope.Grant(t.SpaceID)
+		plan := l.SpacePlan(g)
+		page.RetentionDays = policy.ActivityDays(plan)
 		rows, err := tx.Query(ctx, compileSelect+`
 			 WHERE r.target_id = $1 AND r.space_id = ANY($2) AND ($3::bigint = 0 OR r.seq < $3)
+			   AND ($5::timestamptz IS NULL OR r.enqueued_at >= $5)
 			 ORDER BY r.seq DESC
-			 LIMIT $4`, q.TargetID, scope.SpaceIDs(), before, limit+1)
+			 LIMIT $4`, q.TargetID, scope.SpaceIDs(), before, limit+1, activitySince(plan, l.now()))
 		if err != nil {
 			return fmt.Errorf("ledger: list compile runs: %w", err)
 		}
@@ -284,8 +300,9 @@ type CompileSnapshot struct {
 	// coordinator decides which of them may compile (quarantined ones
 	// never do).
 	Kept []Memory
-	// Canonical is the path of the space's AGENTS.md target, which shims
-	// and scoped rules import or name; "" when it has none.
+	// Canonical is the path of the space's repository AGENTS.md target,
+	// which shims and scoped rules import or name; "" when it has none. A
+	// home canonical copy is never one: home files import nothing.
 	Canonical string
 }
 
@@ -328,7 +345,7 @@ func (l *Ledger) CompileSnapshot(ctx context.Context, scope Scope, targetID uuid
 		}
 		err = tx.QueryRow(ctx, `
 			SELECT path FROM v2.targets
-			 WHERE space_id = $1 AND kind = 'agents_md' AND sync_state <> 'off'
+			 WHERE space_id = $1 AND kind = 'agents_md' AND root = 'repo' AND sync_state <> 'off'
 			 ORDER BY (path = 'AGENTS.md') DESC, path LIMIT 1`, v.Target.SpaceID).Scan(&s.Canonical)
 		if err != nil && !errNoRows(err) {
 			return fmt.Errorf("ledger: load canonical target: %w", err)

@@ -3,7 +3,12 @@ import type { AgentConnectionView, AgentsData } from "./agents";
 import { dreamTimeOf, todayDreamOf, type DreamSource } from "./dream";
 import { askingAgents, type GatesSource } from "./gates";
 import type { MemoryNote } from "./memories";
-import { receiptsFor, reviewItemOf, type V2Client } from "./sdk-records";
+import {
+  receiptsFor,
+  reviewItemOf,
+  staleNoteOf,
+  type V2Client,
+} from "./sdk-records";
 import { startOfDay, type AgentToday, type TodaySource } from "./today";
 import type { Viewer } from "./types";
 
@@ -146,14 +151,11 @@ export function createSdkToday({
       );
       const notes: Record<string, MemoryNote> = {};
       for (const m of queue.items) {
-        const last = receipts.get(m.last_receipt_id);
-        if (m.state === "stale" && last?.action === "flagged") {
-          notes[m.ref] = {
-            kind: "stale",
-            changedAt: last.occurred_at,
-            source: last.source?.ref ?? null,
-          };
-        }
+        const note =
+          m.state === "stale"
+            ? staleNoteOf(m, receipts.get(m.last_receipt_id))
+            : null;
+        if (note) notes[m.ref] = note;
       }
       // Review lists proposals, then conflicts, then stale facts: what
       // didn't fit the page is at the stale end.

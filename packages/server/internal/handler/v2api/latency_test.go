@@ -18,8 +18,10 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/embed/mockembed"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb/netsim"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 )
 
@@ -41,19 +43,43 @@ type apiRig struct {
 	tok       string
 	mu        sync.Mutex
 	proposals []string
-	seq       int
+	// stale are kept memories past their date to check again, flagged as
+	// Dream flags them, for Verify to answer.
+	stale []string
+	// armed are kept memories whose path condition held on the default
+	// branch, for a check run to find gone.
+	armed []armedCondition
+	seq   int
 }
+
+type armedCondition struct{ ref, hash string }
 
 func newAPIRig(t *testing.T, o testdb.Options) *apiRig {
 	t.Helper()
+	return newAPIRigWith(t, o, false)
+}
+
+// newAPIRigWith is newAPIRig, its ledger under the migrated plan rows with
+// their limits enforced when plansEnforced (V2_PLAN_LIMITS=enforce).
+func newAPIRigWith(t *testing.T, o testdb.Options, plansEnforced bool) *apiRig {
+	t.Helper()
 	db := testdb.Open(t, o)
+	lopts := []ledger.Option{ledger.WithIndexJobs()}
+	if plansEnforced {
+		reg := plans.NewRegistry(db.Store)
+		if err := reg.Load(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		lopts = append(lopts, ledger.WithPlans(v2plans.New(reg, true)))
+	}
 	words := mockembed.NewWords()
 	model := instantModel{}
 	e := newEnvOn(t, db, func(e *env) []v2api.Option {
 		vec := v2recall.NewVectors(e.ledger, words, words, v2recall.VectorConfig{Model: embedModel, Log: quiet})
 		search := v2recall.New(e.ledger).WithVectors(vec)
-		return []v2api.Option{v2api.WithAsk(ask.New(e.ledger, search, model, ask.Config{Model: "test/answer-tier", Log: quiet}))}
-	}, ledger.WithIndexJobs())
+		return []v2api.Option{v2api.WithSearch(search),
+			v2api.WithAsk(ask.New(e.ledger, search, model, ask.Config{Model: "test/answer-tier", Log: quiet}))}
+	}, lopts...)
 	zz := e.user("zz")
 	e.space(zz, policy.SpacePersonal, "zz") // as every account has
 	sp := e.space(zz, policy.SpaceProject, "memax-v2")
@@ -91,6 +117,40 @@ func newAPIRig(t *testing.T, o testdb.Options) *apiRig {
 	}
 	if res, err := e.ledger.Apply(ctx, &ledger.ConfigureTarget{Meta: meta(), SpaceID: sp.id, Kind: ledger.TargetAgentsMD}); err != nil || res.Target == nil {
 		t.Fatalf("configure target: %v %+v", err, res.Policy)
+	}
+	past := time.Now().Add(-24 * time.Hour)
+	for i := range 60 {
+		res, err := e.ledger.Apply(ctx, &ledger.Remember{Meta: meta(), NewMemory: ledger.NewMemory{SpaceID: sp.id,
+			Statement: fmt.Sprintf("Staging tokens rotate every %d days.", i+1), Section: ledger.SectionConventions, StaleAfter: &past}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.flag(memory{ID: res.Memory.ID, Ref: res.Memory.Ref, SpaceID: sp.id}, "stale")
+		r.stale = append(r.stale, res.Memory.Ref)
+	}
+	// The space compiles for a repository from here on, so memories that
+	// name a path get its condition, and one check run arms them all.
+	e.exec(`UPDATE hubs SET repository = 'MemaxLabs/memax' WHERE id = $1`, sp.id)
+	for i := range 50 {
+		if _, err := e.ledger.Apply(ctx, &ledger.Remember{Meta: meta(), NewMemory: ledger.NewMemory{SpaceID: sp.id,
+			Statement: fmt.Sprintf("Handler %d lives in `packages/server/internal/h%d/handler.go`.", i, i), Section: ledger.SectionConventions}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, err := e.ledger.ListConditions(ctx, scope, sp.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm := ledger.CheckReport{Actor: ledger.Actor{Kind: policy.ActorPerson, ID: zz}, Scope: scope, Via: policy.ViaCLI, SpaceID: sp.id,
+		IdempotencyKey: uuid.NewString(), Repository: "MemaxLabs/memax", Branch: "main", Commit: strings.Repeat("a", 40),
+		CommitAt: time.Now().Add(-3 * time.Hour), Trigger: ledger.TriggerConditions, Device: "dev-1", Complete: true}
+	for _, it := range list.Items {
+		c := it.Conditions[0]
+		arm.Results = append(arm.Results, ledger.CheckResult{Memory: it.Memory, Condition: c.Condition.ID, Hash: c.Hash, Outcome: ledger.CheckHolds})
+		r.armed = append(r.armed, armedCondition{ref: it.Memory, hash: c.Hash})
+	}
+	if res, err := e.ledger.ReportChecks(ctx, arm); err != nil || res.Run == nil || res.Run.Counts.Holds != 50 {
+		t.Fatalf("arm: %+v %v", res, err)
 	}
 	key, _ := e.apiKey(zz, keyOpts{agent: "codex"})
 	for i := range 150 {
@@ -138,6 +198,43 @@ func (r *apiRig) nextProposal(t *testing.T) string {
 	return ref
 }
 
+func (r *apiRig) nextStale(t *testing.T) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.stale) < 2 {
+		t.Fatal("out of stale memories to verify")
+	}
+	ref := r.stale[len(r.stale)-1]
+	r.stale = r.stale[:len(r.stale)-1]
+	return ref
+}
+
+func (r *apiRig) nextArmed(t *testing.T) armedCondition {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.armed) < 2 {
+		t.Fatal("out of armed conditions to find gone")
+	}
+	a := r.armed[len(r.armed)-1]
+	r.armed = r.armed[:len(r.armed)-1]
+	return a
+}
+
+// checkRun posts a run of one result at a commit an hour ago.
+func (r *apiRig) checkRun(t *testing.T, ctx context.Context, a armedCondition, outcome string) time.Duration {
+	result := map[string]any{"memory": a.ref, "condition": "c1", "hash": a.hash, "outcome": outcome}
+	if outcome == "fails" {
+		result["evidence"] = map[string]any{"change": "removed"}
+	}
+	start := time.Now()
+	r.e.do(call{method: "POST", path: "/v2/spaces/" + r.sp.slug + "/check-runs", token: r.tok, ctx: ctx,
+		header: map[string]string{"X-Memax-Via": "cli"},
+		body: map[string]any{"repository": "MemaxLabs/memax", "branch": "main", "commit": strings.Repeat("b", 40),
+			"commit_at": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339), "trigger": "head_moved", "device": "dev-1",
+			"complete": false, "results": []any{result}}}).ok(http.StatusCreated, nil)
+	return time.Since(start)
+}
+
 func (r *apiRig) ops() []apiOp {
 	slug := r.sp.slug
 	return []apiOp{
@@ -159,6 +256,29 @@ func (r *apiRig) ops() []apiOp {
 				body: remember(fmt.Sprintf("Releases are cut on day %d of the sprint.", r.seq), "conventions")}).ok(http.StatusCreated, nil)
 			return time.Since(start)
 		}},
+		// The stale report reads the first stale memory, which Verify never
+		// answers here.
+		{"/v2 stale report", r.get("/v2/memories/" + r.stale[0] + "/stale?space=" + slug)},
+		{"/v2 Verify (+ jobs)", func(t *testing.T, ctx context.Context) time.Duration {
+			ref := r.nextStale(t)
+			start := time.Now()
+			r.e.do(call{method: "POST", path: "/v2/memories/" + ref + ":verify?space=" + slug, token: r.tok, ctx: ctx,
+				header: map[string]string{"If-Match": `"1"`}, body: map[string]any{"answer": "still_true"}}).ok(http.StatusOK, nil)
+			return time.Since(start)
+		}},
+		{"/v2 conditions", r.get("/v2/spaces/" + slug + "/conditions")},
+		// A run whose result changes nothing that flags: the first armed
+		// condition still holds.
+		{"/v2 check run", func(t *testing.T, ctx context.Context) time.Duration {
+			return r.checkRun(t, ctx, r.armed[0], "holds")
+		}},
+		{"/v2 check run that flags (+ jobs)", func(t *testing.T, ctx context.Context) time.Duration {
+			return r.checkRun(t, ctx, r.nextArmed(t), "fails")
+		}},
+		// Search across the person's spaces (their personal space and
+		// memax-v2), and in one; words that match some memories.
+		{"/v2 search across spaces", r.get("/v2/search?q=deploy+target+postgres")},
+		{"/v2 search in a space", r.get("/v2/search?q=deploy+target+postgres&space=" + slug)},
 		{"/v2 Ask, to the sources event", func(t *testing.T, ctx context.Context) time.Duration {
 			r.seq++
 			req := r.e.request(call{method: "POST", path: "/v2/spaces/" + slug + "/ask", token: r.tok, ctx: ctx,
@@ -217,13 +337,20 @@ func TestAPILatency(t *testing.T) {
 	r := newAPIRig(t, testdb.Options{Proxy: true})
 	const runs = 20
 	bars := map[string]time.Duration{
-		"/v2 memory list":               300 * time.Millisecond,
-		"/v2 memory get":                300 * time.Millisecond,
-		"/v2 review queue":              300 * time.Millisecond,
-		"/v2 Brief":                     300 * time.Millisecond,
-		"/v2 Keep (+ jobs)":             500 * time.Millisecond,
-		"/v2 Remember (+ jobs)":         500 * time.Millisecond,
-		"/v2 Ask, to the sources event": 300 * time.Millisecond,
+		"/v2 memory list":                   300 * time.Millisecond,
+		"/v2 memory get":                    300 * time.Millisecond,
+		"/v2 review queue":                  300 * time.Millisecond,
+		"/v2 Brief":                         300 * time.Millisecond,
+		"/v2 Keep (+ jobs)":                 500 * time.Millisecond,
+		"/v2 Remember (+ jobs)":             500 * time.Millisecond,
+		"/v2 stale report":                  300 * time.Millisecond,
+		"/v2 Verify (+ jobs)":               500 * time.Millisecond,
+		"/v2 conditions":                    300 * time.Millisecond,
+		"/v2 check run":                     300 * time.Millisecond,
+		"/v2 check run that flags (+ jobs)": 500 * time.Millisecond,
+		"/v2 Ask, to the sources event":     300 * time.Millisecond,
+		"/v2 search across spaces":          300 * time.Millisecond,
+		"/v2 search in a space":             300 * time.Millisecond,
 	}
 	aims := map[string]time.Duration{"/v2 Keep (+ jobs)": 200 * time.Millisecond}
 	var rows []string
@@ -261,6 +388,24 @@ func TestAPIRoundTrips(t *testing.T) {
 	r := newAPIRig(t, testdb.Options{Watch: audit.Observe})
 	audit.Arm()
 	defer audit.Require(t)
+	checkAPIRoundTrips(t, r)
+}
+
+// TestPlanLimitsAddNoRoundTrips: with V2_PLAN_LIMITS enforcing the plans,
+// every hot path keeps its budget. The plan rows come with the scope's one
+// statement (and a space's, in a command), and the registry answers from
+// memory.
+func TestPlanLimitsAddNoRoundTrips(t *testing.T) {
+	audit := netsim.NewAudit(ledger.DBRole)
+	r := newAPIRigWith(t, testdb.Options{Watch: audit.Observe}, true)
+	audit.Arm()
+	defer audit.Require(t)
+	checkAPIRoundTrips(t, r)
+}
+
+// checkAPIRoundTrips measures each hot path and holds it to its budget.
+func checkAPIRoundTrips(t *testing.T, r *apiRig) {
+	t.Helper()
 	// Before the pipelined ledger (Oct 7, 2026) these were 15, 25, 16, 14,
 	// 32, 27 and 30. Keep and Remember count River's insert notification
 	// (PGNotifyMany), which River sends at most once per queue per fetch
@@ -268,14 +413,44 @@ func TestAPIRoundTrips(t *testing.T) {
 	// traffic nearly every one sends it. Keep was 16 and Remember 13 until
 	// the ref resolved in the locking statement, the space's read went with
 	// the idempotency claim, and Keep's target bump with its undo read.
+	// The stale report is the auth's two reads and one ReadBatch; Verify
+	// (still true) is Keep's path with the stale flag's read for the
+	// receipt's source, and River's notification like Keep's. The
+	// conditions are the auth's two and one ReadBatch; a check run is the
+	// auth's two, then the space with the key's claim, the memories locked
+	// with their check state, the run and its results, and COMMIT (the
+	// stale-detection design's 4), however many results it carries; one
+	// that flags adds the receipts, flags and targets to the run's round
+	// trip, then River's insert and its notification, however many it
+	// flags. A memory's page was 11 until its reads and forget requests
+	// went out together in one ReadBatch, beside nothing else. The auth's
+	// two reads (the hub list, then the person's V2 scope) became one when
+	// HubContext sent the scope in the list's round trip (each count one
+	// less; Keep, Remember and Verify two, which read the scope twice).
+	// Every write that queues jobs keeps one for River's notification:
+	// these runs measure each op right after its warm-ups, inside River's
+	// cooldown, so it is usually skipped here, but a busy machine sends it
+	// (Keep 12 and Remember 11, Oct 13, 2026), as alpha traffic nearly
+	// always does. A search is the auth's one, the lexical lanes'
+	// transaction, the vector lane's (the query embedded meanwhile), and
+	// one ReadBatch for the hits with their receipts: four on the answer's
+	// path, and two read-only COMMITs sent after it. Across spaces costs no
+	// more than in one: the spaces come with the scope.
 	budgets := map[string]int{
-		"/v2 memory list":               5,
-		"/v2 memory get":                11,
-		"/v2 review queue":              6,
-		"/v2 Brief":                     5,
-		"/v2 Keep (+ jobs)":             13,
-		"/v2 Remember (+ jobs)":         12,
-		"/v2 Ask, to the sources event": 9,
+		"/v2 memory list":                   4,
+		"/v2 memory get":                    5,
+		"/v2 review queue":                  5,
+		"/v2 Brief":                         4,
+		"/v2 Keep (+ jobs)":                 12,
+		"/v2 Remember (+ jobs)":             11,
+		"/v2 stale report":                  2,
+		"/v2 Verify (+ jobs)":               10,
+		"/v2 conditions":                    2,
+		"/v2 check run":                     5,
+		"/v2 check run that flags (+ jobs)": 7,
+		"/v2 Ask, to the sources event":     8,
+		"/v2 search across spaces":          6,
+		"/v2 search in a space":             6,
 	}
 	for _, op := range r.ops() {
 		for range 2 {

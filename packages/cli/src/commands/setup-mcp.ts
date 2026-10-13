@@ -6,6 +6,7 @@ import { loadConfig } from "../lib/config.js";
 import { confirmDefault } from "../lib/prompt.js";
 import { getLocalAgentKey, saveLocalAgentKey } from "../lib/credentials.js";
 import { resolveHubID } from "../lib/hubs.js";
+import { parseJsoncObject, SettingsFileError, setJsonc } from "../lib/jsonc.js";
 import {
   type AgentDef,
   type MemaxBin,
@@ -315,23 +316,26 @@ function writeRemoteJsonConfig(
   mcpUrl: string,
   authHeaders?: Record<string, string>,
 ): void {
-  mkdirSync(dirname(agent.configPath), { recursive: true });
-  let config: Record<string, unknown> = {};
-  if (existsSync(agent.configPath)) {
-    try {
-      config = JSON.parse(readFileSync(agent.configPath, "utf-8"));
-    } catch {
-      // Start fresh
-    }
-  }
+  writeMemaxServer(agent, agent.remoteEntry(mcpUrl, authHeaders));
+}
 
-  const servers = (getNestedKey(config, agent.mcpKey) ?? {}) as Record<
-    string,
-    unknown
-  >;
-  servers.memax = agent.remoteEntry(mcpUrl, authHeaders);
-  setNestedKey(config, agent.mcpKey, servers);
-  writeFileSync(agent.configPath, JSON.stringify(config, null, 2) + "\n");
+/**
+ * Puts Memax's entry under the agent's MCP key, changing nothing else in
+ * the file: its comments, other servers and formatting stay as they are.
+ * A file that isn't JSON, even allowing comments, is left alone.
+ */
+function writeMemaxServer(agent: AgentDef, entry: unknown): void {
+  mkdirSync(dirname(agent.configPath), { recursive: true });
+  const text = existsSync(agent.configPath)
+    ? readFileSync(agent.configPath, "utf-8")
+    : "";
+  if (!parseJsoncObject(text)) {
+    throw new SettingsFileError(agent.configPath, "add the memax server");
+  }
+  writeFileSync(
+    agent.configPath,
+    setJsonc(text, [...agent.mcpKey.split("."), "memax"], entry),
+  );
 }
 
 /**
@@ -487,26 +491,13 @@ export function setupMcp(agent: AgentDef, bin: MemaxBin): void {
   }
 
   // JSON-based agents
-  let config: Record<string, unknown> = {};
-  if (existsSync(agent.configPath)) {
-    try {
-      config = JSON.parse(readFileSync(agent.configPath, "utf-8"));
-    } catch {
-      // Start fresh
-    }
-  }
-
-  const servers = (getNestedKey(config, agent.mcpKey) ?? {}) as Record<
-    string,
-    unknown
-  >;
   const allArgs = [...bin.args, "mcp", "serve", "--agent", agent.id];
-  servers.memax = agent.localEntry
-    ? agent.localEntry(bin.command, allArgs)
-    : { command: bin.command, args: allArgs };
-  setNestedKey(config, agent.mcpKey, servers);
-
-  writeFileSync(agent.configPath, JSON.stringify(config, null, 2) + "\n");
+  writeMemaxServer(
+    agent,
+    agent.localEntry
+      ? agent.localEntry(bin.command, allArgs)
+      : { command: bin.command, args: allArgs },
+  );
 }
 
 export function setupMcpClaudeCode(bin: MemaxBin): void {
@@ -744,15 +735,17 @@ export function removeMcpJson(agent: AgentDef): boolean {
   if (!existsSync(agent.configPath)) return false;
 
   try {
-    const config = JSON.parse(readFileSync(agent.configPath, "utf-8"));
-    const servers = getNestedKey(config, agent.mcpKey);
+    const text = readFileSync(agent.configPath, "utf-8");
+    const config = parseJsoncObject(text);
+    const servers = config ? getNestedKey(config, agent.mcpKey) : undefined;
     if (!servers?.memax) return false;
 
-    delete servers.memax;
-    if (Object.keys(servers).length === 0)
-      deleteNestedKey(config, agent.mcpKey);
-
-    writeFileSync(agent.configPath, JSON.stringify(config, null, 2) + "\n");
+    // Only Memax's entry goes; the servers object stays, with any comment
+    // the person wrote in it.
+    writeFileSync(
+      agent.configPath,
+      setJsonc(text, [...agent.mcpKey.split("."), "memax"], undefined),
+    );
     console.log(chalk.gray(`  Removed MCP from ${agent.name}`));
     return true;
   } catch {
@@ -790,33 +783,4 @@ export function getNestedKey(
     current = (current as Record<string, unknown>)[part];
   }
   return current as Record<string, unknown> | undefined;
-}
-
-export function setNestedKey(
-  obj: Record<string, unknown>,
-  key: string,
-  value: unknown,
-): void {
-  const parts = key.split(".");
-  let current: Record<string, unknown> = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
-    if (!(parts[i] in current) || typeof current[parts[i]] !== "object") {
-      current[parts[i]] = {};
-    }
-    current = current[parts[i]] as Record<string, unknown>;
-  }
-  current[parts[parts.length - 1]] = value;
-}
-
-export function deleteNestedKey(
-  obj: Record<string, unknown>,
-  key: string,
-): void {
-  const parts = key.split(".");
-  let current: Record<string, unknown> = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
-    if (!(parts[i] in current) || typeof current[parts[i]] !== "object") return;
-    current = current[parts[i]] as Record<string, unknown>;
-  }
-  delete current[parts[parts.length - 1]];
 }

@@ -99,6 +99,14 @@ jobs:
         working-directory: .
         run: pnpm install --frozen-lockfile --filter @memaxlabs/compile-service...
 
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files need gofmt -w:"
+            echo "$unformatted"
+            exit 1
+          fi
       - run: go vet ./...
       - run: go build ./cmd/server ./cmd/worker
 

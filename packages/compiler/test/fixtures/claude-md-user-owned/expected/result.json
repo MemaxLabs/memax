@@ -20,9 +20,9 @@
     {
       "path": "CLAUDE.md",
       "target": "claude_md",
-      "bytes": 363,
-      "lines": 12,
-      "sha256": "ea4732b919c878ef56ea77b51d7106fc6e4fb6a256a109bcbfa5eec6cb7b3633",
+      "bytes": 361,
+      "lines": 11,
+      "sha256": "626580470d0cd7b0df9b394b8d1ea375824f94ceefb1b36c8cc42368b216c739",
       "refs": ["M-0460"],
       "cites": ["M-0460"],
       "dropped_for_budget": [],

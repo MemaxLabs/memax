@@ -136,7 +136,7 @@ export async function startDaemon(d: StartDeps): Promise<number> {
     if (snap) {
       d.out(`  ${chalk.green("✓")} Started the Memax daemon · pid ${snap.pid}`);
       d.out(chalk.gray(`    Logs: ${tildify(d.paths.log)}`));
-      if (snap.repos.length === 0)
+      if (snap.repos.length === 0 && !snap.home)
         d.out(
           chalk.gray("    No repositories linked yet. Link one: memax link"),
         );

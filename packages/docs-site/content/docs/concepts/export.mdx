@@ -39,6 +39,31 @@ nothing depends on when it is read. A waiting gate keeps its stored
 status, with `expires_at`; reads are counts over all time. Each export is
 itself a receipt, so two exports differ by that receipt.
 
+## Home files
+
+A Personal space linked to your machines
+([memax link --home](/concepts/personal-layer)) has a target per file per
+machine. In `targets.json`, those targets alone carry two more fields:
+`root` is `home` (their `path` is relative to the home folder), and
+`machine` is the machine the file is on:
+
+```json
+"machine": {
+  "id": "0199a1b2-c3d4-7e5f-8a9b-000000001011",
+  "label": "machine-2",
+  "name": "home-linux",
+  "platform": "linux",
+  "linked_at": "2026-10-06T09:33:00.123456Z",
+  "unlinked_at": "2026-10-06T09:50:00.123456Z"
+}
+```
+
+`unlinked_at` is there once the machine was unlinked. Receipts name a
+machine by its label (`machine-2`), never its name, and `receipts.jsonl`
+has each machine's `linked` and `unlinked` receipts. A repository's
+targets are written as they always were, so the export of a space without
+home files doesn't change.
+
 ## A memory
 
 ```markdown
@@ -66,7 +91,7 @@ decision:
   options: [{"label": "River", "detail": "Postgres-backed"}, {"label": "Temporal", "detail": null}]
   consequences: null
   area: "infra"
-conditions: [{"kind": "file_exists", "path": "go.mod"}]
+conditions: [{"id": "c1", "kind": "dep_present", "manifest": "go.mod", "name": "github.com/riverqueue/river", "origin": "person"}, {"id": "c2", "kind": "path_exists", "path": "go.mod", "origin": "derived", "from": "source"}]
 scope: {}
 sources:
   - {"id": "0199…", "kind": "pr", "ref": "PR #212", "uri": "https://github.com/…/pull/212", "locator": {}, "trust": "repository", "external": false, "quote": null, "content_hash": null, "created_at": "…"}
@@ -87,7 +112,12 @@ Background jobs run on River, Postgres-backed.
 
 The body is the statement in force (`version`), followed by a newline.
 `versions` holds every version, words included; `receipts` every receipt
-about the memory, oldest first.
+about the memory, oldest first. `scope` says where it applies: `paths`
+(globs in a repository, from a scoped rule), `agents`, and `repos` (the
+repositories it applies in, as `owner/name`, such as
+`{"repos": ["acme/web"]}` on a personal fact from that repository's
+`CLAUDE.local.md`); `{}` is everywhere. A change to it is a `scoped`
+receipt.
 
 **The frontmatter is plain YAML in a fixed subset**, so every parser reads
 it the same way: each line is `key: <JSON value>`, or `key:` followed by

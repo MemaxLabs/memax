@@ -646,7 +646,9 @@ describe("FirstRun", () => {
     // In the box to copy and on the terminal beside it.
     expect(screen.getAllByText("npx memax-cli init")).toHaveLength(2);
     const skip = await screen.findByRole("link", { name: "Skip for now" });
-    expect(skip.getAttribute("href")).toBe("/personal/today");
+    // A project or team space of theirs before Personal, as the landing
+    // after sign-in picks one (routes.ts spacesToSwitch).
+    expect(skip.getAttribute("href")).toBe("/memax-v2/today");
   });
 });
 
@@ -739,5 +741,22 @@ describe("CompileDone", () => {
         .getAttribute("href"),
     ).toBe("/memax-v2/agents?overlay=connect");
     expect(screen.getByText("Team spaces arrive with Team.")).toBeTruthy();
+  });
+
+  it("says where Personal was written, by the machine init linked", () => {
+    at("/setup/done", "space=memax-v2");
+    renderWith(<CompileDoneScreen />);
+    const written = screen.getByRole("region", {
+      name: "Written on this machine",
+    });
+    expect(
+      within(written).getByText(
+        "Personal: written for Claude Code and Codex on ziyang-mbp.",
+      ),
+    ).toBeTruthy();
+    // Home files aren't in the repository: git never shows them.
+    expect(
+      screen.getByRole("region", { name: /git status/ }).textContent,
+    ).not.toContain("memax-personal");
   });
 });

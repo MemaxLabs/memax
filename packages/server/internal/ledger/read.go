@@ -229,20 +229,64 @@ func scanReceiptPage(rows pgx.Rows, limit int) (ReceiptPage, error) {
 // ListSpaces returns the scope's spaces with the scope's role in each:
 // the personal space first, then by name.
 func (l *Ledger) ListSpaces(ctx context.Context, scope Scope) ([]Space, error) {
+	return l.listSpaces(ctx, scope, false)
+}
+
+// ListSpacesCounted is ListSpaces with each V2 space's counts, as the space
+// switcher shows them (GET /v2/spaces), in the same one statement: what is
+// kept, what waits on a person and the agents connected. A space on V1
+// has none (its record is V1's).
+func (l *Ledger) ListSpacesCounted(ctx context.Context, scope Scope) ([]Space, error) {
+	return l.listSpaces(ctx, scope, true)
+}
+
+// spaceCountsSQL counts one space of v2.spaces (alias s) when it is on the
+// V2 record: one scan of its memories for what is kept and what Review
+// holds, its waiting gates and its active agent connections.
+const spaceCountsSQL = `
+	LEFT JOIN LATERAL (
+	       SELECT mc.kept, mc.review + gc.waiting AS waiting, ac.agents
+	         FROM (SELECT count(*) FILTER (WHERE m.lifecycle = 'kept') AS kept,
+	                      count(*) FILTER (WHERE ` + reviewWaiting + `) AS review
+	                 FROM v2.memories m WHERE m.space_id = s.id) mc,
+	              (SELECT count(*) AS waiting FROM v2.decision_gates g
+	                WHERE g.space_id = s.id AND g.status = 'waiting' AND g.expires_at > $2) gc,
+	              (SELECT count(*) AS agents FROM v2.agent_connection_spaces cs
+	                 JOIN v2.agent_connections c ON c.id = cs.connection_id
+	                WHERE cs.space_id = s.id AND c.state = 'active') ac
+	        WHERE s.v2_enabled_at IS NOT NULL) n ON true`
+
+func (l *Ledger) listSpaces(ctx context.Context, scope Scope, counted bool) ([]Space, error) {
 	var out []Space
 	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `
-			SELECT id, tenant_id, slug, name, kind, COALESCE(repository, ''), v2_enabled_at
-			  FROM v2.spaces
-			 WHERE id = ANY($1)
-			 ORDER BY kind = 'personal' DESC, lower(name), id`, scope.SpaceIDs())
+		sql := `SELECT s.id, s.tenant_id, s.slug, s.name, s.kind, COALESCE(s.repository, ''), s.v2_enabled_at, s.created_at`
+		args := []any{scope.SpaceIDs()}
+		if counted {
+			sql += `, n.kept, n.waiting, n.agents FROM v2.spaces s` + spaceCountsSQL
+			args = append(args, l.now())
+		} else {
+			sql += ` FROM v2.spaces s`
+		}
+		rows, err := tx.Query(ctx, sql+`
+			 WHERE s.id = ANY($1)
+			 ORDER BY s.kind = 'personal' DESC, lower(s.name), s.id`, args...)
 		if err != nil {
 			return fmt.Errorf("ledger: list spaces: %w", err)
 		}
 		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Space, error) {
 			var sp Space
-			err := r.Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository, &sp.V2EnabledAt)
-			return sp, err
+			dest := []any{&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository, &sp.V2EnabledAt, &sp.CreatedAt}
+			var kept, waiting, agents *int
+			if counted {
+				dest = append(dest, &kept, &waiting, &agents)
+			}
+			if err := r.Scan(dest...); err != nil {
+				return sp, err
+			}
+			if kept != nil && waiting != nil && agents != nil {
+				sp.Counts = &SpaceCounts{Kept: *kept, Waiting: *waiting, Agents: *agents}
+			}
+			return sp, nil
 		})
 		if err != nil {
 			return fmt.Errorf("ledger: list spaces: %w", err)
@@ -276,13 +320,10 @@ type MemoryHistory struct {
 func (l *Ledger) GetMemoryHistory(ctx context.Context, scope Scope, ref string) (*MemoryHistory, error) {
 	var out *MemoryHistory
 	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
-		id, err := resolveRef(ctx, tx, scope, ref)
-		if err != nil {
-			return err
-		}
 		// Its sources, details, versions and receipts in one round trip (with
 		// its row too, when the scope's one space says where to look).
 		var m *Memory
+		var id uuid.UUID
 		var space uuid.UUID // the memory's, once known
 		var versions []MemoryVersion
 		var receipts ReceiptPage
@@ -313,18 +354,23 @@ func (l *Ledger) GetMemoryHistory(ctx context.Context, scope Scope, ref string) 
 				return err
 			})
 		}
+		var err error
 		if spaces := scope.SpaceIDs(); len(spaces) == 1 {
 			// The memory's space is the scope's one: its versions and
 			// receipts can be asked for with its row.
 			space = spaces[0]
+			if id, err = resolveRef(ctx, tx, scope, ref); err != nil {
+				return err
+			}
 			if m, err = loadFull(ctx, tx, scope, id, withVersions, withReceipts); err != nil {
 				return err
 			}
 		} else {
-			if m, err = loadMemory(ctx, tx, scope, id, false); err != nil {
+			// The display ID resolves in the statement that reads the row.
+			if m, err = findRef(ctx, tx, scope, ref); err != nil {
 				return err
 			}
-			space = m.SpaceID
+			id, space = m.ID, m.SpaceID
 			if err := attachDetails(ctx, tx, []*Memory{m}, withSources(m), withVersions, withReceipts); err != nil {
 				return err
 			}

@@ -1,7 +1,7 @@
 // Package policy decides what a write to the V2 record does: apply it,
 // send it to Review as a proposal, ask the person in the agent to
 // confirm, or refuse it. Decide is the one place autonomy, roles,
-// quarantine and (later) plan limits are enforced, for every surface
+// quarantine and plan limits are enforced, for every surface
 // (plan 25 §5.6, HANDOFF rules 2, 3, 4 and 12).
 //
 // Decide is a pure function of its inputs. The ledger loads the facts
@@ -45,6 +45,9 @@
 //   - Dream: only Dream publishes an edition, and its new facts are
 //     proposals. Any person who may keep undoes one of its actions or
 //     restores a faded memory; a space's owner asks it to run now.
+//   - Verify: a person who may keep answers a stale flag, by Keep's rules
+//     (D15 and quarantine included); agents and API keys never verify, and
+//     an agent's edit of a stale memory goes to Review.
 //   - Passkeys (assurance.go, plan 25 §5.15): what needs a person on the
 //     web (human_web) needs their passkey too when they have one
 //     (Actor.Passkey): refused with CodeNeedsPasskey unless this request
@@ -52,6 +55,18 @@
 //     does every Forget by a passkey holder. Without a passkey the
 //     decision applies at human_web and suggests one (Decision.Suggest).
 //     DecideAccount covers the account itself.
+//   - A space still on V1 (Space.OnV2 unset): V1 serves it, so its V2
+//     record takes only reads, Forget, export and Memax's follow-ups
+//     (onV1); everything else, Ask included, is refused with
+//     CodeSpaceOnV1 until its owner switches it to V2. The switch's own
+//     steps (Space.Switching) are the exception. Agent connections
+//     (DecideConnection) apply on either.
+//   - Plans (plans.go, D9), only when V2_PLAN_LIMITS enforces them: the
+//     person's plan bounds the project spaces they own (space_limit), the
+//     kinds of agent they connect (agent_kind_limit) and their asks a month
+//     (ask_limit); the space's plan says who holds a seat (on Free and Pro
+//     only the owner keeps, and a member acts as a viewer: seat_needed),
+//     how often Dream runs (dream_cadence) and how far back Activity goes.
 //
 // Messages follow the product voice (sentence case, actionable, no
 // exclamation marks). Clients localise by Code; Message is the English
@@ -316,7 +331,8 @@ const (
 
 	// The Brief and compile actions (plan 25 §5.7).
 	ActionReviseBrief     Action = "revise_brief"     // write a new Brief version
-	ActionConfigureTarget Action = "configure_target" // add a target, change it, overwrite a hand edit, stop compiling
+	ActionConfigureTarget Action = "configure_target" // add a target, change it, overwrite a hand edit
+	ActionStopTarget      Action = "stop_target"      // stop compiling a file (drift:stop): Memax leaves it as it is
 	ActionRequestCompile  Action = "request_compile"  // ask for a fresh compile
 	ActionRecordCompile   Action = "record_compile"   // record a compile run
 	ActionReport          Action = "report"           // report a delivery or a hand edit from a device or GitHub
@@ -351,13 +367,32 @@ const (
 	// (`memax export`, Memories' Export as Markdown). It changes nothing and
 	// writes one receipt, exported; decided here for who may.
 	ActionExport Action = "export"
+	// Scope (personal-layer design §3.3): where a memory applies, by
+	// repository (scope.repos). A person widens a personal fact tied to one
+	// repository to everywhere on its page; Memax's backfill
+	// (cmd/v2-backfill-repo-scope) ties what an earlier init imported to its
+	// repository. The words never change.
+	ActionScope Action = "scope"
+
+	// Verify (plan 25 §5.9, epic 3.1): a person answers a stale flag. "Still
+	// true" keeps the memory in force as it is, and "update" keeps new words;
+	// either way it is a keep, so it follows Keep's rules. "Forget it" is
+	// Forget, decided as ActionForget.
+	ActionVerify Action = "verify"
+
+	// Stale checks (epic 3.1; the stale-detection design §1.3, §1.4): a
+	// person's daemon reports what the repository's committed tree says
+	// about a space's conditions (results, never contents), and Memax flags
+	// what stopped holding. Check results aren't the record; the flags are.
+	ActionReportChecks Action = "report_checks"
+	ActionFlagStale    Action = "flag_stale"
 )
 
-// FreeAskLimit is how many asks a month Free answers (D9: "Ask 50/mo").
-// Pro and Team have no Ask limit. The plan a person is on is the caller's
-// to say (Object.AskLimit): during the free alpha no V2 plan exists yet,
-// so the API counts asks and passes no limit unless ASK_MONTHLY_LIMIT
-// sets one (internal/ask).
+// FreeAskLimit is how many asks a month Free answers (D9: "Ask 50/mo"), as
+// personal_free's row says (migration 067). With plan limits enforced the
+// person's plan says (Actor.Plan, AskLimit); during the alpha the API
+// counts asks and passes no limit unless ASK_MONTHLY_LIMIT sets one
+// (Object.AskLimit, internal/ask).
 const FreeAskLimit = 50
 
 // MaxWaitingGates is how many decisions one agent may have waiting on
@@ -400,6 +435,13 @@ type Actor struct {
 	// assertion bound to the person, their session and the request
 	// (internal/passkeys). It counts only on the web.
 	Verified bool
+	// Plan is the plan of the person acting (or the agent works for):
+	// their effective plan (plans.go). SpacePlan is the plan of the space
+	// the action is in, from the actor's grant (a member without a seat
+	// there acts as a viewer does). The ledger sets both; the zero Plan
+	// enforces nothing.
+	Plan      Plan
+	SpacePlan Plan
 }
 
 // Assurance is the assurance a Keep by this actor carries:
@@ -470,6 +512,10 @@ type Object struct {
 	UndoSystem bool
 	// PersonKept is set when a person kept or edited the memory.
 	PersonKept bool
+	// Stale is set for a kept memory flagged stale: only a person answers
+	// the flag (Verify, or their own edit), so an agent's edit of it goes
+	// to Review.
+	Stale bool
 	// Secrets names any credential patterns found in the new words.
 	Secrets []string
 	// GateMine is set when the gate was asked by this agent, or by an agent
@@ -479,9 +525,13 @@ type Object struct {
 	// waiting in the space (asking another).
 	WaitingGates int
 	// AsksBefore counts the person's asks this month before this one, and
-	// AskLimit is their plan's monthly limit (0: none).
+	// AskLimit is the server's monthly limit (0: none) when plan limits
+	// aren't enforced; when they are, the person's plan's applies (AskLimit).
 	AsksBefore int
 	AskLimit   int
+	// Widens is set when a scope change lets the memory reach places it
+	// didn't: fewer repositories named (none is everywhere), or another one.
+	Widens bool
 }
 
 // Space is the space the action happens in.
@@ -489,6 +539,51 @@ type Space struct {
 	Name  string
 	Kind  SpaceKind
 	Rules Rules
+	// OnV2 says the V2 record serves the space (hubs.v2_enabled_at, read
+	// with the space's other facts). The zero value is a space still on
+	// V1, whose V2 record takes only what onV1 lists.
+	OnV2 bool
+	// Switching says the change is one of the space's own switch steps
+	// (ledger/switch.go), which move V1's content into the record before
+	// the switch sets OnV2. Only the ledger sets it.
+	Switching bool
+}
+
+// onV1 is what the V2 record of a space still on V1 takes. V1 serves such
+// a space (its MCP tools, its agent files, its Ask), and its V2 record is
+// empty, or, after a switch back, holds what it held for the next switch
+// (ledger/switch.go). New words or decisions there would be a mixed state
+// that no surface serves and no switch expects, so everything not listed
+// here is refused with CodeSpaceOnV1, an action added later included:
+var onV1 = map[Action]bool{
+	// Reads change nothing. A compile load is a read of a compile made
+	// while the space was on V2.
+	ActionRead: true,
+	// Forget takes words out wherever they are (rule 7): a space that
+	// switched back still holds its V2 record's words and its notes. V1's
+	// own deletes forget the space's record first (ForgetSpace, through
+	// handler.V2Forgetter), and Memax re-applies the forget ledger after a
+	// restore whichever record serves the space.
+	ActionForget:        true,
+	ActionForgetSpace:   true,
+	ActionReapplyForget: true,
+	// Export is a person's copy of the record as it stands (rule 14): one
+	// exported receipt, and no words change.
+	ActionExport: true,
+	// Memax finishes the work queued while the space was on V2, or by its
+	// switch, which adds the space's targets and imports its V1 memories
+	// before it lands: compile runs and the judge's verdicts. A device then
+	// reports what it did with those compiled files; reports change no
+	// words.
+	ActionRecordCompile: true,
+	ActionJudge:         true,
+	ActionReport:        true,
+	// Stopping a file takes Memax off it and writes nothing to it, like
+	// disconnecting an agent or unlinking a machine. A space switched back
+	// to V1 has V1's two-way sync writing its agent files again, so a hand
+	// edit the daemon reports there must be settleable this way; pulling
+	// it into proposals or overwriting it stays refused.
+	ActionStopTarget: true,
 }
 
 // Effect is what happens to the write.
@@ -512,6 +607,9 @@ type Decision struct {
 	// Suggest is a hint for the person, on a decision that went through:
 	// SuggestPasskey when it needed a person and they have no passkey.
 	Suggest string `json:"suggest,omitempty"`
+	// Limit is the plan limit a decision met (plans.go): the plan, its
+	// allowance and use, and the plan that lifts it.
+	Limit *PlanLimit `json:"limit,omitempty"`
 }
 
 // Decision codes. Refusals, then downgrades to a proposal, then the
@@ -538,6 +636,9 @@ const (
 	CodeCompileByMemax      = "compile_by_memax"
 	CodeJudgeByMemax        = "judge_by_memax"
 	CodeUndoByDecider       = "undo_by_decider"
+	// CodeSpaceOnV1: the space is still on V1, so its V2 record takes no
+	// new words or decisions (onV1) until its owner switches it to V2.
+	CodeSpaceOnV1 = "space_on_v1"
 
 	// Decision gates; all refusals.
 	CodeGateByAgent      = "gate_by_agent"      // agents ask; people decide directly
@@ -554,6 +655,12 @@ const (
 	CodeDreamRunByOwner = "dream_run_by_owner" // only the space's owner asks Dream to run now
 	// Export; a refusal.
 	CodeExportByPerson = "export_by_person" // agents read the record over MCP; export is for people
+	// Verify: refused (verify), or sent to Review (an agent's edit of a
+	// stale memory).
+	CodeVerifyByPerson = "verify_by_person" // agents propose an update; a person verifies
+	// Stale checks; both refusals.
+	CodeChecksByPerson = "checks_by_person" // a person's daemon reports checks; agents and API keys don't
+	CodeFlagByMemax    = "flag_by_memax"    // only Memax flags a memory stale from a check
 
 	// Changes to agent connections (DecideConnection); all refusals.
 	CodePersonMustManage   = "person_must_manage"
@@ -561,6 +668,9 @@ const (
 	CodeAutonomyNotAllowed = "autonomy_not_allowed"
 	CodeKeyMaxPropose      = "key_max_propose"
 	CodeAutonomyNeedsWeb   = "autonomy_needs_web"
+	// CodeCloudNeedsWeb: a cloud agent above Read needs a person on the
+	// web, even when it connects (cloud warm-start design §4.2).
+	CodeCloudNeedsWeb = "cloud_propose_needs_web"
 
 	CodeViewer           = "viewer"             // refused (keep, reject) or downgraded (write)
 	CodeOwnersKeep       = "owners_keep"        // refused (keep, reject) or downgraded (write)
@@ -595,8 +705,14 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 	if (a.Kind == ActorPerson || a.Kind == ActorAgent) && !slices.Contains([]Role{RoleOwner, RoleMember, RoleViewer}, a.Role) {
 		return refuse(CodeNotMember, fmt.Sprintf("Only members of %s can change its record.", spaceName(s)))
 	}
+	if !s.OnV2 && !s.Switching && !onV1[act] {
+		return refuseOnV1(a, act, s)
+	}
+	if a.SpacePlan.Seatless(a.Role) && (a.Kind == ActorPerson || a.Kind == ActorAgent) && !seatFree[act] {
+		return decideSeatless(a, act, o, s)
+	}
 	if len(o.Secrets) > 0 && slices.Contains([]Action{ActionRemember, ActionPropose, ActionEdit, ActionReviseBrief,
-		ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate, ActionForget, ActionRequestForget}, act) {
+		ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate, ActionForget, ActionRequestForget, ActionVerify}, act) {
 		return refuse(CodeSecret, fmt.Sprintf(
 			"This looks like a credential (%s). Memax never stores secrets. Remove it and try again.",
 			strings.Join(o.Secrets, ", ")))
@@ -626,7 +742,7 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideReapplyForget(a)
 	case ActionReviseBrief:
 		return decideReviseBrief(a, s)
-	case ActionConfigureTarget:
+	case ActionConfigureTarget, ActionStopTarget:
 		return decideConfigureTarget(a, s)
 	case ActionRequestCompile:
 		return decideRequestCompile(a, s)
@@ -675,8 +791,54 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideRunDream(a, s)
 	case ActionExport:
 		return decideExport(a, s)
+	case ActionScope:
+		return decideScope(a, o, s)
+	case ActionVerify:
+		return decideVerify(a, o, s)
+	case ActionReportChecks:
+		return decideReportChecks(a, s)
+	case ActionFlagStale:
+		if a.Kind == ActorMemax {
+			return apply()
+		}
+		return refuse(CodeFlagByMemax, "Only Memax marks a memory stale from a check. A person verifies it.")
 	}
 	return refuse(CodeUnknownAction, fmt.Sprintf("Memax doesn't know how to %q.", act))
+}
+
+// seatFree are the actions a member decides as a member whether or not
+// they hold a seat (D9): Forget is on every plan, and reads, Ask and
+// export are a viewer's too.
+var seatFree = map[Action]bool{
+	ActionRead: true, ActionAsk: true, ActionExport: true,
+	ActionForget: true, ActionRequestForget: true, ActionDeclineForget: true,
+}
+
+// decideSeatless: plan limits are enforced and the space's plan doesn't
+// bill seats (Free, Pro), so this member holds no seat, and neither does an
+// agent working for them. They act as a viewer does: what a viewer may do
+// they do, and what a viewer may not they may not, said as the seat it
+// needs (seat_needed), before anything else a member would be asked (a
+// passkey, the web). Where the member wouldn't have kept anyway (a proposal
+// on purpose, an agent at Propose), the seat changes nothing, and their own
+// decision stands.
+func decideSeatless(a Actor, act Action, o Object, s Space) Decision {
+	member := a
+	member.SpacePlan = Plan{}
+	m := Decide(member, act, o, s)
+	if m.Effect == EffectPropose {
+		return m
+	}
+	viewer := member
+	viewer.Role = RoleViewer
+	v := Decide(viewer, act, o, s)
+	switch {
+	case v.Code == CodeViewer:
+		return seatNeeded(v, a.SpacePlan, s)
+	case m.Effect == EffectRefuse:
+		return m
+	}
+	return v
 }
 
 // decideRead: people read the spaces they belong to, and system actors
@@ -700,10 +862,8 @@ func decideAsk(a Actor, o Object) Decision {
 		return refuse(CodeAskByPerson,
 			"Ask answers people. Agents read the record over MCP with memax_recall and memax_search.")
 	}
-	if o.AskLimit > 0 && o.AsksBefore >= o.AskLimit {
-		return refuse(CodeAskLimit, fmt.Sprintf(
-			"You've asked %d questions this month, all your plan answers. Asks start again on the 1st; Pro answers as many as you like.",
-			o.AskLimit))
+	if d := askLimit(a, o); d != nil {
+		return *d
 	}
 	return apply()
 }
@@ -717,6 +877,62 @@ func decideExport(a Actor, s Space) Decision {
 		return refuse(CodeExportByPerson, fmt.Sprintf(
 			"Only a signed-in person exports %s. Agents read the record over MCP with memax_recall and memax_search.",
 			spaceName(s)))
+	}
+	return apply()
+}
+
+// decideVerify: a person who may keep in the space answers a stale flag,
+// since "still true" keeps the memory in force and "update" keeps new words
+// (plan 25 §5.9). It follows Keep's rules: members and owners per the
+// space's rules, a person on the web (and their passkey) for a decision
+// where the space's decisions need one (D15), and for a quarantined memory.
+// Agents and API keys never verify: an agent's update to a stale fact is an
+// edit, which policy sends to Review.
+func decideVerify(a Actor, o Object, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson || a.Credential == CredentialAPIKey:
+		return refuse(CodeVerifyByPerson, fmt.Sprintf(
+			"Agents propose and people verify. A person verifies %s on the web or with memax verify.", refOr(o, "it")))
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't verify in %s. Ask a member to verify it.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners verify in %s. Ask an owner to verify it.", spaceName(s)))
+	}
+	gated := false
+	if o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) {
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web, and so does verifying one. Verify %s at memax.app.",
+			spaceName(s), refOr(o, "it")), "verifying "+refOr(o, "a decision")); d != nil {
+			return *d
+		}
+		gated = true
+	}
+	if o.External {
+		if d := needsPerson(a, CodeExternalNeedsReview, fmt.Sprintf(
+			"%s comes from an outside source. Verify it on the web.", refOr(o, "This memory")),
+			"verifying "+refOr(o, "a quarantined memory")); d != nil {
+			return *d
+		}
+		gated = true
+	}
+	if gated {
+		return applyChecked(a)
+	}
+	return apply()
+}
+
+// decideReportChecks: a member's or owner's own session reports what their
+// machine's checks found (the CLI's daemon). Agents, API keys and OAuth
+// grants don't: a result can mark a person's memory stale, and only
+// someone who may keep in the space should be able to cause that. Viewers
+// don't either, for the same reason.
+func decideReportChecks(a Actor, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson || a.Credential != CredentialSession:
+		return refuse(CodeChecksByPerson, fmt.Sprintf(
+			"Only a person's own machine reports checks for %s: run memax daemon, signed in with memax login.", spaceName(s)))
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't report checks in %s. A member's machine reports them.", spaceName(s)))
 	}
 	return apply()
 }
@@ -826,6 +1042,8 @@ func decideEdit(a Actor, o Object, s Space) Decision {
 		switch {
 		case o.External:
 			d = propose(CodeExternalSource)
+		case o.Stale:
+			d = propose(CodeVerifyByPerson)
 		case o.PersonKept:
 			d = propose(CodeEditsPersonKept)
 		case o.ContradictsDecision:
@@ -883,6 +1101,45 @@ func decideKeep(a Actor, o Object, s Space) Decision {
 		gated = true
 	}
 	if gated {
+		return applyChecked(a)
+	}
+	return apply()
+}
+
+// decideScope: where a memory applies is a person's call, as keeping it
+// is, since it decides which files every agent loads it from. Memax only
+// narrows: the backfill ties a personal fact an earlier init imported to
+// the repository it came from, and never lets one reach further. A
+// decision in a team space needs a person on the web, as editing it does.
+func decideScope(a Actor, o Object, s Space) Decision {
+	if a.Kind == ActorMemax {
+		if o.Widens {
+			return refuse(CodePersonMustReview, fmt.Sprintf(
+				"Only a person widens where %s applies.", refOr(o, "a memory")))
+		}
+		return apply()
+	}
+	if a.Kind != ActorPerson {
+		return refuse(CodePersonMustReview, fmt.Sprintf(
+			"A person decides where %s applies. Change it on its page.", refOr(o, "a memory")))
+	}
+	if a.Credential == CredentialAPIKey {
+		return refuse(CodeKeyCannotReview, "API keys can propose but never change where a memory applies. Change it on the web.")
+	}
+	if a.Role == RoleViewer {
+		return refuse(CodeViewer, fmt.Sprintf(
+			"Viewers can't change where a memory applies in %s. Ask a member to.", spaceName(s)))
+	}
+	if !canKeep(a.Role, s.Rules) {
+		return refuse(CodeOwnersKeep, fmt.Sprintf(
+			"Only owners change where a memory applies in %s. Ask an owner to.", spaceName(s)))
+	}
+	if o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) {
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web. Change where it applies there.", spaceName(s)),
+			"changing where "+refOr(o, "a decision")+" applies"); d != nil {
+			return *d
+		}
 		return applyChecked(a)
 	}
 	return apply()
@@ -1291,6 +1548,24 @@ func refuseReadOnly(a Actor, s Space) Decision {
 	return refuse(CodeReadOnly, fmt.Sprintf("%s is read-only in %s. Change it in Agents.", actorName(a), spaceName(s)))
 }
 
+// refuseOnV1 says why a space still on V1 refused, and what to do: its
+// owner switches it to V2 (DecideSwitchSpace), and anyone else asks them.
+func refuseOnV1(a Actor, act Action, s Space) Decision {
+	name := s.Name
+	if name == "" {
+		name = "This space"
+	}
+	what := fmt.Sprintf("%s is still on V1, so its V2 record can't change yet.", name)
+	if act == ActionAsk {
+		what = fmt.Sprintf("Ask answers from the V2 record, and %s is still on V1.", spaceName(s))
+	}
+	how := "Ask its owner to switch it to V2."
+	if a.Role == RoleOwner {
+		how = "Switch it to V2 first, from its Today on memax.app or with memax switch."
+	}
+	return refuse(CodeSpaceOnV1, what+" "+how)
+}
+
 func downgrade(code string, a Actor, o Object, s Space, quarantine bool) Decision {
 	var msg string
 	switch code {
@@ -1318,6 +1593,8 @@ func downgrade(code string, a Actor, o Object, s Space, quarantine bool) Decisio
 		msg = "Sent to Review: it touches a decision in force, so a person checks it first."
 	case CodeEditsPersonKept:
 		msg = fmt.Sprintf("Sent to Review: a person kept %s, so changes to it need a person.", refOr(o, "this memory"))
+	case CodeVerifyByPerson:
+		msg = fmt.Sprintf("Sent to Review: %s is being verified, so a person checks changes to it.", refOr(o, "this memory"))
 	case CodeAutonomyPropose:
 		msg = fmt.Sprintf("Sent to Review: %s proposes in %s.", actorName(a), spaceName(s))
 	case CodePersonProposed:

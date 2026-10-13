@@ -81,6 +81,9 @@ type forgetOp struct {
 	words    []string // every version's statement, held in memory only to find quotes of it
 	receipts []Receipt
 	gone     TombstoneGone
+	// checked counts the check results it removed: members' machines keep
+	// theirs until their daemons hear of it (a `checks` step).
+	checked int
 }
 
 func (op *forgetOp) has(ref string) bool { return slices.Contains(op.refs, ref) }
@@ -107,7 +110,7 @@ func (c *Forget) validate() error {
 
 // forget is Forget.
 func (w *writer) forget(ctx context.Context, c *Forget) (Result, error) {
-	mem, grant, sp, replay, err := w.open(ctx, c.Memory)
+	mem, grant, sp, replay, err := w.openForget(ctx, c.Memory)
 	if err != nil {
 		return Result{}, err
 	}
@@ -196,6 +199,45 @@ func (w *writer) forget(ctx context.Context, c *Forget) (Result, error) {
 		res.Memories = append(res.Memories, *m)
 	}
 	return res, nil
+}
+
+// openForget is open for a Forget, whose one round of memory locks
+// (locks.go) is the memory, what carries its words, and the other side of
+// every conflict any of them is in (endConflicts clears those). It reads
+// the memory and what carries it without locks, locks them (and, in the
+// same statement, their conflicts' other sides), then claims the key. The
+// Forget reads what carries it again under the locks: a carry written in
+// between isn't held, and the command starts again (errLocksMoved).
+func (w *writer) openForget(ctx context.Context, ref string) (*Memory, SpaceGrant, spaceRow, *Result, error) {
+	first, err := findRef(ctx, w.tx, w.meta.Scope, ref)
+	if err != nil {
+		return nil, SpaceGrant{}, spaceRow{}, nil, err
+	}
+	pre, err := w.carriedBy(ctx, first.SpaceID, []*Memory{first})
+	if err != nil {
+		return nil, SpaceGrant{}, spaceRow{}, nil, err
+	}
+	ids := []uuid.UUID{first.ID}
+	for _, c := range pre {
+		ids = append(ids, c.ID)
+	}
+	_, locked, err := w.lockSet(ctx, "", ids, lockAlso{conflicts: true})
+	if err != nil {
+		return nil, SpaceGrant{}, spaceRow{}, nil, err
+	}
+	mem := locked[first.ID]
+	if mem == nil {
+		return nil, SpaceGrant{}, spaceRow{}, nil, ErrNotFound
+	}
+	grant, ok := w.meta.Scope.Grant(mem.SpaceID)
+	if !ok {
+		return nil, SpaceGrant{}, spaceRow{}, nil, ErrNotFound
+	}
+	sp, replay, err := w.spaceAndClaim(ctx, mem.SpaceID)
+	if err != nil && sp.ID == uuid.Nil {
+		return nil, SpaceGrant{}, spaceRow{}, nil, err
+	}
+	return mem, grant, sp, replay, err
 }
 
 // honesty is the ledger's ForgetHonesty, through the writer.
@@ -291,16 +333,14 @@ func carriedBy(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID, roots []*Memor
 	return out, nil
 }
 
-// lockCarried locks the carried memories (after the primary, in id order).
+// lockCarried reads the carried memories under their locks, which the
+// Forget took in its one round (openForget, or the note's lockSet); one it
+// doesn't hold was carried meanwhile, and the Forget starts again.
 func (w *writer) lockCarried(ctx context.Context, carried []Carried) (map[uuid.UUID]*Memory, error) {
 	if len(carried) == 0 {
 		return map[uuid.UUID]*Memory{}, nil
 	}
-	ids := make([]uuid.UUID, len(carried))
-	for i, c := range carried {
-		ids[i] = c.ID
-	}
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, ids, "FOR UPDATE")
+	locked, err := w.lockMemories(ctx, carriedIDs(carried))
 	if err != nil {
 		return nil, err
 	}
@@ -310,6 +350,14 @@ func (w *writer) lockCarried(ctx context.Context, carried []Carried) (map[uuid.U
 		}
 	}
 	return locked, nil
+}
+
+func carriedIDs(carried []Carried) []uuid.UUID {
+	ids := make([]uuid.UUID, len(carried))
+	for i, c := range carried {
+		ids[i] = c.ID
+	}
+	return ids
 }
 
 // forgetRequester is the agent connection whose waiting request asked to
@@ -383,7 +431,7 @@ func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *
 	// words themselves (in memory, for finding quotes of them).
 	var g TombstoneGone
 	var keptAt *time.Time
-	var reads int
+	var reads, checked int
 	candidate := fmt.Sprintf(`[{"memory_id": %q}]`, m.ID.String())
 	err := w.tx.QueryRow(ctx, `
 		SELECT
@@ -399,9 +447,10 @@ func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *
 		  (SELECT COALESCE(sum(r.reads), 0)::int FROM v2.read_rollups r
 		    WHERE r.space_id = $2
 		      AND (r.subject_id = $1 OR r.subject_id IN (
-		          SELECT c.id FROM v2.compile_runs c WHERE c.space_id = $2 AND c.refs @> ARRAY[$3::text])))`,
+		          SELECT c.id FROM v2.compile_runs c WHERE c.space_id = $2 AND c.refs @> ARRAY[$3::text]))),
+		  (SELECT count(*)::int FROM v2.condition_checks WHERE memory_id = $1 AND space_id = $2)`,
 		m.ID, sp.ID, m.Ref, candidate).Scan(&g.Versions, &g.Sources, &g.Embeddings, &g.Verdicts, &g.ModelVerdicts,
-		&g.Gates, &keptAt, &reads)
+		&g.Gates, &keptAt, &reads, &checked)
 	if err != nil {
 		return Receipt{}, fmt.Errorf("ledger: forget %s: %w", m.Ref, err)
 	}
@@ -414,6 +463,7 @@ func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *
 		return Receipt{}, fmt.Errorf("ledger: forget %s: %w", m.Ref, err)
 	}
 	op.words = append(op.words, words...)
+	op.checked += checked
 
 	// The memory: forgotten, with nothing derived from its words left.
 	if _, err := w.tx.Exec(ctx, `
@@ -437,6 +487,13 @@ func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *
 		  FROM v2.memory_sources ms
 		 WHERE ms.source_id = s.id AND ms.memory_id = $1 AND s.space_id = $3`, m.ID, rc.ID, sp.ID); err != nil {
 		return Receipt{}, fmt.Errorf("ledger: forget %s: sources: %w", m.Ref, err)
+	}
+	// Its check results: their evidence names the paths its words named
+	// (migration 060), and memax_v2 never deletes in v2, so a function
+	// that takes only a memory this transaction forgot. Nothing reads the
+	// answer.
+	if err := execDeferred(ctx, w.tx, `SELECT v2.remove_condition_checks($1)`, []uuid.UUID{m.ID}); err != nil {
+		return Receipt{}, fmt.Errorf("ledger: forget %s: check results: %w", m.Ref, err)
 	}
 	if _, err := w.tx.Exec(ctx, `SELECT v2.redact_receipt_reasons($1)`, m.ID); err != nil {
 		return Receipt{}, fmt.Errorf("ledger: forget %s: receipts: %w", m.Ref, err)
@@ -567,7 +624,8 @@ func (w *writer) endConflicts(ctx context.Context, sp spaceRow, op *forgetOp, m 
 	if len(others) == 0 {
 		return nil
 	}
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, others, "FOR UPDATE")
+	// Held since the Forget's one round (its conflicts' other sides).
+	locked, err := w.lockMemories(ctx, others)
 	if err != nil {
 		return err
 	}
@@ -646,13 +704,13 @@ func (w *writer) afterPurge(ctx context.Context, sp spaceRow, op *forgetOp, file
 	if err := w.purgeBrief(ctx, sp, op); err != nil {
 		return err
 	}
-	if err := w.purgeObservations(ctx, sp, op); err != nil {
+	// Every target of the space, in one round, before any is rewritten
+	// (locks.go): the drift evidence's targets are among them.
+	if err := w.lockAllTargets(ctx, sp.ID, !op.retire, op.retire); err != nil {
 		return err
 	}
-	if !op.retire {
-		if err := w.markDirty(ctx, sp.ID); err != nil {
-			return err
-		}
+	if err := w.purgeObservations(ctx, sp, op); err != nil {
+		return err
 	}
 	if err := w.queuePropagation(ctx, sp, op, files); err != nil {
 		return err
@@ -1009,6 +1067,34 @@ func (w *writer) queuePropagation(ctx context.Context, sp spaceRow, op *forgetOp
 		if err := w.insertStep(ctx, sp, op, s.kind, nil, "", "pending", s.detail); err != nil {
 			return err
 		}
+	}
+	return w.queueChecksStep(ctx, sp, op)
+}
+
+// ChecksWindow is how far before a Forget a machine's check run makes it
+// one that holds the memory's check results: a linked machine on the
+// default branch reports at least daily, so one silent longer is likely
+// gone (and if it comes back, its daemon drops them on hearing).
+const ChecksWindow = 30 * 24 * time.Hour
+
+// queueChecksStep writes the `checks` step when the memory had check
+// results (migration 065): the machines that checked the space keep
+// theirs (its refs and the paths its conditions named, never its words)
+// until their daemons hear of the Forget. The machines are counted now,
+// in the same statement, for a space whose check runs go with it; the
+// step's status is read (fillTombstone).
+func (w *writer) queueChecksStep(ctx context.Context, sp spaceRow, op *forgetOp) error {
+	if op.checked == 0 {
+		return nil
+	}
+	if _, err := w.tx.Exec(ctx, `
+		INSERT INTO v2.propagations (id, op_id, tenant_id, space_id, destination_kind, status, detail)
+		SELECT $1, $2, $3, $4, 'checks', 'pending', jsonb_build_object('results', $5::int, 'machines', (
+		       SELECT count(*)::int FROM (
+		           SELECT DISTINCT r.person_id, r.device FROM v2.check_runs r
+		            WHERE r.space_id = $4 AND r.observer = 'device' AND r.recorded_at >= now() - $6::interval) m))`,
+		newID(), op.id, sp.TenantID, sp.ID, op.checked, ChecksWindow.String()); err != nil {
+		return fmt.Errorf("ledger: forget: step checks: %w", err)
 	}
 	return nil
 }

@@ -1,11 +1,13 @@
 "use client";
 
 import type { KeyboardEvent } from "react";
-import { MemoryRow, Redaction } from "@memaxlabs/ledger";
+import { Button, MemoryRow, Redaction } from "@memaxlabs/ledger";
 import { formatShortDate } from "@/lib/v2/copy";
 import type { MemoryListItem } from "@/lib/v2/data/memories";
+import { useKeycap } from "@/lib/v2/keymap/react";
 import { noteText } from "@/lib/v2/records-copy";
 import { StatementText } from "../../_components/statement-text";
+import { useOverlays } from "../../_lib/overlays";
 import type { RecordsView } from "../records-view";
 
 /** A forgotten row's bar length, steady per memory (the words are gone, so it can't be theirs). */
@@ -19,7 +21,11 @@ export function memoryHref(slug: string, ref: string): string {
   return `/${encodeURIComponent(slug)}/memories/${encodeURIComponent(ref)}`;
 }
 
-/** One memory as Memories.png draws it: the statement, its mark, its note and its receipt. */
+/**
+ * One memory as Memories.png draws it: the statement, its mark, its note
+ * and its receipt. A stale one offers Verify over its rail on hover and
+ * focus (V).
+ */
 export function MemoryListRow({
   view,
   item,
@@ -30,6 +36,8 @@ export function MemoryListRow({
   rowRef?: (el: HTMLElement | null) => void;
 }) {
   const { l, rc, space, agentName, timeZone, locale } = view;
+  const { openVerify } = useOverlays();
+  const verifyKey = useKeycap("memory.verify");
   if (item.forgotten) {
     return (
       <Redaction
@@ -61,6 +69,18 @@ export function MemoryListRow({
           : undefined
       }
       href={memoryHref(space.slug, item.ref)}
+      actions={
+        item.state === "stale" ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            kbd={verifyKey}
+            onClick={() => openVerify(item.ref)}
+          >
+            {l.review.flag.verify}
+          </Button>
+        ) : undefined
+      }
     >
       <StatementText text={item.statement} />
     </MemoryRow>

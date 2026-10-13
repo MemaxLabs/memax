@@ -7,6 +7,7 @@ import type {
   MemoryRecord,
   SourceLine,
 } from "./memories";
+import { registryKey } from "./agents-sdk";
 import { forgetRequestsOf } from "./sdk-forget";
 import { actorOf, displayState, isRecordAction, railOf } from "./sdk-records";
 import { FOLD_UNDO_WINDOW_MS } from "./undo";
@@ -30,38 +31,67 @@ export function sourceLineOf(source: V2.Source): SourceLine {
 }
 
 /**
- * "Stays true while" conditions. The spec leaves their shape open, so
- * this reads the forms a writer is likely to send: a sentence, or an
- * object with a `text` and optionally a `code` (a dependency, a path)
- * set in mono before it.
+ * "Stays true while": the memory's typed conditions in the record's
+ * order, then its date to check again (`stale_after`), as the design
+ * lists it with the others. A kind this build doesn't know is left out.
  */
-export function conditionsOf(raw: unknown[]): ConditionLine[] {
-  return raw.flatMap((item, i): ConditionLine[] => {
-    if (typeof item === "string" && item.trim()) {
-      return [{ key: String(i), code: null, text: item.trim() }];
+export function conditionsOf(
+  raw: readonly V2.Condition[],
+  staleAfter?: string | null,
+): ConditionLine[] {
+  const lines = raw.flatMap((c, i): ConditionLine[] => {
+    const key = c.id ?? `c${i + 1}`;
+    switch (c.kind) {
+      case "path_exists":
+        return c.path || c.glob
+          ? [
+              {
+                key,
+                kind: c.kind,
+                path: c.path ?? null,
+                glob: c.glob ?? null,
+              },
+            ]
+          : [];
+      case "file_contains":
+        return [
+          {
+            key,
+            kind: c.kind,
+            path: c.path,
+            text: c.text,
+            word: c.word ?? false,
+          },
+        ];
+      case "dep_present":
+        return [
+          {
+            key,
+            kind: c.kind,
+            manifest: c.manifest,
+            name: c.name,
+            range: c.range ?? null,
+          },
+        ];
+      case "file_unchanged":
+        return [{ key, kind: c.kind, path: c.path }];
+      case "pr_state":
+        return [
+          {
+            key,
+            kind: c.kind,
+            repo: c.repo,
+            number: c.number,
+            state: c.state,
+          },
+        ];
+      default:
+        return [];
     }
-    if (item && typeof item === "object") {
-      const o = item as Record<string, unknown>;
-      const code =
-        typeof o.code === "string"
-          ? o.code
-          : typeof o.subject === "string"
-            ? o.subject
-            : null;
-      const text =
-        typeof o.text === "string"
-          ? o.text
-          : typeof o.rest === "string"
-            ? o.rest
-            : typeof o.description === "string"
-              ? o.description
-              : null;
-      if (text || code) {
-        return [{ key: String(i), code, text: text ?? "" }];
-      }
-    }
-    return [];
   });
+  return staleAfter
+    ? [...lines, { key: "date", kind: "date", at: staleAfter }]
+    : lines;
 }
 
 /** One of the judge's folds: Memax merged a proposal into a kept memory. */
@@ -109,6 +139,10 @@ export function flagOf(r: V2.Receipt): LineageFlag | null {
   if (r.action !== "flagged") return null;
   if (r.source?.kind === "memory") {
     return { kind: "conflict", with: r.source.ref || null };
+  }
+  // The checker's and the date sweep's flags cite what they checked.
+  if (["check", "commit", "pr", "date"].includes(r.source?.kind ?? "")) {
+    return { kind: "stale" };
   }
   const reason = r.reason?.trim() ?? "";
   const contradicts = /^Contradicts (M-\d+)/.exec(reason);
@@ -160,7 +194,6 @@ export function recordOf(
   const receipts = detail.receipts.items;
   const newest = [...receipts].sort((a, b) => b.seq - a.seq);
   const keptReceipt = newest.find((r) => r.action === "kept");
-  const verified = newest.find((r) => r.action === "verified");
   const state = displayState(memory);
   const lifecycle =
     memory.lifecycle === "rejected" ? "proposed" : memory.lifecycle;
@@ -189,9 +222,17 @@ export function recordOf(
       now,
     }),
     sources: (memory.sources ?? []).map(sourceLineOf),
-    conditions: conditionsOf(memory.conditions ?? []),
-    checked: verified
-      ? { at: verified.occurred_at, by: actorOf(verified, viewerId) }
+    conditions: conditionsOf(memory.conditions ?? [], memory.stale_after),
+    // A member's machine (or the GitHub App) checking its conditions; a
+    // person's Verify is a lineage line, not a check of these.
+    checked: detail.checked
+      ? {
+          at: detail.checked.at,
+          branch: detail.checked.branch,
+          agent: detail.checked.agent
+            ? { kind: "agent", agent: registryKey(detail.checked.agent) }
+            : null,
+        }
       : null,
     forgotten:
       state === "forgotten"
@@ -203,5 +244,6 @@ export function recordOf(
         : null,
     forgetRequests:
       state === "forgotten" ? [] : forgetRequestsOf(detail.forget_requests),
+    repos: memory.scope.repos ?? [],
   };
 }

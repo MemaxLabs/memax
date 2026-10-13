@@ -10,7 +10,7 @@ import {
   ZZ,
 } from "./demo-review-data";
 import type { MemoryListItem } from "./memories";
-import type { DecisionResult } from "./records";
+import type { DecisionResult, TargetLine } from "./records";
 import type {
   ReviewCardData,
   ReviewItem,
@@ -19,6 +19,12 @@ import type {
 } from "./review";
 import type { Section, SpaceOverview } from "./types";
 import { undoWindowMs, type UndoCommand, type UndoSource } from "./undo";
+import { groupTargets } from "./home-files";
+
+/** The files a Keep rewrites, a home file once across its machines; null when unknown. */
+function filesIn(targets: readonly TargetLine[] | null | undefined) {
+  return targets ? groupTargets(targets).length : null;
+}
 
 /**
  * The demo's Review and Memories: the boards' records behind the
@@ -37,7 +43,8 @@ import { undoWindowMs, type UndoCommand, type UndoSource } from "./undo";
 
 export type Decided = {
   slug: string;
-  outcome: "kept" | "rejected";
+  /** `verified`: a stale fact a person answered still true (or updated). */
+  outcome: "kept" | "rejected" | "verified";
   item: ReviewItem;
 };
 
@@ -251,7 +258,8 @@ export function createDemoRecords({
           ref: item.ref,
           outcome: "kept",
           version: live.version + 1,
-          recompiled: DEMO_CARDS[item.ref]?.touches.targets?.length ?? null,
+          // A home file once, whatever the number of machines it's on.
+          recompiled: filesIn(DEMO_CARDS[item.ref]?.touches.targets),
           receipt,
         };
       });
@@ -358,6 +366,7 @@ export function createDemoRecords({
     if (mine.length === 0 && !arrived.get(slug)?.length && !back) return base;
     const left = queueOf(slug);
     const kept = mine.filter((d) => d.outcome === "kept").length;
+    const rejected = mine.filter((d) => d.outcome === "rejected").length;
     const was = (test: (i: ReviewItem) => boolean) =>
       mine.filter((d) => test(d.item)).length;
     return {
@@ -389,9 +398,7 @@ export function createDemoRecords({
         stale: left.filter((i) => i.state === "stale").length,
       },
       lastReview:
-        mine.length > 0
-          ? { at: stamp(), kept, rejected: mine.length - kept }
-          : base.lastReview,
+        mine.length > 0 ? { at: stamp(), kept, rejected } : base.lastReview,
       memories: {
         ...base.memories,
         kept: base.memories.kept === null ? null : base.memories.kept + kept,

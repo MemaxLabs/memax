@@ -16,7 +16,7 @@ func (h *Handler) listSpaces(w http.ResponseWriter, r *http.Request) {
 		writeError(w, e)
 		return
 	}
-	spaces, err := h.ledger.ListSpaces(r.Context(), p.scope)
+	spaces, err := h.ledger.ListSpacesCounted(r.Context(), p.scope)
 	if err != nil {
 		writeError(w, h.fromLedger(r, err))
 		return
@@ -131,24 +131,21 @@ func (h *Handler) getMemory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := hist.Memory
-	// The counts are an extra the page can live without: a failure leaves
-	// them out rather than failing the read.
-	reads, err := h.ledger.GetMemoryReads(r.Context(), scope.Narrow(m.SpaceID), m.ID)
+	// The counts, the waiting forget requests and the last check are extras
+	// the page can live without, read together in one round trip: a failure
+	// leaves them out rather than failing the read.
+	extras, err := h.ledger.GetMemoryExtras(r.Context(), scope.Narrow(m.SpaceID), m, m.Lifecycle != "forgotten")
 	if err != nil {
-		h.log.WarnContext(r.Context(), "v2: a memory's reads couldn't be read", "memory", m.Ref, "error", err)
-		reads = nil
+		h.log.WarnContext(r.Context(), "v2: a memory's reads, forget requests and last check couldn't be read", "memory", m.Ref, "error", err)
+		extras = &ledger.MemoryExtras{}
 	}
-	var requests []ledger.ForgetRequest
-	if m.Lifecycle != "forgotten" {
-		if requests, err = h.ledger.ForgetRequests(r.Context(), scope.Narrow(m.SpaceID), m.ID); err != nil {
-			h.log.WarnContext(r.Context(), "v2: a memory's forget requests couldn't be read", "memory", m.Ref, "error", err)
-			requests = nil
-		}
+	if m.Lifecycle == "forgotten" {
+		extras.ForgetRequests, extras.Checked = nil, nil
 	}
 	setETag(w, m)
 	writeData(w, http.StatusOK, memoryDetail{
-		Memory: m, Versions: nonNil(hist.Versions), Receipts: toReceiptPage(hist.Receipts), Reads: reads,
-		ForgetRequests: requests,
+		Memory: m, Versions: nonNil(hist.Versions), Receipts: toReceiptPage(hist.Receipts), Reads: extras.Reads,
+		ForgetRequests: extras.ForgetRequests, Checked: extras.Checked,
 	})
 	if g, ok := p.scope.Grant(m.SpaceID); ok {
 		h.recordRead(p, g, ledger.ReadGet, []uuid.UUID{m.ID})

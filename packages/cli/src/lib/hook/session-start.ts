@@ -4,33 +4,60 @@
 // session here was told, and works out the block; hook-main.ts prints it,
 // then saves what was told and queues the compile loads. Nothing here
 // opens a socket.
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+//
+// On a machine whose home is linked (personal-layer design §7.1), it does
+// the same for the agent's own home file (home.json names it, the warm
+// cache's `home` entry has its compiles, forgets and gates), against
+// what the agent's last session anywhere was told (seen/home/<agent>.json),
+// as a Personal section after the repository's; outside a repository, as
+// the whole block. Its loads count reads of personal facts. An agent that
+// loads no file of the Personal space (Cursor) gets the canonical copy's
+// kept lines in full instead, every session, held to PRINT_TOKENS.
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { cleanLine } from "../daemon/compiler/sanitize.js";
+import { evidenceWords } from "../stale/words.js";
+import type { CheckRequest } from "./check-requests.js";
 import type { HookAgent } from "./agents.js";
 import { DEFAULT_PATHS, OPT_IN_KINDS, wrapFor } from "./agents.js";
 import { readCompiled, type CitedLine, type CompiledFile } from "./compiled.js";
+import { readHookHome } from "./home.js";
 import type { QueuedLoad } from "./loads.js";
 import {
+  estimateTokens,
   renderBlock,
   type BlockBehind,
+  type BlockBranch,
   type BlockFile,
   type BlockForget,
   type BlockGate,
+  type BlockPrint,
+  type BlockSection,
+  type BlockVerifying,
 } from "./render.js";
 import { emptySeen, readSeen, seenPath, type Seen } from "./seen.js";
-import { readWarm, type WarmSpace, type WarmTarget } from "./warm.js";
+import {
+  readWarm,
+  type WarmBranch,
+  type WarmSpace,
+  type WarmStale,
+  type WarmTarget,
+} from "./warm.js";
 
 export interface HookPaths {
   /** ~/.memax/daemon */
   dir: string;
   /** repos.json: the linked repositories. */
   repos: string;
+  /** home.json: this machine's home link. */
+  home: string;
   pid: string;
   warm: string;
   loads: string;
   seen: string;
+  /** Check requests for the daemon (check-requests.ts). */
+  checkRequests: string;
 }
 
 /**
@@ -44,10 +71,12 @@ export function hookPaths(
   return {
     dir,
     repos: join(dir, "repos.json"),
+    home: join(dir, "home.json"),
     pid: join(dir, "daemon.pid"),
     warm: join(dir, "warm.json"),
     loads: join(dir, "loads"),
     seen: join(dir, "seen"),
+    checkRequests: join(dir, "checks", "requests"),
   };
 }
 
@@ -66,8 +95,12 @@ export interface SessionStartResult {
   output: string;
   /** Saved after printing, so the next session hears only what's new. */
   seen?: { path: string; value: Seen };
+  /** The same for the Personal section (seen/home/<agent>.json). */
+  homeSeen?: { path: string; value: Seen };
   /** Queued after printing, for the daemon to report. */
   loads: QueuedLoad[];
+  /** Queued after printing: the daemon checks this repository soon. */
+  checkRequest?: CheckRequest;
   /** Why it printed nothing, for --debug. */
   skipped?: string;
 }
@@ -82,6 +115,49 @@ interface LinkedRepo {
 const FIRST_FORGET_WINDOW_MS = 7 * 24 * 60 * 60_000;
 const MAX_FORGETS = 20;
 const MAX_GATES = 10;
+const MAX_VERIFYING = 10;
+/** A branch's hints older than this aren't said: the daemon hasn't looked since. */
+const BRANCH_HINT_MS = 24 * 60 * 60_000;
+
+/** What a repository section adds: what's being verified, and this branch's hints. */
+interface Checked {
+  stale?: WarmStale[];
+  branch?: WarmBranch;
+}
+
+/** The branch checked out in root, from .git/HEAD (files only; a worktree too). */
+export function currentBranch(root: string): string | null {
+  try {
+    let git = join(root, ".git");
+    if (statSync(git).isFile()) {
+      const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(git, "utf8"));
+      if (!m) return null;
+      git = resolve(root, m[1].trim());
+    }
+    const head = readFileSync(join(git, "HEAD"), "utf8").trim();
+    return head.startsWith("ref: refs/heads/")
+      ? head.slice("ref: refs/heads/".length)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Why a memory is stale, in words: the first cause the hook can say. */
+function staleWhy(x: WarmStale): string {
+  for (const c of x.causes) {
+    if (c.kind === "check")
+      return evidenceWords(c.condition, c.evidence, c.branch);
+    if (c.kind === "date")
+      return `its date to check again, ${c.stale_after.slice(0, 10)}, has passed.`;
+  }
+  return "it was marked stale; check it against its sources.";
+}
+/**
+ * A printed Personal space's share of the block (personal-layer design
+ * §7.1): about the 6 KiB a home file holds; the rest stay live over MCP.
+ */
+export const PRINT_TOKENS = 1500;
 
 /** A compile's number (C-0881 → 881); compiles count up per tenant. */
 function compileNumber(ref: string): number {
@@ -239,35 +315,32 @@ function diffFile(
   return out;
 }
 
-export function sessionStart(i: SessionStartInput): SessionStartResult {
-  const nothing = (skipped: string): SessionStartResult => ({
-    output: "",
-    loads: [],
-    skipped,
-  });
-  const host = foreignHost(i.agent, i.event, i.env);
-  if (host) return nothing(`running under ${host}, whose own hook speaks`);
+/** One section's news, what to save, and the compiles its agent loaded. */
+interface Part {
+  block: BlockSection;
+  seen: { path: string; value: Seen };
+  loaded: Array<{ space: string; compile: string }>;
+  first: boolean;
+}
 
-  const dir = sessionDir(i.event, i.env, i.cwd);
-  const repo = findRepo(dir, readRegistry(i.paths.repos));
-  if (!repo) return nothing("not in a repository");
-  const warmFile = readWarm(i.paths.warm);
-  const warm = repo.link ? warmFile.spaces[repo.link.space_id] : undefined;
-
-  const files: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
-  for (const f of loadedFiles(i.agent, warm)) {
-    const file = readCompiled(join(repo.root, f.path), f.path);
-    if (file) files.push({ file, target: f.target });
-  }
-  if (files.length === 0 && !warm) return nothing("no compiled files here");
-
-  const space =
-    repo.link?.space_slug ?? warm?.slug ?? files[0]?.file.space ?? "";
-  const seenFile = seenPath(i.paths.seen, repo.root, i.agent.kind);
+/**
+ * Works out one section (the repository's, or the Personal space's on this
+ * machine) against what the agent's last session was told.
+ */
+function part(
+  now: Date,
+  files: Array<{ file: CompiledFile; target?: WarmTarget }>,
+  warm: WarmSpace | undefined,
+  space: string,
+  spaceId: string | undefined,
+  seenFile: string,
+  checked: Checked = {},
+  printed: Array<{ file: CompiledFile; target?: WarmTarget }> = [],
+): Part {
   const before = readSeen(seenFile);
   const first = before === null;
   const prev = before ?? emptySeen();
-  const nowMs = i.now.getTime();
+  const nowMs = now.getTime();
 
   // Forgets: every one since the last session; a first session, the last week's.
   const forgets = warm?.forgotten ?? [];
@@ -303,7 +376,7 @@ export function sessionStart(i: SessionStartInput): SessionStartResult {
   // only grow; a file newer than the cache means the cache is behind).
   const toldBehind = new Set(prev.behind);
   const behind: BlockBehind[] = [];
-  for (const { file, target } of files) {
+  for (const { file, target } of [...files, ...printed]) {
     if (
       target?.compile &&
       compileNumber(target.compile) > compileNumber(file.compile) &&
@@ -317,23 +390,53 @@ export function sessionStart(i: SessionStartInput): SessionStartResult {
       });
   }
 
+  // Memories marked stale since the last session here (all of them in a
+  // first one), never one forgotten since.
+  const told = new Set(prev.verifying ?? []);
+  const staleKey = (x: WarmStale) => `${x.ref}@${x.since}`;
+  const stale = (checked.stale ?? []).filter((x) => !forgottenRefs.has(x.ref));
+  const shown = stale
+    .filter((x) => !told.has(staleKey(x)))
+    .slice(0, MAX_VERIFYING);
+  const verifying: BlockVerifying[] = shown.map((x) => ({
+    ref: x.ref,
+    why: staleWhy(x),
+  }));
+  // This branch's hints not told before, from a check within a day.
+  const toldHints = new Set(prev.hints ?? []);
+  const b = checked.branch;
+  const hintKey = (h: WarmBranch["items"][number]) =>
+    `${b!.branch}\0${h.memory}\0${h.condition.id ?? ""}\0${h.evidence?.change ?? ""}`;
+  const hints = b
+    ? b.items.filter(
+        (h) => !forgottenRefs.has(h.memory) && !toldHints.has(hintKey(h)),
+      )
+    : [];
+  const branch: BlockBranch | undefined =
+    b && hints.length > 0
+      ? {
+          name: b.branch,
+          ...(b.unpushed ? { unpushed: true } : {}),
+          at: b.checked_at,
+          hints: hints.slice(0, MAX_VERIFYING).map((h) => ({
+            ref: h.memory,
+            why: evidenceWords(h.condition, h.evidence, "this branch"),
+          })),
+        }
+      : undefined;
+
   // A session that saw no compiled file here is a baseline too.
   const baseline = first || Object.keys(prev.files).length === 0;
   const blockFiles = files.map(({ file, target }) =>
     diffFile(file, prev.files[file.path], baseline, target, forgottenRefs),
   );
-  const block = renderBlock({
-    space,
-    files: blockFiles,
-    forgotten: newForgets,
-    gates: newGates,
-    behind,
-    maxTokens: i.agent.maxTokens,
-  });
+  const print = printed[0]
+    ? printFile(printed[0].file, printed[0].target, forgottenRefs)
+    : undefined;
 
   const seen: Seen = {
     version: 1,
-    at: i.now.toISOString(),
+    at: now.toISOString(),
     files: Object.fromEntries(
       files.map(({ file }) => [
         file.path,
@@ -352,7 +455,192 @@ export function sessionStart(i: SessionStartInput): SessionStartResult {
       ...prev.gates.filter((r) => !waiting.some((g) => g.ref === r)),
     ],
     behind: [...behind.map((b) => b.latest), ...prev.behind],
+    // Told and still marked stale stays told; one verified since drops out
+    // (a cache with no stale list yet keeps what was told).
+    verifying: checked.stale
+      ? [
+          ...shown.map(staleKey),
+          ...stale.map(staleKey).filter((k) => told.has(k)),
+        ]
+      : (prev.verifying ?? []),
+    hints: [
+      ...new Set([
+        ...hints.slice(0, MAX_VERIFYING).map(hintKey),
+        ...(prev.hints ?? []),
+      ]),
+    ],
   };
+  return {
+    block: {
+      space,
+      files: blockFiles,
+      forgotten: newForgets,
+      gates: newGates,
+      behind,
+      ...(verifying.length > 0 ? { verifying } : {}),
+      ...(branch ? { branch } : {}),
+      ...(print ? { print } : {}),
+    },
+    seen: { path: seenFile, value: seen },
+    loaded: [...files, ...printed].map(({ file }) => ({
+      space: spaceId ?? file.space,
+      compile: file.compile,
+    })),
+    first,
+  };
+}
+
+/**
+ * A file printed in full, for an agent that loads none of it: its cited
+ * lines in order, under their headings, as many as PRINT_TOKENS holds.
+ * As in a diff, a line citing a forgotten memory is never said, nor one
+ * whose cites the server didn't compile (a hand-added cite).
+ */
+function printFile(
+  file: CompiledFile,
+  target: WarmTarget | undefined,
+  forgottenRefs: Set<string>,
+): BlockPrint {
+  const known =
+    target?.compile === file.compile && target.refs
+      ? new Set(target.refs)
+      : null;
+  const ours = file.lines.filter((l) =>
+    l.refs.every((r) => !forgottenRefs.has(r) && (!known || known.has(r))),
+  );
+  const groups: BlockPrint["groups"] = [];
+  let tokens = 0;
+  let shown = 0;
+  for (const l of ours) {
+    const head =
+      l.heading && groups.at(-1)?.heading !== l.heading ? `${l.heading}:` : "";
+    const cost = estimateTokens(`${head}\n${l.text}\n`);
+    if (tokens + cost > PRINT_TOKENS) break;
+    tokens += cost;
+    shown += 1;
+    const g = groups.at(-1);
+    if (g && g.heading === l.heading) g.lines.push(l.text);
+    else
+      groups.push({
+        ...(l.heading ? { heading: l.heading } : {}),
+        lines: [l.text],
+      });
+  }
+  return {
+    path: file.path,
+    compile: file.compile,
+    groups,
+    more: ours.length - shown,
+    handEdit:
+      !!target && (target.sync_state === "drifted" || target.open_drift > 0),
+  };
+}
+
+/** The repository's section, or null with why. */
+function repoPart(
+  i: SessionStartInput,
+  repo: { root: string; link?: LinkedRepo },
+  warmFile: ReturnType<typeof readWarm>,
+): Part | string {
+  const warm = repo.link ? warmFile.spaces[repo.link.space_id] : undefined;
+  // V1 writes its files again: they aren't Memax's to speak for.
+  if (warm?.on_v1) return "the space is on V1 again";
+  const files: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
+  for (const f of loadedFiles(i.agent, warm)) {
+    const file = readCompiled(join(repo.root, f.path), f.path);
+    if (file) files.push({ file, target: f.target });
+  }
+  if (files.length === 0 && !warm) return "no compiled files here";
+  const space =
+    repo.link?.space_slug ?? warm?.slug ?? files[0]?.file.space ?? "";
+  // This branch's hints, when the daemon checked the branch checked out
+  // now, within a day.
+  const hints = repo.link ? warmFile.branches?.[repo.root] : undefined;
+  const branch =
+    hints &&
+    hints.branch === currentBranch(repo.root) &&
+    i.now.getTime() - Date.parse(hints.checked_at) < BRANCH_HINT_MS
+      ? hints
+      : undefined;
+  return part(
+    i.now,
+    files,
+    warm,
+    space,
+    repo.link?.space_id,
+    seenPath(i.paths.seen, repo.root, i.agent.kind),
+    { stale: warm?.stale, branch },
+  );
+}
+
+/** The Personal section: the agent's own home file on this machine. */
+function homePart(
+  i: SessionStartInput,
+  warmFile: ReturnType<typeof readWarm>,
+): Part | null {
+  if (i.agent.home.length === 0 && i.agent.prints.length === 0) return null;
+  const home = readHookHome(i.paths.home);
+  if (!home) return null;
+  const warm =
+    warmFile.home?.space_id === home.space_id ? warmFile.home : undefined;
+  if (warm?.on_v1) return null;
+  const files: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
+  const printed: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
+  for (const f of home.files) {
+    const prints = i.agent.prints.includes(f.kind);
+    if (!prints && !i.agent.home.includes(f.kind)) continue;
+    // A file another agent reads (Antigravity's ~/.gemini/AGENTS.md, before
+    // Gemini CLI's settings list it) isn't one this agent loads. A printed
+    // one is this hook's to say, whoever else reads it.
+    if (!prints && f.read_by && !f.read_by.includes(i.agent.kind)) continue;
+    const file = readCompiled(f.abs, `~/${f.path}`);
+    if (!file) continue;
+    const target = warm?.targets.find(
+      (t) => t.kind === f.kind && t.path === f.path,
+    );
+    // A file stopped on the web stays as it was, and isn't the record now.
+    if (prints && target?.sync_state === "off") continue;
+    (prints ? printed : files).push({ file, target });
+  }
+  if (files.length === 0 && printed.length === 0) return null;
+  return part(
+    i.now,
+    files,
+    warm,
+    home.space_slug,
+    home.space_id,
+    join(
+      i.paths.seen,
+      "home",
+      `${i.agent.kind.replace(/[^a-z0-9-]/gi, "_")}.json`,
+    ),
+    {},
+    printed,
+  );
+}
+
+export function sessionStart(i: SessionStartInput): SessionStartResult {
+  const nothing = (skipped: string): SessionStartResult => ({
+    output: "",
+    loads: [],
+    skipped,
+  });
+  const host = foreignHost(i.agent, i.event, i.env);
+  if (host) return nothing(`running under ${host}, whose own hook speaks`);
+
+  const dir = sessionDir(i.event, i.env, i.cwd);
+  const repo = findRepo(dir, readRegistry(i.paths.repos));
+  const warmFile = readWarm(i.paths.warm);
+  const inRepo = repo ? repoPart(i, repo, warmFile) : "not in a repository";
+  const atHome = homePart(i, warmFile);
+  if (typeof inRepo === "string" && !atHome) return nothing(inRepo);
+  const parts = [typeof inRepo === "string" ? null : inRepo, atHome];
+
+  const block = renderBlock({
+    repo: typeof inRepo === "string" ? undefined : inRepo.block,
+    personal: atHome?.block,
+    maxTokens: i.agent.maxTokens,
+  });
 
   const source = str(i.event.source) ?? "startup";
   const session = str(i.event.session_id) ?? str(i.event.sessionId);
@@ -360,17 +648,28 @@ export function sessionStart(i: SessionStartInput): SessionStartResult {
   const loads: QueuedLoad[] =
     source === "compact"
       ? []
-      : files.map(({ file }) => ({
-          space: repo.link?.space_id ?? file.space,
-          compile: file.compile,
-          agent: i.agent.kind,
-          ...(session ? { session_ref: session.slice(0, 255) } : {}),
-          loaded_at: loadedAt,
-        }));
+      : parts.flatMap((p) =>
+          (p?.loaded ?? []).map((l) => ({
+            space: l.space,
+            compile: l.compile,
+            agent: i.agent.kind,
+            ...(session ? { session_ref: session.slice(0, 255) } : {}),
+            loaded_at: loadedAt,
+          })),
+        );
+  const first = parts.every((p) => !p || p.first);
+  // The daemon checks the repository soon, for this agent (a linked one
+  // on V2; a compaction is the same session).
+  const checkRequest: CheckRequest | undefined =
+    repo?.link && typeof inRepo !== "string" && source !== "compact"
+      ? { root: repo.root, agent: i.agent.kind, at: loadedAt }
+      : undefined;
 
   return {
     output: wrapFor(i.agent.format, block),
-    seen: { path: seenFile, value: seen },
+    ...(checkRequest ? { checkRequest } : {}),
+    ...(typeof inRepo === "string" ? {} : { seen: inRepo.seen }),
+    ...(atHome ? { homeSeen: atHome.seen } : {}),
     loads,
     ...(block === "" ? { skipped: first ? "first session" : "no news" } : {}),
   };

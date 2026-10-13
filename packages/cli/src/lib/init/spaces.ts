@@ -13,6 +13,25 @@ export function repoKey(url: string): string {
   return normalizeRepoUrl(url).split("/").filter(Boolean).slice(-2).join("/");
 }
 
+/** An owner/name key the server takes as scope.repos (spec RepoKey). */
+const REPO_KEY = /^[a-z0-9._-]+\/[a-z0-9._-]+$/;
+
+/**
+ * This repository's key for scope.repos: its remote's (repoKey, as the
+ * project space is matched by), else the project space's repository; null
+ * when neither names an owner/name.
+ */
+export function repositoryOf(
+  remote: string | null,
+  space?: Pick<V2.Space, "repository"> | null,
+): string | null {
+  for (const raw of [remote, space?.repository]) {
+    const key = raw ? repoKey(raw) : "";
+    if (REPO_KEY.test(key)) return key;
+  }
+  return null;
+}
+
 export class InitError extends Error {
   constructor(message: string) {
     super(message);

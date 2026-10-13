@@ -1,0 +1,170 @@
+---
+title: Cloud agents
+description: Start Claude Code's cloud sessions and Copilot's cloud agent with what changed since the compile your repository holds, and what to commit so every cloud agent starts from your context.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+A cloud agent starts in a fresh sandbox: a clone of your repository, with
+no Memax CLI, no daemon and none of your machine's files. It loads what
+the repository has committed. So there are two parts:
+
+1. **Commit the compiled files.** Every cloud agent loads them, with no
+   setup at all.
+2. **A start key and a hook**, for the agents that run a committed
+   session-start hook (Claude Code's cloud sessions and Copilot's cloud
+   agent). Each session asks Memax what changed since the compile in its
+   files, and starts with only that.
+
+## What each agent loads
+
+| Agent                      | Loads at session start                              | The start                                         |
+| -------------------------- | --------------------------------------------------- | ------------------------------------------------- |
+| Claude Code cloud sessions | `CLAUDE.md` (which imports `AGENTS.md`), `.claude/` | A hook in `.claude/settings.json`                 |
+| Copilot cloud agent        | `AGENTS.md`, `.github/copilot-instructions.md`      | A hook in `.github/hooks/memax.json`              |
+| Codex Cloud                | `AGENTS.md`                                         | None yet: it starts from the committed file alone |
+| Jules                      | `AGENTS.md`                                         | None                                              |
+
+## Connect one
+
+In the repository, signed in:
+
+```bash
+memax connect --cloud copilot      # or claude-code; codex has no start yet
+```
+
+It connects the cloud agent to the repository's space at **Read**, makes
+its **start key**, prints the key once, writes the hook file and says
+where the key goes. Or, in the app: **Agents › Connect an agent ›
+Connect a cloud agent**.
+
+```text
+› memax connect --cloud copilot
+
+  Memax · connect --cloud Copilot
+
+  ✓ Agent    Copilot cloud agent · acme-web, at Read
+  ✓ Hook     .github/hooks/memax.json: commit it (it names the key, never holds it)
+
+  Start key, shown once (Memax keeps only its hash):
+
+      mxk_…
+
+  Then:
+    1. Add the key as the Agents secret MEMAX_START_KEY: …
+    2. Let the agent reach api.memax.app: …
+    3. Commit .github/hooks/memax.json, and AGENTS.md after each compile.
+```
+
+| Flag             | Description                                                           |
+| ---------------- | --------------------------------------------------------------------- |
+| `--space <slug>` | The space. Defaults to this repository's (`.memax.yml`, or its link). |
+| `--no-hook`      | Print the hook file instead of writing it.                            |
+| `--yes`          | For an agent that's already connected: a new key, without asking.     |
+| `--format json`  | The connection, the key (once), the file and the steps, as JSON.      |
+
+Run it again for an agent that's already connected and it leaves its key
+alone, unless you say yes to a new one (`--yes` without a terminal). A new
+key stops the old one at once, and the agent's reads stay under the same
+connection.
+
+## Where the key goes
+
+The key never goes in the repository: the hook file names the variable.
+Memax refuses a key pasted into a memory, and `memax init` keeps a line
+holding one on your machine.
+
+**Claude Code.** On Pro or Max, add a **network secret** for
+`api.memax.app` to the cloud environment, with the key as its Bearer
+token: the key stays outside the sandbox. On Team or Enterprise, set
+`MEMAX_START_KEY` in a **personal** environment's variables. Not a shared
+one: everyone whose sessions use a shared environment can read its
+variables.
+
+**Copilot.** Add the key as the **Agents secret** `MEMAX_START_KEY`, in
+the repository's (or organisation's) Settings › Secrets and variables ›
+Agents; Copilot masks it in session logs. Then let the agent reach
+`api.memax.app`: add it to the repository's Copilot internet access
+settings (the agent firewall).
+
+## What to commit
+
+1. **The compiled files**, after each compile: `AGENTS.md`, the `CLAUDE.md`
+   shim and any scoped rules. They are what every cloud agent loads, and a
+   start says what changed since the compile they hold.
+2. **The hook file**, which holds no key.
+
+   Claude Code, `.claude/settings.json` (merged into the file you have):
+
+   ```json
+   {
+     "hooks": {
+       "SessionStart": [
+         {
+           "matcher": "startup|resume|compact",
+           "hooks": [
+             {
+               "type": "command",
+               "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] && npx -y @memaxlabs/start@1.0.0 --agent claude-code || true",
+               "timeout": 20
+             }
+           ]
+         }
+       ]
+     }
+   }
+   ```
+
+   It runs only in cloud sessions, where `CLAUDE_CODE_REMOTE` is `true`.
+
+   Copilot, `.github/hooks/memax.json`:
+
+   ```json
+   {
+     "version": 1,
+     "hooks": {
+       "sessionStart": [
+         {
+           "type": "command",
+           "bash": "[ -n \"$MEMAX_START_KEY\" ] && npx -y @memaxlabs/start@1.0.0 --agent copilot || true",
+           "timeoutSec": 20
+         }
+       ]
+     }
+   }
+   ```
+
+   Copilot CLI loads repository hooks on people's machines too; this one
+   runs only where `MEMAX_START_KEY` is set, so they skip it.
+
+3. **The version, pinned exactly.** npm versions don't change, so a pinned
+   command can't change under you. `memax connect --cloud` updates the pin.
+4. **A CODEOWNERS entry** for the hook file and the compiled files, so a
+   pull request that changes how the start runs needs an owner's review.
+
+Don't commit keys, `CLAUDE.local.md`, anything under `~/.memax`, or a
+`.mcp.json` that names Memax: in Claude Code a committed server also loads
+on every contributor's machine and asks each one to sign in.
+
+## What a start key can do
+
+A start key does one thing: start that agent's sessions in that space. It
+reads what changed since the compile its repository holds, the forgets
+those files still carry and the questions waiting for an answer. It can't
+read memories, proposals or other spaces, and it never writes. A leaked
+start key shows about what the next commit of `AGENTS.md` would.
+
+- It starts at **Read**. Only a person in the app can set more, and a
+  start key writes nothing at any level.
+- It lasts **180 days**. Give it a new key from its page in Agents, or
+  with `memax connect --cloud <agent> --yes`.
+- **Disconnect** revokes it at once. Pausing changes nothing for a start
+  key, since it writes nothing.
+- Its starts count as reads under the agent's connection, and its page in
+  Agents shows its **last start**: when, the compile its files held, and
+  what it was told had changed.
+
+<Callout type="info">
+  A cloud agent's connection belongs to the person who made it, so its reads
+  count under them, whoever assigns the agent in that repository.
+</Callout>

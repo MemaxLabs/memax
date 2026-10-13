@@ -7,6 +7,8 @@ import {
   foldNote,
   ledeText,
   nextText,
+  staleNote,
+  runFailureText,
   whoText,
   type DreamWords,
 } from "../dream-copy";
@@ -236,6 +238,70 @@ describe("an edition over /v2", () => {
     expect(needsYouOf(view).map((m) => m.ref)).toEqual(["M-0301"]);
   });
 
+  it("lists what Memax marked stale since, citing its flag, and says which waited a month", () => {
+    const stale = (id: string, ref: string, receipt: string) =>
+      memory({
+        id,
+        ref,
+        state: "stale",
+        flags: ["stale"],
+        last_receipt_id: receipt,
+      });
+    const withStale: V2.DreamEdition = {
+      ...edition,
+      surfaced: [
+        {
+          kind: "stale",
+          memory: stale("m8", "M-0401", "r9"),
+          receipt_id: "r9",
+        },
+        {
+          kind: "stale_waiting",
+          memory: stale("m9", "M-0402", "r10"),
+          receipt_id: "r10",
+        },
+        // Verified since: it no longer needs anyone.
+        {
+          kind: "stale",
+          memory: memory({ id: "m10", ref: "M-0403" }),
+          receipt_id: "r11",
+        },
+      ],
+    };
+    const flags = new Map(receipts);
+    for (const id of ["r9", "r10"]) {
+      flags.set(
+        id,
+        receipt({
+          id,
+          action: "flagged",
+          actor_kind: "memax",
+          actor_id: undefined,
+          source: { kind: "date", ref: "2026-10-01" },
+        }),
+      );
+    }
+    const view = editionViewOf(withStale, flags, "me");
+    expect(
+      view.surfaced.map((x) => [x.kind, x.memory.ref, x.receiptId]),
+    ).toEqual([
+      ["stale", "M-0401", "r9"],
+      ["stale_waiting", "M-0402", "r10"],
+      ["stale", "M-0403", "r11"],
+    ]);
+    expect(needsYouOf(view).map((m) => m.ref)).toEqual([
+      "M-0301",
+      "M-0401",
+      "M-0402",
+    ]);
+    for (const locale of ["en", "zh"] as const) {
+      const w = words(locale);
+      const m = view.surfaced[0]!.memory;
+      expect(staleNote(w, m)).toBe(w.dc.needsYou.staleDate);
+      expect(staleNote(w, m, true)).toBe(w.dc.needsYou.staleWaiting);
+    }
+  });
+
   it("makes Today's card: the conflict first, then the folds, and an undone fade dropped", () => {
     const card = cardOf(editionViewOf(edition, receipts, "me"));
     expect(card).toMatchObject({ n: 3, ref: "D-0003", notes: 3, facts: 1 });
@@ -244,6 +310,47 @@ describe("an edition over /v2", () => {
       text: "Background jobs run on River, not Temporal.",
       meta: { kind: "folded", notes: 2, into: "M-0219" },
     });
+  });
+
+  it("uses the cited stale flag's cause after another receipt became the latest", () => {
+    const flags = new Map(receipts);
+    flags.set(
+      "r-check",
+      receipt({
+        id: "r-check",
+        action: "flagged",
+        source: { kind: "check", ref: "check-1" },
+      }),
+    );
+    flags.set("r-moved", receipt({ id: "r-moved", action: "moved" }));
+    const view = editionViewOf(
+      {
+        ...edition,
+        surfaced: [
+          {
+            kind: "stale",
+            memory: memory({
+              state: "stale",
+              flags: ["stale"],
+              last_receipt_id: "r-moved",
+            }),
+            receipt_id: "r-check",
+          },
+        ],
+      },
+      flags,
+      "me",
+    );
+    expect(view.surfaced[0]!.memory.note).toMatchObject({
+      kind: "stale",
+      cause: "check",
+    });
+    for (const locale of ["en", "zh"] as const) {
+      const w = words(locale);
+      expect(staleNote(w, view.surfaced[0]!.memory)).toContain(
+        w.dc.needsYou.staleCheck.split("{date}")[0],
+      );
+    }
   });
 
   it("sums up what faded on the card, for the catalogue to word", async () => {
@@ -401,5 +508,31 @@ describe("an edition's words", () => {
     expect(editionNumberOf("D-0214")).toBe(214);
     expect(editionNumberOf("214")).toBe(214);
     expect(editionNumberOf("latest")).toBeNull();
+  });
+});
+
+describe("a run-now that didn't go", () => {
+  it("says the space's plan's cap, worded by the plan (dream_cadence)", () => {
+    const free = {
+      kind: "refused",
+      code: "dream_cadence",
+      message: null,
+      limit: { plan: "free", allowed: 1, used: 1, upgrade: "pro" },
+    } as const;
+    expect(runFailureText(words("en"), free)).toBe(
+      "Dream has run now as often as Free allows this week. It still runs on its own. Pro runs it nightly.",
+    );
+    expect(runFailureText(words("zh"), free)).toMatch(/Free 套餐本周/);
+    const pro = {
+      ...free,
+      limit: { plan: "pro", allowed: 3, used: 3 },
+    } as const;
+    expect(runFailureText(words("en"), pro)).toBe(
+      "Dream has run now as often as Pro allows today. It still runs on its own.",
+    );
+    // Without plan limits the cap is a rate limit, as before.
+    expect(
+      runFailureText(words("en"), { kind: "rate-limited", retryAfter: 86400 }),
+    ).toBe(words("en").dc.refused.runCap);
   });
 });

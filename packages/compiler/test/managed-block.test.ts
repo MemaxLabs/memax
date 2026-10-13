@@ -22,24 +22,24 @@ describe("upsertManagedBlock", () => {
     );
   });
 
-  it("appends after a blank line and leaves the person's text alone", () => {
+  it("appends right after the person's last line, leaving their text alone", () => {
     const mine = "# Mine\n\nTabs.  \n";
     const out = upsertManagedBlock(mine, BLOCK);
     expect(out.startsWith(mine)).toBe(true);
     expect(out.slice(mine.length)).toBe(
-      "\n<!-- memax:start -->\n<!-- header -->\n@AGENTS.md\n<!-- memax:end -->\n",
+      "<!-- memax:start -->\n<!-- header -->\n@AGENTS.md\n<!-- memax:end -->\n",
     );
   });
 
-  it("appends after a blank line in a CRLF file too", () => {
-    // `\r\n` is one line break: the file doesn't end with a blank line yet.
+  it("appends in a CRLF file with its line breaks", () => {
+    // `\r\n` is one line break, not two.
     const mine = "# Mine\r\n\r\nTabs.\r\n";
     const out = upsertManagedBlock(mine, BLOCK);
     expect(out).toBe(
-      `${mine}\r\n<!-- memax:start -->\r\n<!-- header -->\r\n@AGENTS.md\r\n<!-- memax:end -->\r\n`,
+      `${mine}<!-- memax:start -->\r\n<!-- header -->\r\n@AGENTS.md\r\n<!-- memax:end -->\r\n`,
     );
     expect(upsertManagedBlock(out, BLOCK)).toBe(out);
-    // A file that already ends with a blank line gets no second one.
+    // A blank line the person left at the end stays, and gets no second one.
     expect(upsertManagedBlock("top\r\n\r\n", BLOCK)).toBe(
       "top\r\n\r\n<!-- memax:start -->\r\n<!-- header -->\r\n@AGENTS.md\r\n<!-- memax:end -->\r\n",
     );
@@ -48,9 +48,13 @@ describe("upsertManagedBlock", () => {
     );
   });
 
-  it("adds a line break when the file doesn't end with one", () => {
+  it("adds only the line break the block needs when the file doesn't end with one", () => {
+    // None after the end marker: taking the block out takes this one too.
     expect(upsertManagedBlock("No newline", BLOCK)).toBe(
-      "No newline\n\n<!-- memax:start -->\n<!-- header -->\n@AGENTS.md\n<!-- memax:end -->\n",
+      "No newline\n<!-- memax:start -->\n<!-- header -->\n@AGENTS.md\n<!-- memax:end -->",
+    );
+    expect(upsertManagedBlock("a\r\nb", BLOCK)).toBe(
+      "a\r\nb\r\n<!-- memax:start -->\r\n<!-- header -->\r\n@AGENTS.md\r\n<!-- memax:end -->",
     );
   });
 
@@ -110,7 +114,7 @@ describe("removeManagedBlock and extractManagedBlock", () => {
   it.each([
     ["LF", "\n"],
     ["CRLF", "\r\n"],
-  ])("takes out the blank line adding the block put there (%s)", (_, eol) => {
+  ])("gives back the file as it was before the block (%s)", (_, eol) => {
     const lines = (...l: string[]) => l.map((x) => x + eol).join("");
     const mine = lines("# Mine", "", "Tabs.");
     // Added, then removed: the file is as it was.
@@ -120,17 +124,32 @@ describe("removeManagedBlock and extractManagedBlock", () => {
     expect(removeManagedBlock(upsertManagedBlock(mine, BLOCK) + below)).toBe(
       mine + below,
     );
-    // A file without a final line break gets one: the only change.
-    expect(
-      removeManagedBlock(upsertManagedBlock(`# Mine${eol}Tabs.`, BLOCK)),
-    ).toBe(lines("# Mine", "Tabs."));
-    // Adding put no blank line here, so none goes.
-    for (const file of ["", lines(""), lines("# Mine", "", "")]) {
+    // A file without a final line break gets it back without one.
+    const bare = `# Mine${eol}Tabs.`;
+    expect(removeManagedBlock(upsertManagedBlock(bare, BLOCK))).toBe(bare);
+    // A blank line the person left above the block stays.
+    for (const file of [
+      "",
+      lines(""),
+      lines("# Mine", ""),
+      lines("a", "", ""),
+    ]) {
       expect(removeManagedBlock(upsertManagedBlock(file, BLOCK))).toBe(file);
     }
     // A line of spaces is the person's.
     const spaced = lines("a", "  ", ...[MANAGED_START, "x", MANAGED_END]);
     expect(removeManagedBlock(spaced)).toBe(lines("a", "  "));
+  });
+
+  it("keeps the blank line an older Memax put above a block, erring toward the person's bytes", () => {
+    // Until Oct 2026 adding a block left a blank line above it. It can't be
+    // told from one the person left, so it stays.
+    const older = "# Mine\n\n<!-- memax:start -->\nx\n<!-- memax:end -->\n";
+    expect(removeManagedBlock(older)).toBe("# Mine\n\n");
+    // A delivery over it replaces the block where it is.
+    expect(upsertManagedBlock(older, BLOCK)).toBe(
+      "# Mine\n\n<!-- memax:start -->\n<!-- header -->\n@AGENTS.md\n<!-- memax:end -->\n",
+    );
   });
 
   it("extracts the block with LF endings", () => {

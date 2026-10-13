@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
 
 // Dream runs in its space owner's local night, in their own time zone,
@@ -84,6 +85,10 @@ func (c Config) Decide(now time.Time, s ledger.SweepSpace) ledger.SweepDecision 
 		zone = "UTC"
 	}
 	cadence := c.cadenceFor(c.Plan, s.BusyRank)
+	if s.Plan.Enforced {
+		// The space's own plan, once plan limits are enforced (D9).
+		cadence = Cadence(policy.DreamCadence(s.Plan, s.BusyRank))
+	}
 	d := ledger.SweepDecision{Cadence: string(cadence), TimeZone: zone,
 		DueAt: NextSlot(now, zone, cadence, c.LocalHour, c.weekday())}
 	if s.HasSchedule && !s.DueAt.After(now) {

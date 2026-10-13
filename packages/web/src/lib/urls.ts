@@ -17,6 +17,13 @@ export const API_URL = resolvePublicUrl(
   PROD_API_URL,
 );
 
+/**
+ * The remote MCP server agents add by hand: this build's API, so a staging
+ * page names staging's server. mcp.memax.app is planned as its alias
+ * (plan 25 E7) but isn't served yet, so nothing may name it until it is.
+ */
+export const MCP_URL = `${API_URL}/mcp`;
+
 /** Web app origin — e.g. `https://memax.app`. Used for share links, OAuth redirects. */
 export const APP_URL = resolvePublicUrl(
   process.env.NEXT_PUBLIC_APP_URL,

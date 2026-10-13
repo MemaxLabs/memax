@@ -27,8 +27,16 @@ export type MemoryNote =
       /** The agent waiting on the answer, a registry key. */
       askedBy: string | null;
     }
-  /** "Its source changed on Sep 11 · PR #198" */
-  | { kind: "stale"; changedAt: string; source: string | null }
+  /**
+   * "Its source changed on Sep 11 · PR #198" (`source`), or "Its date to
+   * check again has passed" (`date`).
+   */
+  | {
+      kind: "stale";
+      cause: StaleCauseKind;
+      changedAt: string;
+      source: string | null;
+    }
   /** "Merged into M-0219 by Dream" */
   | { kind: "merged"; into: string; by: Actor | null }
   /** "No agent has read it in 60 days. Restore it, or let it rest." */
@@ -113,12 +121,29 @@ export interface SourceLine {
   url: string | null;
 }
 
-/** "Stays true while": `code` in mono, then the rest. */
-export interface ConditionLine {
-  key: string;
-  code: string | null;
-  text: string;
-}
+/**
+ * One "stays true while" condition, as data (the catalogue words it): the
+ * kinds of the record's typed conditions, and the date to check again.
+ */
+export type ConditionLine = { key: string } & (
+  | { kind: "path_exists"; path: string | null; glob: string | null }
+  | { kind: "file_contains"; path: string; text: string; word: boolean }
+  | {
+      kind: "dep_present";
+      manifest: string;
+      name: string;
+      range: string | null;
+    }
+  | { kind: "file_unchanged"; path: string }
+  | {
+      kind: "pr_state";
+      repo: string;
+      number: number;
+      state: "open" | "merged" | "closed";
+    }
+  /** Its date to check again (stale_after). */
+  | { kind: "date"; at: string }
+);
 
 export interface MergedNote {
   ref: string;
@@ -152,7 +177,12 @@ export interface MemoryRecord {
    * targets) and the agents that read it (from its reads). Either is
    * null when the source doesn't know it.
    */
-  reach: { files: number | null; agents: number | null } | null;
+  reach: {
+    files: number | null;
+    agents: number | null;
+    /** The machines a Personal space's home files that hold it are on. */
+    machines?: number | null;
+  } | null;
   lineage: LineageEntry[];
   /** What was merged into it: Dream's notes, the judge's folds. Null when the source can't say. */
   merged: { notes: MergedNote[]; total: number } | null;
@@ -160,11 +190,99 @@ export interface MemoryRecord {
   /** Null until compile targets are served (PLACEHOLDER in the SDK). */
   reaches: TargetLine[] | null;
   conditions: ConditionLine[];
-  /** The last time someone checked it against its conditions. */
-  checked: { at: string; by: Actor | null } | null;
+  /**
+   * The last check of its conditions (null: not checked yet): when, on
+   * which branch, and the agent whose session start asked for it.
+   */
+  checked: { at: string; branch: string; agent: Actor | null } | null;
   forgotten: Forgotten | null;
   /** Agents' requests that a person forget it, waiting (Forget, or Keep it). */
   forgetRequests?: ForgetRequestLine[];
+  /**
+   * The repositories it applies in (spec MemoryScope.repos, "owner/name"):
+   * a personal fact init tied to one repository's files. A home file
+   * leaves it out. Absent or empty is everywhere.
+   */
+  repos?: string[];
+}
+
+/** Why a memory is stale, as its marks say it: a date that passed, or a source that changed. */
+export type StaleCauseKind = "date" | "source" | "check";
+
+/** One line of a diff of a cited file, as VerifyStale shows it. */
+export interface HunkLine {
+  op: "del" | "add" | "eq";
+  text: string;
+}
+
+/**
+ * Why a memory is stale, said as data (VerifyStale's "What changed"):
+ * its date to check again passed, or a pull request changed the file it
+ * cites (with the lines around it, when they can be shown).
+ */
+export type StaleCause =
+  | { kind: "date"; staleAfter: string }
+  /**
+   * One of its conditions stopped holding on the default branch, as a
+   * member's machine (or the GitHub App) checked it: the condition, what
+   * changed, and where.
+   */
+  | {
+      kind: "check";
+      condition: ConditionLine;
+      change: string;
+      /** The path that changed, when it isn't the condition's own. */
+      path: string | null;
+      renamedTo: string | null;
+      constraint: string | null;
+      branch: string;
+      commit: string;
+      checkedAt: string | null;
+    }
+  | {
+      kind: "source";
+      /** "PR #198". */
+      ref: string;
+      title: string | null;
+      by: Actor | null;
+      at: string;
+      hunk: { path: string; lines: HunkLine[] } | null;
+    };
+
+/**
+ * GET /v2/memories/{ref}/stale as VerifyStale reads it: the words being
+ * verified and their version (the If-Match), who flagged it and when,
+ * the keep before it and the reads since, and why.
+ */
+export interface StaleWhy {
+  ref: string;
+  version: number;
+  statement: string;
+  kind: "fact" | "decision";
+  /** False once someone answered it. */
+  stale: boolean;
+  /** When it was flagged ("Stale since Sep 11"); null when the source can't say. */
+  since: string | null;
+  flaggedBy: Actor | null;
+  /** Its latest keep, or verification, for the receipt under the words. */
+  kept: { by: Actor | null; at: string; action: "kept" | "verified" } | null;
+  /** Agents' reads since that keep; null when they couldn't be counted. */
+  readsSince: number | null;
+  causes: StaleCause[];
+  /** Words a source suggests for "Update it", and who suggested them from what. */
+  suggestion: { statement: string; by: Actor; from: string } | null;
+}
+
+/** A person's answer to a stale flag (spec VerifyAnswer). */
+export type VerifyAnswer = "still_true" | "update" | "forget";
+
+export interface VerifyResult {
+  ref: string;
+  answer: VerifyAnswer;
+  /** The memory's version after it (its next If-Match). */
+  version: number;
+  /** The receipt Undo addresses; null for forget, which nothing undoes. */
+  receipt: string | null;
 }
 
 /** Why a memory goes with another one's Forget (spec CarryReason). */
@@ -206,17 +324,24 @@ export type TombstoneStepKind =
   | "artifacts"
   | "caches"
   | "ledger"
-  | "agent";
+  | "agent"
+  | "checks";
 
 export interface TombstoneStepLine {
   key: string;
   kind: TombstoneStepKind;
   /** done, waiting, held, failed or unreachable (spec StepStatus). */
   status: "done" | "waiting" | "held" | "failed" | "unreachable";
-  /** Spec StepReason: hand_edit, stopped, copy, delivery, compiling, paused, disconnected, next_read. */
+  /** Spec StepReason: hand_edit, stopped, copy, delivery, compiling, paused, disconnected, next_read, offline, next_check. */
   reason: string | null;
   at: string | null;
-  target: { label: string; kind: string; delivery: string } | null;
+  target: {
+    label: string;
+    kind: string;
+    delivery: string;
+    /** A home file's machine (the personal layer): its name, and when its daemon was last seen. */
+    machine?: { name: string; lastSeenAt: string | null } | null;
+  } | null;
   /** The compile (C-) that rewrote it. */
   compile: string | null;
   /** An agent told: its registry key (or name). */
@@ -232,7 +357,8 @@ export interface UnreachableLine {
     | "backups"
     | "llm"
     | "hand_edits"
-    | "copies";
+    | "copies"
+    | "source_files";
   files: string[];
   repositories: string[];
   agents: string[];
@@ -243,6 +369,10 @@ export interface UnreachableLine {
     zeroRetention: boolean;
   }[];
   targets: string[];
+  /** With hand_edits: the machines whose home files have them. */
+  machines?: string[];
+  /** With source_files: how many of the person's own files. */
+  count?: number | null;
 }
 
 /**
@@ -343,6 +473,24 @@ export interface MemoriesSource {
     keep?: boolean;
     idempotencyKey: string;
   }): Promise<DecisionResult>;
+  /**
+   * Which repositories it applies in, from `version` (If-Match); `repos:
+   * []` is everywhere (POST /v2/memories/{ref}:scope). The words don't
+   * change. `receipt` undoes it (the person's own, for 10 minutes). A
+   * failure throws (see command-error.ts).
+   */
+  scope(input: {
+    space: SpaceSummary;
+    ref: string;
+    version: number;
+    repos: string[];
+    idempotencyKey: string;
+  }): Promise<{
+    ref: string;
+    version: number;
+    repos: string[];
+    receipt: string | null;
+  }>;
   /** What a Forget would do. Changes nothing. */
   previewForget(input: {
     space: SpaceSummary;
@@ -368,6 +516,29 @@ export interface MemoriesSource {
     ref: string;
     idempotencyKey: string;
   }): Promise<void>;
+  /** Why a memory is stale (VerifyStale); null when there's no such memory. */
+  stale(input: {
+    space: SpaceSummary;
+    ref: string;
+    signal?: AbortSignal;
+  }): Promise<StaleWhy | null>;
+  /**
+   * Answer a stale flag from `version` (If-Match): still true, new words
+   * (`statement`), or forget it (with `carries` and `note`, as Forget).
+   * A failure throws (see command-error.ts).
+   */
+  verify(input: {
+    space: SpaceSummary;
+    ref: string;
+    version: number;
+    answer: VerifyAnswer;
+    statement?: string;
+    carries?: string[];
+    note?: string;
+    idempotencyKey: string;
+  }): Promise<VerifyResult>;
+  /** The demo's report, on hand for the first render. */
+  peekStale?(slug: string, ref: string): StaleWhy | null | undefined;
   /** A forgotten memory's tombstone; null when it isn't forgotten. */
   tombstone(input: {
     space: SpaceSummary;

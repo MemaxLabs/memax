@@ -20,6 +20,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
 	"github.com/MemaxLabs/memax/packages/server/internal/sealer"
+	"github.com/MemaxLabs/memax/packages/server/internal/stalesweep"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
@@ -36,7 +37,8 @@ func TestWorkerRiverConfig_QueuesAndMiddleware(t *testing.T) {
 
 	want := map[string]int{river.QueueDefault: 20, "dreams": 3, "chat": 8, ledger.QueueCompile: compile.MaxWorkers,
 		ledger.QueueJudge: judge.MaxWorkers, ledger.QueueIndex: v2index.MaxWorkers, ledger.QueueSeal: sealer.MaxWorkers,
-		ledger.QueueForget: forget.MaxWorkers, ledger.QueueSwitch: v2switch.MaxWorkers, ledger.QueueDream: v2dream.MaxWorkers}
+		ledger.QueueForget: forget.MaxWorkers, ledger.QueueSwitch: v2switch.MaxWorkers, ledger.QueueDream: v2dream.MaxWorkers,
+		ledger.QueueStale: stalesweep.MaxWorkers}
 	if len(cfg.Queues) != len(want) {
 		t.Errorf("queues = %v, want %v", cfg.Queues, want)
 	}

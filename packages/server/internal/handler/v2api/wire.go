@@ -56,6 +56,8 @@ type memoryDetail struct {
 	Reads    *ledger.MemoryReads    `json:"reads,omitempty"`
 	// ForgetRequests wait for a person to forget it, or keep it.
 	ForgetRequests []ledger.ForgetRequest `json:"forget_requests,omitempty"`
+	// Checked is its conditions' last check, once one reported on them.
+	Checked *ledger.MemoryChecked `json:"checked,omitempty"`
 }
 
 // commandResult is ledger.Result without Replayed: a replay returns the
@@ -134,6 +136,12 @@ type editRequest struct {
 }
 
 type reviewRequest struct {
+	commandFields
+}
+
+type scopeRequest struct {
+	// Repos is required: an empty list is everywhere.
+	Repos *[]string `json:"repos"`
 	commandFields
 }
 

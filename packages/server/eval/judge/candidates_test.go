@@ -123,7 +123,7 @@ func TestCandidates(t *testing.T) {
 	}
 	newSpace := func(name string) uuid.UUID {
 		id := uuid.New()
-		if _, err := pool.Exec(ctx, `INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind) VALUES ($1, $2, $3, 'team', $4, 'project')`,
+		if _, err := pool.Exec(ctx, `INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind, v2_enabled_at) VALUES ($1, $2, $3, 'team', $4, 'project', now())`,
 			id, name, id.String(), user); err != nil {
 			t.Fatal(err)
 		}

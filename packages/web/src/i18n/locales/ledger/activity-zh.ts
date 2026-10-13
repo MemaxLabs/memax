@@ -56,7 +56,8 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     compiles: "编译",
     notRecorded: "还没开始记录",
   },
-  retention: "Pro 保留 30 天的动态。Team 方案全部保留，并且可以导出。",
+  retention:
+    "动态在 Free 套餐上保留 30 天，Pro 套餐 90 天，Team 套餐一年。回执永久保留。",
   export: {
     loaded: "导出 CSV · 已载入 {n} 条",
     loadedOne: "导出 CSV · 已载入 1 条",
@@ -179,6 +180,7 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     paused: "{actor}暂停了 {agent}。",
     resumed: "{actor}恢复了 {agent}。",
     disconnected: "{actor}断开了 {agent}，它的凭据已吊销。",
+    rekeyed: "{actor}给 {agent} 换了新的启动密钥，旧密钥已失效。",
     revised: "{actor}修订了简报（{ref}）。",
     configured: "{actor}更改了 {ref} 的编译方式。",
     requested: "{actor}请求编译 {ref}。",
@@ -203,6 +205,13 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     switched:
       "{actor}把这个空间切换到 V2。Agent 现在读取的是人在这里保留的内容。",
     switchedBack: "{actor}把这个空间切换回 V1。",
+    machineLinked:
+      "{actor}连接了 {ref}：这个空间会写进它上面各个 agent 自己的文件。",
+    machineRenamed: "{actor}重命名了 {ref}。",
+    machineUnlinked: "{actor}把这个空间从 {ref} 上移除了。",
+    scoped: "{actor}改动了 {ref} 的适用范围。",
+    conditionsChanged: "{actor}改动了 {ref} 成立的前提。",
+    unflagged: "{actor}去掉了 {ref} 的过时标记：它依赖的前提又成立了。",
     other: "{actor}改动了 {ref}。",
   },
 };

@@ -187,8 +187,9 @@ func TestLiveModel(t *testing.T) {
 	if p, err := strconv.Atoi(os.Getenv("IMPORT_EVAL_PARALLEL")); err == nil && p > 0 {
 		parallel = p
 	}
-	t.Logf("tiers: primary %s, fallback %s; zdr %v; %d imports of %s, %d proposals a call, %d at once",
-		cfg.Primary.Model, cfg.Fallback.Model, cfg.ZeroDataRetention, len(sets), set, size, parallel)
+	t.Logf("tiers: primary %s (thinking %s), fallback %s (thinking %s); zdr %v; %d imports of %s, %d proposals a call, %d at once",
+		cfg.Primary.Model, cfg.Primary.Thinking, cfg.Fallback.Model, cfg.Fallback.Thinking, cfg.ZeroDataRetention, len(sets), set,
+		size, parallel)
 
 	for _, run := range liveRuns(t, cfg) {
 		gatewayMark, modelMark := meter.Mark(), model.mark()
@@ -242,6 +243,10 @@ func TestLiveModel(t *testing.T) {
 			}
 			if (tier.Temperature == nil) != (cl.Temperature == nil) || (cl.Temperature != nil && *cl.Temperature != *tier.Temperature) {
 				t.Errorf("%s: a %s call's temperature isn't its tier's", run.name, cl.Model)
+				break
+			}
+			if tier.Thinking != (anthropic.Thinking{}) && (cl.Thinking != tier.Thinking.Mode || cl.Effort != tier.Thinking.Effort) {
+				t.Errorf("%s: a %s call's thinking is %s, its tier's %s", run.name, cl.Model, cl.ThinkingLabel(), tier.Thinking)
 				break
 			}
 		}
@@ -373,7 +378,7 @@ func writeRun(path string, run liveRun, set string, size int, runs []checked, to
 	for _, tier := range []judge.Tier{run.cfg.Primary, run.cfg.Fallback} {
 		if tier.Enabled() {
 			rec.Routing[tier.Model] = map[string]any{"only": tier.Routing.Providers, "quantizations": tier.Routing.Quantizations,
-				"temperature": tier.Temperature, "strict": tier.Strict}
+				"temperature": tier.Temperature, "strict": tier.Strict, "thinking": tier.Thinking.String()}
 		}
 	}
 	// Every group the model named, scored at bar 0: the sweep's input.

@@ -100,6 +100,9 @@ type Classification struct {
 	LLM, Strong int64
 	// Calls counts model calls, by tier, for metrics and tests.
 	Calls map[string]int
+	// Refused counts the calls the model declined (anthropic.ErrRefusal),
+	// by tier. A tier that declines isn't asked again: the next tier is.
+	Refused map[string]int
 }
 
 // ErrNoAnswer: no tier gave a valid answer.
@@ -127,7 +130,7 @@ func NewClassifier(m Model, cfg Config) *Classifier {
 // Classify judges a proposal against its candidates in one call (and, for
 // pairs that touch a decision in force, one more on the strong tier).
 func (c *Classifier) Classify(ctx context.Context, p Proposal, cands []Candidate) (Classification, error) {
-	cls := Classification{Calls: map[string]int{}}
+	cls := Classification{Calls: map[string]int{}, Refused: map[string]int{}}
 	if len(cands) == 0 {
 		return cls, nil
 	}
@@ -185,7 +188,8 @@ func (c *Classifier) Classify(ctx context.Context, p Proposal, cands []Candidate
 }
 
 // ask tries each tier in turn, each twice (the second time with what was
-// wrong), and returns the first valid answer.
+// wrong), and returns the first valid answer. A tier that declines
+// (anthropic.ErrRefusal) goes straight to the next.
 func (c *Classifier) ask(ctx context.Context, cls *Classification, tiers []Tier, p Proposal, cands []Candidate) ([]Pair, []Condition, Tier, error) {
 	system := systemPrompt(c.cfg.Conditions)
 	var last error
@@ -211,6 +215,10 @@ func (c *Classifier) ask(ctx context.Context, cls *Classification, tiers []Tier,
 			last = err
 			if ctx.Err() != nil {
 				return nil, nil, Tier{}, fmt.Errorf("%w: %v", ErrNoAnswer, ctx.Err())
+			}
+			if errors.Is(err, anthropic.ErrRefusal) {
+				cls.Refused[t.Name]++
+				break
 			}
 			// The retry says what was wrong, so the model can fix it.
 			prompt = base + "\n\nYour previous answer was not usable (" +

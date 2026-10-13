@@ -5,15 +5,18 @@ import {
   use,
   useCallback,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { CommandMode } from "@memaxlabs/ledger";
 
 /**
- * The frame's layers: ⌘K (Ask or remember) and the `?` sheet. Exactly
- * one floats at a time (design-system README, "Paper, not glass"), so
- * opening one closes the other.
+ * The frame's layers: ⌘K (Ask or remember), the `?` sheet, Verify
+ * (VerifyStale, V on a stale memory) and New space (NewSpace, from the
+ * space switcher). Exactly one floats at a time
+ * (design-system README, "Paper, not glass"), so opening one closes the
+ * others.
  */
 interface CommandState {
   open: boolean;
@@ -24,12 +27,26 @@ interface CommandState {
   session: number;
 }
 
+/** VerifyStale on one memory of the frame's space. */
+interface VerifyState {
+  ref: string;
+  /** Bumps on every open, so a fresh open starts from the defaults. */
+  session: number;
+}
+
 interface OverlayValue {
   command: CommandState;
   openCommand: (mode?: CommandMode, query?: string) => void;
   setCommandOpen: (open: boolean) => void;
   keysOpen: boolean;
   setKeysOpen: (open: boolean) => void;
+  verify: VerifyState | null;
+  openVerify: (ref: string) => void;
+  closeVerify: () => void;
+  /** New space: open, by session (each opening starts from the defaults), or null. */
+  newSpace: number | null;
+  openNewSpace: () => void;
+  closeNewSpace: () => void;
 }
 
 const OverlayContext = createContext<OverlayValue | null>(null);
@@ -42,9 +59,14 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     session: 0,
   });
   const [keysOpen, setKeysOpenState] = useState(false);
+  const [verify, setVerify] = useState<VerifyState | null>(null);
+  const [newSpace, setNewSpace] = useState<number | null>(null);
+  const sessions = useRef(0);
 
   const openCommand = useCallback((mode: CommandMode = "ask", query = "") => {
     setKeysOpenState(false);
+    setVerify(null);
+    setNewSpace(null);
     setCommand((prev) => ({
       open: true,
       mode,
@@ -54,7 +76,11 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setCommandOpen = useCallback((open: boolean) => {
-    if (open) setKeysOpenState(false);
+    if (open) {
+      setKeysOpenState(false);
+      setVerify(null);
+      setNewSpace(null);
+    }
     setCommand((prev) =>
       open
         ? {
@@ -67,13 +93,60 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setKeysOpen = useCallback((open: boolean) => {
-    if (open) setCommand((prev) => ({ ...prev, open: false }));
+    if (open) {
+      setCommand((prev) => ({ ...prev, open: false }));
+      setVerify(null);
+      setNewSpace(null);
+    }
     setKeysOpenState(open);
   }, []);
 
+  const openVerify = useCallback((ref: string) => {
+    setCommand((prev) => ({ ...prev, open: false }));
+    setKeysOpenState(false);
+    setNewSpace(null);
+    setVerify((prev) => ({ ref, session: (prev?.session ?? 0) + 1 }));
+  }, []);
+
+  const closeVerify = useCallback(() => setVerify(null), []);
+
+  const openNewSpace = useCallback(() => {
+    setCommand((prev) => ({ ...prev, open: false }));
+    setKeysOpenState(false);
+    setVerify(null);
+    sessions.current += 1;
+    setNewSpace(sessions.current);
+  }, []);
+
+  const closeNewSpace = useCallback(() => setNewSpace(null), []);
+
   const value = useMemo(
-    () => ({ command, openCommand, setCommandOpen, keysOpen, setKeysOpen }),
-    [command, openCommand, setCommandOpen, keysOpen, setKeysOpen],
+    () => ({
+      command,
+      openCommand,
+      setCommandOpen,
+      keysOpen,
+      setKeysOpen,
+      verify,
+      openVerify,
+      closeVerify,
+      newSpace,
+      openNewSpace,
+      closeNewSpace,
+    }),
+    [
+      command,
+      openCommand,
+      setCommandOpen,
+      keysOpen,
+      setKeysOpen,
+      verify,
+      openVerify,
+      closeVerify,
+      newSpace,
+      openNewSpace,
+      closeNewSpace,
+    ],
   );
   return <OverlayContext value={value}>{children}</OverlayContext>;
 }

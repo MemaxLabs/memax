@@ -3,11 +3,14 @@ package plans
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
@@ -20,13 +23,35 @@ type Registry struct {
 
 	mu    sync.RWMutex
 	plans map[string]*model.Plan // plan ID → plan
+
+	// overrides caches each person's limit overrides (UserOverrides).
+	omu       sync.Mutex
+	overrides map[string]cachedOverrides
+}
+
+// OverridesTTL is how long a person's limit overrides are kept in memory.
+// They change only when an operator sets them, yet every rate-limited
+// request read them from Postgres (twice: the registry's limits and the
+// resolver's), a round trip of about 24 ms each in production. An
+// operator's change applies on its own process at once (ForgetOverrides)
+// and on every other within the TTL.
+const OverridesTTL = time.Minute
+
+// maxCachedOverrides bounds the cache: past it, expired entries go, and if
+// that isn't enough, all of them.
+const maxCachedOverrides = 50_000
+
+type cachedOverrides struct {
+	values map[string]any
+	until  time.Time
 }
 
 // NewRegistry creates a registry. Call Load() then Start() to initialize.
 func NewRegistry(s store.Store) *Registry {
 	return &Registry{
-		store: s,
-		plans: make(map[string]*model.Plan),
+		store:     s,
+		plans:     make(map[string]*model.Plan),
+		overrides: make(map[string]cachedOverrides),
 	}
 }
 
@@ -210,12 +235,63 @@ func (r *Registry) GetUserLimits(ctx context.Context, userID, planID string) mod
 	}
 
 	// Apply per-user overrides
-	override, err := r.store.GetPlanOverride(ctx, userID)
-	if err != nil || override == nil {
-		return limits
-	}
-	ApplyOverrides(&limits, override.Overrides)
+	ApplyOverrides(&limits, r.UserOverrides(ctx, userID))
 	return limits
+}
+
+// UserOverrides returns a person's limit overrides (none is nil), from
+// memory when read within OverridesTTL, else from the store. A failed read
+// isn't kept: the next request asks again.
+func (r *Registry) UserOverrides(ctx context.Context, userID string) map[string]any {
+	if r == nil {
+		return nil
+	}
+	now := time.Now()
+	r.omu.Lock()
+	if e, ok := r.overrides[userID]; ok && now.Before(e.until) {
+		r.omu.Unlock()
+		return e.values
+	}
+	r.omu.Unlock()
+	if r.store == nil {
+		return nil
+	}
+	o, err := r.store.GetPlanOverride(ctx, userID)
+	var values map[string]any
+	switch {
+	case err == nil && o != nil:
+		values = o.Overrides
+	case err != nil && !errors.Is(err, pgx.ErrNoRows):
+		return nil
+	}
+	r.omu.Lock()
+	if r.overrides == nil {
+		r.overrides = make(map[string]cachedOverrides)
+	}
+	if len(r.overrides) >= maxCachedOverrides {
+		for id, e := range r.overrides {
+			if !now.Before(e.until) {
+				delete(r.overrides, id)
+			}
+		}
+		if len(r.overrides) >= maxCachedOverrides {
+			clear(r.overrides)
+		}
+	}
+	r.overrides[userID] = cachedOverrides{values: values, until: now.Add(OverridesTTL)}
+	r.omu.Unlock()
+	return values
+}
+
+// ForgetOverrides drops a person's cached overrides, after an operator
+// set or removed them, so this process reads them again at once.
+func (r *Registry) ForgetOverrides(userID string) {
+	if r == nil {
+		return
+	}
+	r.omu.Lock()
+	delete(r.overrides, userID)
+	r.omu.Unlock()
 }
 
 // ApplyOverrides merges the override map onto the limits struct.

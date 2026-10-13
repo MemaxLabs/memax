@@ -49,6 +49,19 @@ type SpaceGrant struct {
 	// space, without another round trip. Empty in a scope built otherwise.
 	Slug string
 	Name string
+	// OnV2 is whether the V2 record serves the space (hubs.v2_enabled_at),
+	// read with the grant: Ask decides on it before any transaction. A
+	// command decides on the value its own transaction reads (spaceRow).
+	OnV2 bool
+	// The plan rows decisions here are made under (Plans), read with the
+	// grant: PlanID is the person's effective plan (their own or their
+	// teams', the best; planresolver keeps it), HubPlanID the space's
+	// team subscription ("" without one) and OwnerPlanID its owner's
+	// effective plan. Empty in a scope built otherwise, which enforces no
+	// plan.
+	PlanID      string
+	HubPlanID   string
+	OwnerPlanID string
 }
 
 // Grant returns the grant for a space, if the scope includes it.
@@ -108,22 +121,84 @@ type Querier interface {
 // before any ledger transaction starts: identity resolution is the trust
 // root that scope is built from, so it can't itself run under that scope.
 func ResolveUserScope(ctx context.Context, db Querier, userID uuid.UUID) (Scope, error) {
-	rows, err := db.Query(ctx, `
-		SELECT h.id, h.tenant_id, h.space_kind,
-		       CASE WHEN h.owner_id = $1 THEN 'owner' ELSE m.role END, h.slug, h.name
-		  FROM public.hubs h
-		  LEFT JOIN public.hub_members m ON m.hub_id = h.id AND m.user_id = $1
-		 WHERE h.owner_id = $1 OR m.user_id = $1
-		 ORDER BY h.id`, userID)
+	rows, err := db.Query(ctx, userScopeSQL, userID)
 	if err != nil {
 		return Scope{}, fmt.Errorf("ledger: resolve scope: %w", err)
 	}
+	return ScanUserScope(rows, userID)
+}
+
+// QueueUserScope queues ResolveUserScope's statement in b, to go to
+// Postgres in the same round trip as what else b holds (the request
+// middleware's hub list, handler.HubContext). Its answer lands in out,
+// and its error in errOut, never in the batch: whatever else b reads
+// stands when the scope can't be read, and the caller reads it again.
+func QueueUserScope(b *pgx.Batch, userID uuid.UUID, out *Scope, errOut *error) {
+	b.Queue(userScopeSQL, userID).Query(func(rows pgx.Rows) error {
+		*out, *errOut = ScanUserScope(rows, userID)
+		return nil
+	})
+}
+
+// planOfSQL is the plan row a person is on, the person being the SQL
+// expression who: the effective plan the plan resolver computed and keeps
+// current (planresolver.InvalidateUser on every plan or membership
+// change), else their personal plan.
+func planOfSQL(who string) string {
+	return `COALESCE((SELECT c.effective_plan FROM public.effective_plan_cache c WHERE c.user_id = ` + who + `),
+		       (SELECT u.personal_plan_id FROM public.users u WHERE u.id = ` + who + `), '')`
+}
+
+// spacePlansSQL are a space's plan columns (SpaceGrant.HubPlanID and
+// OwnerPlanID) for the hub h: its team's active subscription, and its
+// owner's plan.
+var spacePlansSQL = `COALESCE((SELECT hs.plan_id FROM public.hub_subscriptions hs WHERE hs.hub_id = h.id AND hs.status = 'active'), ''),
+		       ` + planOfSQL("h.owner_id")
+
+// scopePlansSQL are a grant's plan columns (SpaceGrant.PlanID, HubPlanID,
+// OwnerPlanID) for the hub h and the person who: index lookups in the
+// statement the scope is read with, so plans cost no round trip.
+func scopePlansSQL(who string) string {
+	return planOfSQL(who) + `,
+		       ` + spacePlansSQL
+}
+
+// userScopeSQL is ResolveUserScope's statement: the spaces of user $1.
+var userScopeSQL = `
+		SELECT h.id, h.tenant_id, h.space_kind,
+		       CASE WHEN h.owner_id = $1 THEN 'owner' ELSE m.role END, h.slug, h.name, h.v2_enabled_at IS NOT NULL,
+		       ` + scopePlansSQL("$1") + `
+		  FROM public.hubs h
+		  LEFT JOIN public.hub_members m ON m.hub_id = h.id AND m.user_id = $1
+		 WHERE h.owner_id = $1 OR m.user_id = $1
+		 ORDER BY h.id`
+
+// KeyScopeSQL is ResolveUserScope's statement for the user an API key
+// belongs to, by the key's SHA-256 ($1), so a credential's lookup and
+// its scope go to Postgres in one round trip (a start key's, the cloud
+// start's hot path). Read its rows with ScanUserScope once the key's row
+// names the person; a key that doesn't resolve reads no rows.
+var KeyScopeSQL = `
+		WITH k AS (SELECT user_id FROM public.api_keys WHERE key_hash = $1 AND revoked_at IS NULL)
+		SELECT h.id, h.tenant_id, h.space_kind,
+		       CASE WHEN h.owner_id = (SELECT user_id FROM k) THEN 'owner' ELSE m.role END, h.slug, h.name,
+		       h.v2_enabled_at IS NOT NULL,
+		       ` + scopePlansSQL("(SELECT user_id FROM k)") + `
+		  FROM public.hubs h
+		  LEFT JOIN public.hub_members m ON m.hub_id = h.id AND m.user_id = (SELECT user_id FROM k)
+		 WHERE h.owner_id = (SELECT user_id FROM k) OR m.user_id = (SELECT user_id FROM k)
+		 ORDER BY h.id`
+
+// ScanUserScope reads ResolveUserScope's rows (or KeyScopeSQL's) into the
+// scope of userID, and closes them.
+func ScanUserScope(rows pgx.Rows, userID uuid.UUID) (Scope, error) {
 	defer rows.Close()
 	s := Scope{PersonID: userID}
 	for rows.Next() {
 		var g SpaceGrant
 		var kind, v1Role string
-		if err := rows.Scan(&g.SpaceID, &g.TenantID, &kind, &v1Role, &g.Slug, &g.Name); err != nil {
+		if err := rows.Scan(&g.SpaceID, &g.TenantID, &kind, &v1Role, &g.Slug, &g.Name, &g.OnV2,
+			&g.PlanID, &g.HubPlanID, &g.OwnerPlanID); err != nil {
 			return Scope{}, fmt.Errorf("ledger: resolve scope: %w", err)
 		}
 		g.Kind = policy.SpaceKind(kind)

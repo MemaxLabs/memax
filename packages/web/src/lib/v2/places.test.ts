@@ -9,6 +9,7 @@ import {
   routeOfRail,
   spaceHasPlace,
   switchHref,
+  v1SpaceHref,
 } from "./places";
 
 describe("places", () => {
@@ -62,5 +63,19 @@ describe("places", () => {
       "/memax-v2/today",
     );
     expect(spaceHasPlace("project", "decisions")).toBe(false);
+  });
+
+  it("opens a space still on V1 at its V1 memories", () => {
+    expect(v1SpaceHref({ slug: "acme-web", kind: "team" })).toBe(
+      "/h/acme-web/memories",
+    );
+    // V1 names a person's own personal space "personal" (its slug there
+    // is their user id).
+    expect(
+      v1SpaceHref({
+        slug: "0192a7c0-0000-7000-8000-000000000001",
+        kind: "personal",
+      }),
+    ).toBe("/h/personal/memories");
   });
 });

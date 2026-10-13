@@ -29,7 +29,7 @@ func TestForgetANoteLeavesTheWordsNowhere(t *testing.T) {
 	s := newForgetStack(t)
 	ctx := context.Background()
 	zz := s.user("zz")
-	sp := s.space(zz, policy.SpaceTeam, "acme")
+	sp := s.v1Space(zz, policy.SpaceTeam, "acme")
 	tok := s.session(zz)
 	token := word("zn")
 	title := "Vault rotation by " + token

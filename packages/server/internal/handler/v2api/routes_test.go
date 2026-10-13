@@ -61,6 +61,7 @@ var sampleRequests = map[string]struct {
 	header map[string]string
 }{
 	"listSpaces":         {path: "/v2/spaces"},
+	"search":             {path: "/v2/search?q=deploy&space=memax-v2&kind=fact&include_notes=true&limit=10"},
 	"rememberMemory":     {path: "/v2/spaces/memax-v2/memories", body: `{"statement":"x","section":"decisions"}`},
 	"listMemories":       {path: "/v2/spaces/memax-v2/memories?state=kept&state=proposed&limit=10"},
 	"findNearDuplicates": {path: "/v2/spaces/memax-v2/memories:near-duplicates", body: `{"statement":"Use pnpm catalogs"}`},
@@ -70,28 +71,42 @@ var sampleRequests = map[string]struct {
 	"listReads":          {path: "/v2/spaces/memax-v2/reads"},
 	"listCheckpoints":    {path: "/v2/spaces/memax-v2/checkpoints?limit=5"},
 	"recordCompileLoad":  {path: "/v2/spaces/memax-v2/compile-loads", body: `{"compile":"C-0001","agent":"claude-code"}`},
-	"getMemory":          {path: "/v2/memories/M-0001?space=memax-v2"},
-	"keepMemory":         {path: "/v2/memories/M-0001:keep?space=memax-v2", header: map[string]string{"If-Match": `"1"`}},
-	"editMemory":         {path: "/v2/memories/M-0001:edit?space=memax-v2", body: `{"statement":"y"}`, header: map[string]string{"If-Match": `"1"`}},
-	"rejectMemory":       {path: "/v2/memories/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:reject", body: `{"reason":"duplicate"}`},
-	"getConflict":        {path: "/v2/memories/M-0431/conflict?space=memax-v2&with=M-0174"},
-	"resolveConflict":    {path: "/v2/memories/M-0431:resolve-conflict?space=memax-v2", body: `{"choice":"keep_this"}`},
-	"undoReceipt":        {path: "/v2/receipts/" + sampleID + ":undo"},
-	"listAgents":         {path: "/v2/agents"},
-	"listSpaceAgents":    {path: "/v2/spaces/memax-v2/agents"},
-	"getAgent":           {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"},
-	"setAgentAutonomy":   {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/spaces/memax-v2", body: `{"autonomy":"write"}`},
-	"pauseAgent":         {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:pause"},
-	"resumeAgent":        {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:resume", body: `{"reason":"done testing"}`},
-	"disconnectAgent":    {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:disconnect"},
+	"startSession":       {path: "/v2/spaces/memax-v2/session-starts", body: `{"agent":"copilot","files":[{"path":"AGENTS.md","compile":"C-0001"}]}`},
+	"listConditions":     {path: "/v2/spaces/memax-v2/conditions"},
+	"reportChecks": {path: "/v2/spaces/memax-v2/check-runs", body: `{"repository":"MemaxLabs/memax","branch":"main",` +
+		`"commit":"0000000000000000000000000000000000000001","commit_at":"2026-10-11T09:00:00Z","trigger":"schedule",` +
+		`"device":"dev-1","complete":true,"results":[]}`},
+	"getMemory":        {path: "/v2/memories/M-0001?space=memax-v2"},
+	"keepMemory":       {path: "/v2/memories/M-0001:keep?space=memax-v2", header: map[string]string{"If-Match": `"1"`}},
+	"editMemory":       {path: "/v2/memories/M-0001:edit?space=memax-v2", body: `{"statement":"y"}`, header: map[string]string{"If-Match": `"1"`}},
+	"scopeMemory":      {path: "/v2/memories/M-0001:scope?space=memax-v2", body: `{"repos":[]}`},
+	"rejectMemory":     {path: "/v2/memories/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:reject", body: `{"reason":"duplicate"}`},
+	"getConflict":      {path: "/v2/memories/M-0431/conflict?space=memax-v2&with=M-0174"},
+	"resolveConflict":  {path: "/v2/memories/M-0431:resolve-conflict?space=memax-v2", body: `{"choice":"keep_this"}`},
+	"undoReceipt":      {path: "/v2/receipts/" + sampleID + ":undo"},
+	"listAgents":       {path: "/v2/agents"},
+	"listSpaceAgents":  {path: "/v2/spaces/memax-v2/agents"},
+	"getAgent":         {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"},
+	"setAgentAutonomy": {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/spaces/memax-v2", body: `{"autonomy":"write"}`},
+	"pauseAgent":       {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:pause"},
+	"resumeAgent":      {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:resume", body: `{"reason":"done testing"}`},
+	"disconnectAgent":  {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:disconnect"},
+	"rekeyAgent":       {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:rekey"},
+	"createCloudAgent": {path: "/v2/cloud-agents", body: `{"agent":"copilot","space":"memax-v2"}`},
 
 	"getBrief":          {path: "/v2/spaces/memax-v2/brief"},
 	"reviseBrief":       {path: "/v2/spaces/memax-v2/brief", body: `{"title":"Brief","sections":[{"key":"decisions","heading":"Decisions","items":[{"ref":"M-0219"}]}]}`, header: map[string]string{"If-Match": `"1"`}},
 	"listBriefVersions": {path: "/v2/spaces/memax-v2/brief/versions?limit=5"},
 	"restoreBriefVersion": {path: "/v2/spaces/memax-v2/brief/versions/1:restore", body: `{"reason":"back to the first"}`,
 		header: map[string]string{"If-Match": `"2"`}},
-	"listTargets":       {path: "/v2/spaces/memax-v2/targets"},
-	"createTarget":      {path: "/v2/spaces/memax-v2/targets", body: `{"kind":"agents_md"}`},
+	"listTargets":  {path: "/v2/spaces/memax-v2/targets"},
+	"createTarget": {path: "/v2/spaces/memax-v2/targets", body: `{"kind":"agents_md"}`},
+	"listMachines": {path: "/v2/spaces/memax-v2/machines"},
+	"linkMachine": {path: "/v2/spaces/memax-v2/machines",
+		body: `{"device_id":"` + sampleID + `","name":"work-mbp","platform":"darwin","files":[{"kind":"codex_user"}]}`},
+	"renameMachine": {path: "/v2/machines/" + sampleID, body: `{"name":"Work laptop"}`,
+		header: map[string]string{"Idempotency-Key": "k-rename"}},
+	"unlinkMachine":     {path: "/v2/machines/" + sampleID + ":unlink"},
 	"configureTarget":   {path: "/v2/targets/" + sampleID, body: `{"enabled":false}`, header: map[string]string{"Idempotency-Key": "k-configure"}},
 	"compileTarget":     {path: "/v2/targets/" + sampleID + ":compile"},
 	"getTargetPreview":  {path: "/v2/targets/" + sampleID + "/preview"},
@@ -120,6 +135,8 @@ var sampleRequests = map[string]struct {
 	"declineForget":        {path: "/v2/memories/" + sampleID + ":decline-forget"},
 	"previewForget":        {path: "/v2/memories/M-0001/forget-preview?space=memax-v2"},
 	"getTombstone":         {path: "/v2/memories/M-0001/tombstone?space=memax-v2"},
+	"getStaleReport":       {path: "/v2/memories/M-0001/stale?space=memax-v2"},
+	"verifyMemory":         {path: "/v2/memories/M-0001:verify?space=memax-v2", body: `{"answer":"still_true"}`, header: map[string]string{"If-Match": `"1"`}},
 	"listTombstones":       {path: "/v2/spaces/memax-v2/tombstones?limit=5"},
 	"listNotices":          {path: "/v2/notices"},
 	"ackNotices":           {path: "/v2/notices:ack", body: `{"ids":["` + sampleID + `"]}`},
@@ -299,6 +316,7 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "SpaceKind", specEnum(t, "SpaceKind"), []string{string(policy.SpacePersonal), string(policy.SpaceProject), string(policy.SpaceTeam)})
 	sameSet(t, "Role", specEnum(t, "Role"), []string{string(policy.RoleOwner), string(policy.RoleMember), string(policy.RoleViewer)})
 	sameSet(t, "Autonomy", specEnum(t, "Autonomy"), strs(policy.Autonomies))
+	sameSet(t, "PlanTier", specEnum(t, "PlanTier"), strs(policy.PlanTiers))
 	sameSet(t, "AgentKind", specEnum(t, "AgentKind"), strs(ledger.AgentKinds))
 	sameSet(t, "AgentSurface", specEnum(t, "AgentSurface"), strs(ledger.AgentSurfaces))
 	sameSet(t, "AgentState", specEnum(t, "AgentState"), strs(ledger.ConnectionStates))
@@ -310,7 +328,9 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 		stringConsts(t, "../../ledger/policy/spaces.go", "Code")...),
 		stringConsts(t, "../../ledger/policy/devices.go", "Code")...),
 		stringConsts(t, "../../ledger/policy/sessions.go", "Code")...),
-		stringConsts(t, "../../ledger/policy/assurance.go", "Code")...))
+		append(append(stringConsts(t, "../../ledger/policy/assurance.go", "Code"),
+			stringConsts(t, "../../ledger/policy/machines.go", "Code")...),
+			stringConsts(t, "../../ledger/policy/plans.go", "Code")...)...))
 	sameSet(t, "PasskeyFailure", specEnum(t, "PasskeyFailure"), []string{
 		string(passkeys.ReasonMalformed), string(passkeys.ReasonUnknown), string(passkeys.ReasonExpired), string(passkeys.ReasonUsed),
 		string(passkeys.ReasonOtherSession), string(passkeys.ReasonOtherRequest), string(passkeys.ReasonNoCredential),

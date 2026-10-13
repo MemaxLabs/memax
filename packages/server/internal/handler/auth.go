@@ -23,6 +23,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/auth"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
@@ -601,13 +602,18 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 // UpdateMe updates the user's display name.
 // PATCH /v1/auth/me
 func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
-	userID := UserIDFromRequest(r, h.jwtSecret)
-	if userID == "" {
+	claims := ClaimsFromRequest(r, h.jwtSecret)
+	if claims == nil || claims.Sub == "" {
 		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
 			Error: &model.Error{Code: "unauthorized", Message: "Invalid or missing access token."},
 		})
 		return
 	}
+	if !isPersonClaims(claims) {
+		writeError(w, http.StatusForbidden, "forbidden", "Only you, signed in, can change your profile. An agent can't.")
+		return
+	}
+	userID := claims.Sub
 
 	var req struct {
 		DisplayName string `json:"display_name"`
@@ -648,6 +654,13 @@ func (h *AuthHandler) Impersonate(w http.ResponseWriter, r *http.Request) {
 	// Block chained impersonation: an impersonation token cannot mint another.
 	if claims.ImpersonatorID != "" {
 		writeError(w, http.StatusForbidden, "forbidden", "Cannot impersonate while already impersonating.")
+		return
+	}
+	// Only an operator signed in on the web app impersonates: never an
+	// agent's token (an MCP grant, which this route would otherwise take
+	// since it reads the JWT itself) or the CLI.
+	if !isPersonClaims(claims) || claims.Surface != auth.SurfaceWeb {
+		writeError(w, http.StatusForbidden, "forbidden", "Impersonate from the web app, signed in as yourself.")
 		return
 	}
 
@@ -895,6 +908,11 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// A key may be wider than the credential asking for it (all hubs,
+	// standalone, any permissions), so only the person mints one.
+	if refuseUnlessPerson(w, r, true, "create API keys") {
+		return
+	}
 
 	var req struct {
 		Name          string   `json:"name"`
@@ -1079,6 +1097,9 @@ func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if refuseUnlessPerson(w, r, false, "list API keys") {
+		return
+	}
 
 	rows, err := h.pool.Query(context.Background(),
 		`SELECT id, name, prefix, scopes, expires_at, last_used, created_at,
@@ -1175,6 +1196,13 @@ func (h *AuthHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	keyID := r.PathValue("id")
+	// The person revokes any of their keys; a key may revoke itself (a
+	// script retiring its own credential), and nothing else.
+	grant := grantFromRequest(r)
+	revokesItself := grant.PrincipalType == "api_key" && grant.GrantID != "" && grant.GrantID == keyID
+	if !revokesItself && refuseUnlessPerson(w, r, false, "revoke API keys") {
+		return
+	}
 
 	// Capture the prior agent assignment before deleting so we can
 	// fire agent.changed for the ex-owner's connected-agents refresh.
@@ -1258,17 +1286,11 @@ func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	grant := grantFromRequest(r)
-	// Only user-session JWTs may modify key metadata. API-key and
-	// OAuth-grant principals are explicitly rejected — the former
-	// would let a key alter its own attribution, the latter would let
-	// an agent change another key's settings. "local" is the
-	// memory-mode principal used when JWT_SECRET is unset (dev
-	// without auth); treat it like "user" for this endpoint so
-	// local-dev still works.
-	if grant.PrincipalType != "user" && grant.PrincipalType != "local" {
-		writeJSON(w, http.StatusForbidden, model.ApiResponse{
-			Error: &model.Error{Code: "forbidden", Message: "Only user sessions can modify API key metadata."},
-		})
+	// Only the person's own session may modify key metadata. API-key,
+	// OAuth-grant and agent-token principals are rejected: the first
+	// would let a key alter its own attribution, the others would let
+	// an agent change another key's settings.
+	if refuseUnlessPerson(w, r, false, "change API keys") {
 		return
 	}
 	if !grant.DefaultPermissions.Has(PermSettingsWrite) {
@@ -1496,11 +1518,77 @@ func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// apiKeySQL reads an API key by its SHA-256 ($1); scanAPIKey reads it.
+const apiKeySQL = `SELECT id, user_id, expires_at, hub_id, agent_name,
+			COALESCE(hub_scope_mode, 'all_accessible'),
+			ARRAY(SELECT hub_id::text FROM unnest(COALESCE(hub_ids, ARRAY[]::uuid[])) AS hub_id),
+			COALESCE(default_permissions, ARRAY[]::text[]),
+			COALESCE(trust_level, 'elevated'),
+			rate_limit_tier,
+			COALESCE(standalone, false),
+			last_used
+		FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL`
+
 // ResolveAPIKey looks up an API key by its plaintext value, returning the user ID and optional hub scope.
 func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 	hash := sha256.Sum256([]byte(key))
 	keyHash := hex.EncodeToString(hash[:])
 
+	result := scanAPIKey(h.pool.QueryRow(context.Background(), apiKeySQL, keyHash))
+	if result.UserID == "" {
+		return APIKeyResult{}
+	}
+
+	// Update last_used asynchronously, at most once a minute.
+	if !usedRecently(result.lastUsed) {
+		h.touchKey(keyHash)
+	}
+
+	return result
+}
+
+// ResolveStartKey resolves an API key on the cloud start's route, and the
+// scope of the person it belongs to, in one round trip to Postgres: the
+// key, its person's spaces (ledger.KeyScopeSQL) and its last_used, which
+// nothing reads, go out in one pipeline (cloud warm-start design §3.6: a
+// whole start in about six round trips). The scope is the zero Scope when
+// the key doesn't resolve.
+func (h *AuthHandler) ResolveStartKey(ctx context.Context, key string) (APIKeyResult, ledger.Scope) {
+	hash := sha256.Sum256([]byte(key))
+	keyHash := hex.EncodeToString(hash[:])
+	var result APIKeyResult
+	b := &pgx.Batch{}
+	b.Queue(apiKeySQL, keyHash).QueryRow(func(row pgx.Row) error {
+		result = scanAPIKey(row)
+		return nil
+	})
+	var scope ledger.Scope
+	var scopeErr error
+	b.Queue(ledger.KeyScopeSQL, keyHash).Query(func(rows pgx.Rows) error {
+		// The key's row came first in the pipeline, so its person is known.
+		if id, err := uuid.Parse(result.UserID); err == nil {
+			scope, scopeErr = ledger.ScanUserScope(rows, id)
+		}
+		return nil
+	})
+	b.Queue(`UPDATE api_keys SET last_used = now()
+	          WHERE key_hash = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())`, keyHash)
+	if err := h.pool.SendBatch(ctx, b).Close(); err != nil {
+		slog.Warn("start key: could not resolve", "error", err)
+		return APIKeyResult{}, ledger.Scope{}
+	}
+	if result.UserID == "" || scopeErr != nil {
+		if scopeErr != nil {
+			slog.Warn("start key: could not read the scope", "error", scopeErr)
+		}
+		return APIKeyResult{}, ledger.Scope{}
+	}
+	return result, scope
+}
+
+// scanAPIKey reads apiKeySQL's row: the zero result for a key that is
+// missing, revoked, expired or has no permission Memax knows.
+func scanAPIKey(row pgx.Row) APIKeyResult {
 	var userID string
 	var expiresAt *time.Time
 	var hubID *string
@@ -1512,16 +1600,8 @@ func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 	var trustLevel string
 	var rateLimitTier *string
 	var standalone bool
-	err := h.pool.QueryRow(context.Background(),
-		`SELECT id, user_id, expires_at, hub_id, agent_name,
-			COALESCE(hub_scope_mode, 'all_accessible'),
-			ARRAY(SELECT hub_id::text FROM unnest(COALESCE(hub_ids, ARRAY[]::uuid[])) AS hub_id),
-			COALESCE(default_permissions, ARRAY[]::text[]),
-			COALESCE(trust_level, 'elevated'),
-			rate_limit_tier,
-			COALESCE(standalone, false)
-		FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL`, keyHash,
-	).Scan(&id, &userID, &expiresAt, &hubID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &standalone)
+	var lastUsed *time.Time
+	err := row.Scan(&id, &userID, &expiresAt, &hubID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &standalone, &lastUsed)
 	if err != nil {
 		return APIKeyResult{}
 	}
@@ -1561,13 +1641,7 @@ func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 	if rateLimitTier != nil {
 		result.RateLimitTier = *rateLimitTier
 	}
-
-	// Update last_used asynchronously
-	go func() {
-		h.pool.Exec(context.Background(),
-			`UPDATE api_keys SET last_used = $1 WHERE key_hash = $2`, time.Now(), keyHash)
-	}()
-
+	result.lastUsed = lastUsed
 	return result
 }
 
@@ -1575,7 +1649,30 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 	if userID == "" || grantID == "" {
 		return APIKeyResult{}
 	}
+	result, lastUsed := scanGrant(h.pool.QueryRow(context.Background(), grantSQL, grantID, userID), grantID)
+	if result.UserID != "" && !usedRecently(lastUsed) {
+		h.touchGrant(grantID)
+	}
+	return result
+}
 
+// grantSQL reads an OAuth grant ($1) of its person ($2): scanGrant's row.
+const grantSQL = `SELECT user_id, COALESCE(agent_name, ''),
+			COALESCE(hub_scope_mode, 'hub_allowlist'),
+			ARRAY(SELECT hub_id::text FROM unnest(COALESCE(hub_ids, ARRAY[]::uuid[])) AS hub_id),
+			COALESCE(default_permissions, ARRAY[]::text[]),
+			COALESCE(trust_level, 'standard'),
+			rate_limit_tier,
+			expires_at,
+			COALESCE(scope, ''),
+			last_used
+		FROM oauth_grants
+		WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL`
+
+// scanGrant reads grantSQL's row: the zero result for a grant that is
+// missing, revoked, expired or has no permission Memax knows, and when it
+// was last used.
+func scanGrant(row pgx.Row, grantID string) (APIKeyResult, *time.Time) {
 	var resolvedUserID string
 	var agentName string
 	var hubScopeMode string
@@ -1585,24 +1682,13 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 	var rateLimitTier *string
 	var expiresAt *time.Time
 	var scope string
-	err := h.pool.QueryRow(context.Background(),
-		`SELECT user_id, COALESCE(agent_name, ''),
-			COALESCE(hub_scope_mode, 'hub_allowlist'),
-			ARRAY(SELECT hub_id::text FROM unnest(COALESCE(hub_ids, ARRAY[]::uuid[])) AS hub_id),
-			COALESCE(default_permissions, ARRAY[]::text[]),
-			COALESCE(trust_level, 'standard'),
-			rate_limit_tier,
-			expires_at,
-			COALESCE(scope, '')
-		FROM oauth_grants
-		WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL`,
-		grantID, userID,
-	).Scan(&resolvedUserID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &expiresAt, &scope)
+	var lastUsed *time.Time
+	err := row.Scan(&resolvedUserID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &expiresAt, &scope, &lastUsed)
 	if err != nil {
-		return APIKeyResult{}
+		return APIKeyResult{}, nil
 	}
 	if expiresAt != nil && time.Now().After(*expiresAt) {
-		return APIKeyResult{}
+		return APIKeyResult{}, nil
 	}
 
 	perms, invalid := PermissionSetFromStrings(defaultPermissions)
@@ -1610,7 +1696,7 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 		slog.Warn("oauth grant contains unknown permissions", "grant_id", grantID, "permissions", invalid)
 	}
 	if len(perms) == 0 {
-		return APIKeyResult{}
+		return APIKeyResult{}, nil
 	}
 
 	result := APIKeyResult{
@@ -1629,13 +1715,114 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 	if rateLimitTier != nil {
 		result.RateLimitTier = *rateLimitTier
 	}
+	return result, lastUsed
+}
 
+// touchGrant writes a grant's last_used in the background: at most once a
+// minute (usedRecently), since an agent's calls come many a minute.
+func (h *AuthHandler) touchGrant(grantID string) {
 	go func() {
 		_, _ = h.pool.Exec(context.Background(),
 			`UPDATE oauth_grants SET last_used = $1 WHERE id = $2::uuid`, time.Now(), grantID)
 	}()
+}
 
-	return result
+// touchKey writes an API key's last_used in the background, at most once a
+// minute (usedRecently).
+func (h *AuthHandler) touchKey(keyHash string) {
+	go func() {
+		_, _ = h.pool.Exec(context.Background(),
+			`UPDATE api_keys SET last_used = $1 WHERE key_hash = $2`, time.Now(), keyHash)
+	}()
+}
+
+// PrefetchAPIKey resolves an API key with what HubContext reads next, in
+// one round trip to Postgres: the key's row, the hub list of the person it
+// names (store.HubsOfAPIKey) and, when asked, their V2 scope
+// (ledger.KeyScopeSQL) go out in one pipeline, all keyed by the key's
+// hash, so nothing waits for the key to say whose it is. last_used is
+// written as ResolveAPIKey writes it. The Prefetched is nil when the key
+// doesn't resolve.
+func (h *AuthHandler) PrefetchAPIKey(ctx context.Context, key string, withScope bool) (APIKeyResult, *Prefetched) {
+	hash := sha256.Sum256([]byte(key))
+	keyHash := hex.EncodeToString(hash[:])
+	var result APIKeyResult
+	pf := &Prefetched{}
+	var scope ledger.Scope
+	var scopeErr error
+	scoped := false
+	b := &pgx.Batch{}
+	b.Queue(apiKeySQL, keyHash).QueryRow(func(row pgx.Row) error {
+		result = scanAPIKey(row)
+		return nil
+	})
+	store.QueueRequestHubs(b, store.HubsOfAPIKey(keyHash), &pf.Hubs, &pf.Listed)
+	if withScope {
+		b.Queue(ledger.KeyScopeSQL, keyHash).Query(func(rows pgx.Rows) error {
+			// The key's row came first in the pipeline, so its person is known.
+			if id, err := uuid.Parse(result.UserID); err == nil {
+				scope, scopeErr = ledger.ScanUserScope(rows, id)
+				scoped = true
+			}
+			return nil
+		})
+	}
+	if err := h.pool.SendBatch(ctx, b).Close(); err != nil && result.UserID == "" {
+		slog.Warn("api key: could not resolve", "error", err)
+		return APIKeyResult{}, nil
+	}
+	if result.UserID == "" {
+		return APIKeyResult{}, nil
+	}
+	if !usedRecently(result.lastUsed) {
+		h.touchKey(keyHash)
+	}
+	pf.UserID = result.UserID
+	if scoped && scopeErr == nil {
+		pf.Scope = &scope
+	}
+	return result, pf
+}
+
+// PrefetchGrant resolves an OAuth grant with what HubContext reads next,
+// in one round trip: the grant's row, its person's hub list and, when
+// asked, their V2 scope, in one pipeline (the token names the person, so
+// nothing waits for the grant). last_used is written as ResolveOAuthGrant
+// writes it. The Prefetched is nil when the grant doesn't resolve.
+func (h *AuthHandler) PrefetchGrant(ctx context.Context, userID, grantID string, withScope bool) (APIKeyResult, *Prefetched) {
+	person, err := uuid.Parse(userID)
+	if err != nil || grantID == "" {
+		return h.ResolveOAuthGrant(userID, grantID), nil
+	}
+	var result APIKeyResult
+	var lastUsed *time.Time
+	pf := &Prefetched{}
+	var scope ledger.Scope
+	var scopeErr error
+	b := &pgx.Batch{}
+	b.Queue(grantSQL, grantID, userID).QueryRow(func(row pgx.Row) error {
+		result, lastUsed = scanGrant(row, grantID)
+		return nil
+	})
+	store.QueueRequestHubs(b, store.HubsOfUser(userID), &pf.Hubs, &pf.Listed)
+	if withScope {
+		ledger.QueueUserScope(b, person, &scope, &scopeErr)
+	}
+	if err := h.pool.SendBatch(ctx, b).Close(); err != nil && result.UserID == "" {
+		slog.Warn("oauth grant: could not resolve", "error", err)
+		return APIKeyResult{}, nil
+	}
+	if result.UserID == "" {
+		return APIKeyResult{}, nil
+	}
+	if !usedRecently(lastUsed) {
+		h.touchGrant(grantID)
+	}
+	pf.UserID = result.UserID
+	if withScope && scopeErr == nil && scope.PersonID == person {
+		pf.Scope = &scope
+	}
+	return result, pf
 }
 
 func uniqueNonEmptyStrings(values []string) []string {
@@ -1669,6 +1856,15 @@ func UserIDFromRequest(r *http.Request, jwtSecret []byte) string {
 		return ""
 	}
 	return claims.Sub
+}
+
+// isPersonClaims reports whether an access token is a person's own session
+// token, not an agent's: no agent name, no OAuth grant and no audience (an
+// MCP OAuth token names the MCP endpoint it is for). The routes that read
+// the JWT themselves, outside RequireAuth, check it where isPersonSession
+// would be checked.
+func isPersonClaims(c *auth.Claims) bool {
+	return c.AgentName == "" && c.GrantID == "" && len(c.Aud) == 0
 }
 
 // ClaimsFromRequest extracts full JWT claims (including agent_name for MCP OAuth tokens).

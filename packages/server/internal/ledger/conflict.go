@@ -272,7 +272,9 @@ func (w *writer) awaitWords(ctx context.Context, p conflictPair, m *Memory) erro
 
 // resolveConflict applies ResolveConflict.
 func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Result, error) {
-	this, grant, sp, replay, err := w.open(ctx, c.Memory)
+	// Both sides of every conflict it is in, in one statement: two people
+	// settling one conflict from either side lock in the same order.
+	this, grant, sp, replay, err := w.openWith(ctx, c.Memory, lockAlso{conflicts: true})
 	if err != nil {
 		return Result{}, err
 	}
@@ -297,7 +299,7 @@ func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Resul
 	if err := w.refuseImportPair(ctx, sp.ID, this, p.link.MemoryID); err != nil {
 		return Result{}, err
 	}
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, []uuid.UUID{p.link.MemoryID}, "FOR UPDATE")
+	locked, err := w.lockMemories(ctx, []uuid.UUID{p.link.MemoryID})
 	if err != nil {
 		return Result{}, err
 	}
@@ -830,16 +832,22 @@ func (w *writer) putVersion(ctx context.Context, sp spaceRow, m *Memory, draft i
 		}
 	}
 	w.indexVersion(sp.ID, m.ID, version)
+	conds, err := renewedConditions(sp, m.Conditions, statement, m.Applies)
+	if err != nil {
+		return Receipt{}, err
+	}
 	hash, bands := signature(statement)
 	if _, err := w.tx.Exec(ctx, fmt.Sprintf(`
 		UPDATE v2.memories
 		   SET current_version = $2, search = %s, content_sha256 = $4, minhash_bands = $5,
-		       flags = $6, stream_version = $7, last_receipt_id = $8, updated_at = now()
+		       flags = $6, conditions = $10, stream_version = $7, last_receipt_id = $8, updated_at = now()
 		 WHERE id = $1 AND space_id = $9`, fmt.Sprintf(searchExpr, "$3::text")),
-		m.ID, version, statement, hash, bands, m.Flags.Without(lifecycle.Stale).Strings(), rc.StreamVersion, rc.ID, sp.ID); err != nil {
+		m.ID, version, statement, hash, bands, m.Flags.Without(lifecycle.Stale).Strings(), rc.StreamVersion, rc.ID, sp.ID,
+		[]byte(conds)); err != nil {
 		return Receipt{}, fmt.Errorf("ledger: update memory: %w", err)
 	}
 	m.Version, m.Statement, m.Flags, m.streamVersion = version, statement, m.Flags.Without(lifecycle.Stale), rc.StreamVersion
+	m.Conditions = conds
 	return rc, nil
 }
 
@@ -1006,7 +1014,7 @@ func (l *Ledger) GetConflict(ctx context.Context, scope Scope, actor Actor, via 
 			return err
 		}
 		grant, _ := scope.Grant(this.SpaceID)
-		pa := toPolicyActor(actor, via, grant)
+		pa := toPolicyActor(actor, via, grant, l.plans)
 		question, labels, suggested, err := conflictWords(ctx, tx, p)
 		if err != nil {
 			return err

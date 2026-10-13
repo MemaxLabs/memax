@@ -192,7 +192,14 @@ function targetLines(
       key: "rewritten",
       title: interpolate(s.rewritten, {
         files: joinList(
-          written.map((x) => x.target!.label),
+          written.map((x) =>
+            x.target!.machine
+              ? interpolate(s.onMachine, {
+                  label: x.target!.label,
+                  machine: x.target!.machine.name,
+                })
+              : x.target!.label,
+          ),
           ctx.locale,
         ),
       }),
@@ -202,7 +209,14 @@ function targetLines(
   }
   for (const x of steps) {
     if (!x.target || written.includes(x)) continue;
-    const label = x.target.label;
+    const machine = x.target.machine;
+    // A home file is named with its machine: ~/.codex/AGENTS.md on work-mbp.
+    const label = machine
+      ? interpolate(s.onMachine, {
+          label: x.target.label,
+          machine: machine.name,
+        })
+      : x.target.label;
     const at = x.at ? stepTime(x.at, t, ctx) : s.waiting;
     if (x.status === "done") {
       out.push({
@@ -234,6 +248,26 @@ function targetLines(
         title: interpolate(s.failed, { label }),
         time: s.waiting,
         detail: s.failedDetail,
+      });
+    } else if (x.reason === "offline" && machine) {
+      out.push({
+        key: x.key,
+        state: "working",
+        title: interpolate(s.offline, {
+          label: x.target.label,
+          machine: machine.name,
+        }),
+        time: s.waiting,
+        detail: machine.lastSeenAt
+          ? interpolate(s.offlineDetail, {
+              machine: machine.name,
+              date: formatShortDate(
+                new Date(machine.lastSeenAt),
+                ctx.timeZone,
+                ctx.locale,
+              ),
+            })
+          : interpolate(s.offlineNever, { machine: machine.name }),
       });
     } else if (x.reason === "delivery") {
       out.push({
@@ -274,6 +308,26 @@ function internalLine(
     title,
     time: s.waiting,
     ...(x.kind === "ledger" ? { detail: s.ledgerDetail } : {}),
+  };
+}
+
+/**
+ * The check results members' machines kept: shown while a machine that
+ * checked the space hasn't checked it since (its daemon drops them when it
+ * hears of the Forget).
+ */
+function checksLine(
+  copy: TombstoneCopy,
+  x: TombstoneStepLine,
+): TombstoneLine | null {
+  if (x.status === "done") return null;
+  const s = copy.steps;
+  return {
+    key: x.key,
+    state: "working",
+    title: count(s.checksOne, s.checks, x.count ?? 0),
+    time: s.waiting,
+    detail: s.checksDetail,
   };
 }
 
@@ -351,6 +405,9 @@ export function tombstoneLines(
     if (x.kind === "artifacts" || x.kind === "caches" || x.kind === "ledger") {
       const line = internalLine(copy, x);
       if (line) lines.push(line);
+    } else if (x.kind === "checks") {
+      const line = checksLine(copy, x);
+      if (line) lines.push(line);
     }
   }
   // Agents told first, then those still to be told.
@@ -425,8 +482,22 @@ function reachLine(
         }),
       );
     case "hand_edits":
-      return u.files.length
-        ? [interpolate(r.handEdits, { files: list(u.files) })]
+      if (!u.files.length) return [];
+      return [
+        u.machines?.length
+          ? interpolate(r.handEditsOn, {
+              files: list(u.files),
+              machines: list(u.machines),
+            })
+          : interpolate(r.handEdits, { files: list(u.files) }),
+      ];
+    case "source_files":
+      return u.count
+        ? [
+            count(r.sourceFilesOne, r.sourceFiles, u.count, {
+              n: spell(ctx.app, u.count),
+            }),
+          ]
         : [];
     case "copies":
       return u.targets.length

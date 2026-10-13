@@ -30,7 +30,32 @@ const golden = "../../../sdk/src/v2/testdata/export-v1/memax-v2"
 // golden export, which its reader and verifier are tested on. Run with
 // -update after a deliberate change to the format, and commit both.
 func TestGoldenExport(t *testing.T) {
-	files := newFixture(t).render(t)
+	checkGolden(t, golden, newFixture(t).render(t))
+}
+
+// goldenPersonal is the personal fixture's export (personal-layer design
+// §5.5): home targets with their machines, and the machines' receipts.
+const goldenPersonal = "../../../sdk/src/v2/testdata/export-v1/personal"
+
+func TestGoldenPersonalExport(t *testing.T) {
+	files := newPersonalFixture(t).render(t)
+	checkGolden(t, goldenPersonal, files)
+	targets := string(files[export.TargetsFile])
+	for _, want := range []string{`"root": "home"`, `"platform": "darwin"`, `"name": "home-linux"`, `"unlinked_at": "2026-10-06T09:50:00.123456Z"`} {
+		if !strings.Contains(targets, want) {
+			t.Errorf("targets.json has no %s:\n%s", want, targets)
+		}
+	}
+	receipts := string(files[export.ReceiptsFile])
+	if !strings.Contains(receipts, `"action":"linked"`) || !strings.Contains(receipts, `"action":"unlinked"`) {
+		t.Errorf("receipts.jsonl hasn't the machines' receipts:\n%s", receipts)
+	}
+}
+
+// checkGolden compares an export with its golden folder, or rewrites the
+// folder with -update.
+func checkGolden(t *testing.T, golden string, files map[string][]byte) {
+	t.Helper()
 	if *update {
 		if err := os.RemoveAll(golden); err != nil {
 			t.Fatal(err)

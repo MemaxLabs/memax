@@ -288,7 +288,7 @@ func TestSecurity(t *testing.T) {
 	}
 	judge := s.Processors[0].Uses[0]
 	if judge.Use != "judge" || judge.Model != "deepseek/deepseek-v4.1-flash" || judge.MinPrecision != "fp8" ||
-		!judge.ZeroRetention || strings.Join(judge.Hosts, ",") != "together,baseten,coreweave,deepinfra" {
+		!judge.ZeroRetention || strings.Join(judge.Hosts, ",") != "together,baseten/fp8,coreweave,deepinfra" {
 		t.Errorf("the judge's tier: %+v", judge)
 	}
 	for _, u := range s.Processors[0].Uses {

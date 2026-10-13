@@ -288,9 +288,17 @@ export function activitySentences(
       return [one(s.resumed, { agent: agentObject })];
     case "disconnected":
       return [one(s.disconnected, { agent: agentObject })];
+    // A cloud agent's new start key, under the same connection.
+    case "rekeyed":
+      return [one(s.rekeyed, { agent: agentObject })];
     case "revised":
       return [one(s.revised, { ref: text(entry.object.ref) })];
     case "configured":
+      // A machine's configured receipt is its rename; it names the machine
+      // by its label, never its name.
+      if (entry.object.kind === "machine") {
+        return [one(s.machineRenamed, { ref: text(entry.object.ref) })];
+      }
       return [one(s.configured, { ref: text(entry.object.ref) })];
     case "requested":
       return [one(s.requested, { ref: text(entry.object.ref) })];
@@ -307,7 +315,12 @@ export function activitySentences(
     case "judged":
       return [one(s.judged, { ref: text(entry.object.ref) })];
     case "linked":
+      if (entry.object.kind === "machine") {
+        return [one(s.machineLinked, { ref: text(entry.object.ref) })];
+      }
       return [one(s.linked, { ref: text(entry.object.ref) })];
+    case "unlinked":
+      return [one(s.machineUnlinked, { ref: text(entry.object.ref) })];
     case "superseded":
       return [one(s.superseded, { ref: text(entry.object.ref) })];
     // The judge put a Write agent's write back in Review; the receipt's
@@ -343,6 +356,17 @@ export function activitySentences(
       return [one(s.published, { n: text(editionNumber(entry.object.ref)) })];
     case "folded":
       return [one(s.foldedNotes, { ref: text(entry.object.ref) })];
+    // Which repositories a memory applies in: a person widening it, or
+    // Memax tying what an earlier init imported to its repository.
+    case "scoped":
+      return [one(s.scoped, { ref: text(entry.object.ref) })];
+    // Its "stays true while" conditions changed (no words: the receipt's
+    // reason says which were kept).
+    case "conditions_changed":
+      return [one(s.conditionsChanged, { ref: text(entry.object.ref) })];
+    // Memax clearing its own stale flag: what failed holds again.
+    case "unflagged":
+      return [one(s.unflagged, { ref: text(entry.object.ref) })];
     default: {
       // Every verb the API can send has words above; this fails to compile
       // when the spec gains one. A newer server can still send a verb this

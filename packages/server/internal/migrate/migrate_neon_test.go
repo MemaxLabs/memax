@@ -15,7 +15,7 @@ import (
 )
 
 // v2Roles are the NOLOGIN roles the V2 migrations create and switch to.
-var v2Roles = []string{"memax_v2", "memax_v2_sealer", "memax_v2_compile_sweeper", "memax_v2_dream_sweeper", "memax_v2_metrics"}
+var v2Roles = []string{"memax_v2", "memax_v2_sealer", "memax_v2_compile_sweeper", "memax_v2_dream_sweeper", "memax_v2_metrics", "memax_v2_stale_sweeper"}
 
 // Staging and production run every migration as Neon's owner role, which
 // isn't a superuser: it has CREATEROLE, CREATEDB and BYPASSRLS; it owns
@@ -123,6 +123,8 @@ func TestMigrationsRunAsNeonsOwner(t *testing.T) {
 			`SELECT count(*)::text FROM v2.receipt_spaces()`},
 		{"memax_v2 calls a definer function that sets app.sweep", "memax_v2",
 			`SELECT coalesce(v2.passkey_owner('\x00'::bytea)::text, 'none') || coalesce(current_setting('app.sweep', true), '')`},
+		{"memax_v2 reads machines and checks a home path", "memax_v2",
+			`SELECT (SELECT count(*) FROM v2.machines)::text || v2.home_path_valid('codex_user', '.codex/AGENTS.md')::text`},
 	} {
 		tx, err := pool.Begin(ctx)
 		if err != nil {

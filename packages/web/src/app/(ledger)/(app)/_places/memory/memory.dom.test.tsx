@@ -26,12 +26,16 @@ import { KeymapProvider } from "@/lib/v2/keymap/react";
 import { createUndoStack } from "@/lib/v2/undo-stack";
 import { ToastProvider, ToastViewport } from "../../_components/toasts";
 import { LedgerDataProvider } from "../../_lib/data";
-import { OverlayProvider } from "../../_lib/overlays";
+import { OverlayProvider, useOverlays } from "../../_lib/overlays";
 import { SpaceViewContext } from "../../_lib/space-context";
 import { UndoStackProvider } from "../../_lib/undo";
 import { MemoryPlace } from "./index";
 
-const h = vi.hoisted(() => ({ source: null as LedgerDataSource | null }));
+const h = vi.hoisted(() => ({
+  source: null as LedgerDataSource | null,
+  search: "",
+  replace: null as null | ((href: string) => void),
+}));
 
 vi.mock("@/lib/v2/data/demo-source", async (load) => {
   const actual = await load<typeof import("@/lib/v2/data/demo-source")>();
@@ -47,15 +51,26 @@ vi.mock("@/lib/auth", () => ({
 }));
 vi.mock("@/lib/memax-client", () => ({ getMemaxClient: () => ({}) }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: (href: string) => h.replace?.(href),
+  }),
   usePathname: () => "/memax-v2/memories/M-0098",
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(h.search),
 }));
 
 afterEach(() => {
   cleanup();
   h.source = null;
+  h.search = "";
+  h.replace = null;
 });
+
+/** Which memory VerifyStale was opened for, as the frame would show it. */
+function VerifyProbe() {
+  const { verify } = useOverlays();
+  return <output data-testid="verify">{verify?.ref ?? ""}</output>;
+}
 
 const v2 = DEMO_SPACES.find((s) => s.slug === "memax-v2")!;
 
@@ -86,6 +101,7 @@ function renderMemory(
                       }}
                     >
                       <MemoryPlace memoryRef={ref} />
+                      <VerifyProbe />
                     </SpaceViewContext>
                     <ToastViewport />
                   </OverlayProvider>
@@ -188,6 +204,24 @@ describe("a memory's page", () => {
     expect(
       await screen.findByText("Copied [M-0219] and its link"),
     ).toBeTruthy();
+  });
+
+  it("opens VerifyStale from memax verify's link, once", async () => {
+    h.search = "overlay=verify&from=cli";
+    const replaced: string[] = [];
+    h.replace = (href) => {
+      replaced.push(href);
+      h.search = href.split("?")[1] ?? "";
+    };
+    renderMemory(
+      "M-0098",
+      createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("verify").textContent).toBe("M-0098"),
+    );
+    // The link's query is taken off, so a reload or Back doesn't open it again.
+    expect(replaced).toEqual(["/memax-v2/memories/M-0098?from=cli"]);
   });
 
   it("says when there's no memory with this ID", async () => {
@@ -467,6 +501,189 @@ describe("Forget on a memory's page", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Keep it" })).toBeNull(),
     );
+  });
+
+  it("words Memory.png's conditions and their last check", async () => {
+    renderMemory(
+      "M-0219",
+      createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 }),
+    );
+    const panel = await screen.findByRole("region", {
+      name: "Stays true while",
+    });
+    const lines = [...panel.querySelectorAll("div > span")].map(
+      (s) => s.textContent,
+    );
+    expect(lines).toEqual([
+      "github.com/riverqueue/river is in go.mod",
+      "docs/adr/004-queues.md is unchanged",
+      "Checked on main today at 14:31, when Claude Code started. Memax marks it stale if one stops holding.",
+    ]);
+    // Names and paths are set in mono, the manifest isn't.
+    expect(
+      [...panel.querySelectorAll("code")].map((c) => c.textContent),
+    ).toEqual(["github.com/riverqueue/river", "docs/adr/004-queues.md"]);
+  });
+
+  it("says derived conditions aren't checked yet, and lists the date", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const base = demo.memories.peekRecord!("memax-v2", "M-0098")!;
+    const record = {
+      ...base,
+      conditions: [
+        {
+          key: "c1",
+          kind: "path_exists" as const,
+          path: "internal/ask/config.go",
+          glob: null,
+        },
+        {
+          key: "c2",
+          kind: "file_contains" as const,
+          path: "internal/ask/config.go",
+          text: "ASK_MODEL",
+          word: true,
+        },
+        {
+          key: "c3",
+          kind: "path_exists" as const,
+          path: null,
+          glob: "packages/web/**",
+        },
+        {
+          key: "c4",
+          kind: "pr_state" as const,
+          repo: "MemaxLabs/memax",
+          number: 212,
+          state: "merged" as const,
+        },
+        { key: "date", kind: "date" as const, at: "2026-10-01T12:00:00Z" },
+      ],
+      checked: null,
+    };
+    const source: LedgerDataSource = {
+      ...demo,
+      memories: {
+        ...demo.memories,
+        peekRecord: () => record,
+        get: vi.fn(async () => record),
+      },
+    };
+    renderMemory("M-0098", source);
+    const panel = await screen.findByRole("region", {
+      name: "Stays true while",
+    });
+    expect(
+      [...panel.querySelectorAll("div > span")].map((s) => s.textContent),
+    ).toEqual([
+      "internal/ask/config.go is in the repository",
+      "internal/ask/config.go contains the word ASK_MODEL",
+      "A path matching packages/web/** is in the repository",
+      "PR #212 in MemaxLabs/memax is merged",
+      "Until Oct 1, 2026",
+      "Not checked yet.",
+    ]);
+  });
+
+  it("lists a date alone without waiting for a check", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const base = demo.memories.peekRecord!("memax-v2", "M-0098")!;
+    const record = {
+      ...base,
+      conditions: [
+        { key: "date", kind: "date" as const, at: "2026-10-01T12:00:00Z" },
+      ],
+      checked: null,
+    };
+    const source: LedgerDataSource = {
+      ...demo,
+      memories: {
+        ...demo.memories,
+        peekRecord: () => record,
+        get: vi.fn(async () => record),
+      },
+    };
+    renderMemory("M-0098", source);
+    const panel = await screen.findByRole("region", {
+      name: "Stays true while",
+    });
+    expect(panel.textContent).toContain("Until Oct 1, 2026");
+    expect(panel.textContent).not.toContain("Not checked yet.");
+  });
+
+  it("shows the repositories a personal fact applies in, widens it to everywhere, and undoes that", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const base = demo.memories.peekRecord!("memax-v2", "M-0098")!;
+    let record = { ...base, repos: ["acme/web"] };
+    const scope = vi.fn(async (input: { repos: string[] }) => {
+      record = { ...record, repos: input.repos };
+      return {
+        ref: "M-0098",
+        version: record.version,
+        repos: input.repos,
+        receipt: "receipt-scoped",
+      };
+    });
+    const undo = vi.fn(async () => {
+      record = { ...record, repos: ["acme/web"] };
+      return { refs: ["M-0098"] };
+    });
+    const source: LedgerDataSource = {
+      ...demo,
+      undo,
+      memories: {
+        ...demo.memories,
+        peekRecord: () => record,
+        get: vi.fn(async () => record),
+        scope,
+      },
+    };
+    renderMemory("M-0098", source);
+    const panel = await screen.findByRole("region", { name: "Applies in" });
+    expect(panel.textContent).toContain("acme/web");
+    expect(panel.textContent).toContain(
+      "It stays out of the files your agents load in every project",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Apply everywhere" }));
+    await waitFor(() => expect(scope).toHaveBeenCalledOnce());
+    expect(scope.mock.calls[0][0]).toMatchObject({
+      ref: "M-0098",
+      version: base.version,
+      repos: [],
+      idempotencyKey: expect.any(String),
+    });
+    expect(
+      await screen.findByText("M-0098 applies everywhere now"),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Applies in" })).toBeNull(),
+    );
+    // The person's own change, undone by its receipt: it applies in
+    // acme/web again.
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(
+      await screen.findByText(
+        "Undid the change. M-0098 applies where it did before.",
+      ),
+    ).toBeTruthy();
+    expect(undo).toHaveBeenCalledWith(
+      expect.objectContaining({ receipt: "receipt-scoped" }),
+    );
+    expect(
+      (await screen.findByRole("region", { name: "Applies in" })).textContent,
+    ).toContain("acme/web");
+  });
+
+  it("shows no repositories for a memory that applies everywhere", async () => {
+    renderMemory(
+      "M-0098",
+      createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 }),
+    );
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByRole("region", { name: "Applies in" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Apply everywhere" }),
+    ).toBeNull();
   });
 
   it("reads a forgotten memory's page as its tombstone (Tombstone.png)", async () => {

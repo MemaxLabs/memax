@@ -5,8 +5,10 @@ description: Link a repository to a space, so the daemon writes the space's comp
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-A space compiles to the files your agents already read: `AGENTS.md`, a
-`CLAUDE.md` that imports it, and path-scoped Cursor rules.
+A space compiles to the files your agents already read: `AGENTS.md`, with
+path-scoped facts under headings that name their paths, and a `CLAUDE.md`
+that imports it. Scoped rules files (Cursor's, Claude Code's, Copilot's,
+Devin's) are opt-in, since the agents that read them read `AGENTS.md` too.
 `memax link` tells this machine which repository a space compiles into.
 From then on, [the daemon](/cli/daemon) writes each compile there within
 seconds of a Keep.
@@ -16,6 +18,7 @@ seconds of a Keep.
 ```bash
 memax link [--space <slug>] [--yes]
 memax unlink
+memax link --home    # this machine's home, below
 ```
 
 | Flag             | Description                                                                         |
@@ -76,6 +79,21 @@ Memax never writes over a file it didn't write.
 `memax unlink` takes the `space:` line out of `.memax.yml` (and the file
 with it, if `memax link` created it) and drops the link from this machine.
 The files Memax wrote stay as they are.
+
+## This machine's home (`--home`)
+
+```bash
+memax link --home [--name <machine>] [--dry-run] [--yes]
+memax unlink --home
+```
+
+`memax link --home` links this machine's home to your Personal space
+instead of a repository: the daemon writes it into Claude Code's and
+Codex's own files here, read in every project. It shows each file and asks
+first; `--dry-run` shows them and stops, `--name` names the machine (the
+short host name by default), and `--yes` links without asking.
+`memax unlink --home` takes Memax's files and blocks back out. See
+[Your Personal space on every machine](/concepts/personal-layer).
 
 <Callout type="info">
   `memax link` refuses a `.memax.yml` that is a symlink: Memax writes only

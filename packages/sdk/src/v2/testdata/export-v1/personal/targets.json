@@ -1,0 +1,183 @@
+{
+  "format": "memax.targets.v1",
+  "targets": [
+    {
+      "id": "0199a1b2-c3d4-7e5f-8a9b-000000001020",
+      "space_id": "0199a1b2-c3d4-7e5f-8a9b-000000001001",
+      "tenant_id": "0199a1b2-c3d4-7e5f-8a9b-000000001002",
+      "kind": "claude_user",
+      "root": "home",
+      "machine": {
+        "id": "0199a1b2-c3d4-7e5f-8a9b-000000001010",
+        "label": "machine-1",
+        "name": "work-mbp",
+        "platform": "darwin",
+        "linked_at": "2026-10-06T09:30:00.123456Z"
+      },
+      "path": ".claude/rules/memax-personal.md",
+      "label": "~/.claude/rules/memax-personal.md",
+      "settings": {
+        "include": "kept_only",
+        "stale": "mark",
+        "size_budget": 6144,
+        "read_by": [
+          "claude-code"
+        ]
+      },
+      "delivery": "local",
+      "sync_state": "in_sync",
+      "version": 1,
+      "dirty_gen": 2,
+      "compiled_gen": 2,
+      "dirty_at": "2026-10-06T09:36:00.123456Z",
+      "last_compile": {
+        "id": "0199a1b2-c3d4-7e5f-8a9b-000000001030",
+        "ref": "C-0001",
+        "target_id": "0199a1b2-c3d4-7e5f-8a9b-000000001020",
+        "space_id": "0199a1b2-c3d4-7e5f-8a9b-000000001001",
+        "brief": "B-0001",
+        "brief_version": 1,
+        "generation": 2,
+        "status": "delivered",
+        "input_sha256": "aa",
+        "output_sha256": "bb",
+        "drift_sha256": "cc",
+        "bytes": 412,
+        "lines": 12,
+        "refs": [
+          "M-0001",
+          "M-0002"
+        ],
+        "dropped_for_budget": [],
+        "files": [
+          {
+            "path": ".claude/rules/memax-personal.md",
+            "sha256": "bb",
+            "drift_sha256": "cc",
+            "bytes": 412,
+            "lines": 12,
+            "refs": [
+              "M-0001",
+              "M-0002"
+            ],
+            "cites": [],
+            "dropped_for_budget": []
+          }
+        ],
+        "warnings": [],
+        "enqueued_at": "2026-10-06T09:37:00.123456Z",
+        "started_at": "2026-10-06T09:37:00.123456Z",
+        "compiled_at": "2026-10-06T09:37:00.123456Z",
+        "delivered_at": "2026-10-06T09:38:00.123456Z",
+        "receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000001408"
+      },
+      "delivered": {
+        "compile_id": "0199a1b2-c3d4-7e5f-8a9b-000000001030",
+        "compile": "C-0001",
+        "sha256": "cc",
+        "files": [
+          {
+            "path": ".claude/rules/memax-personal.md",
+            "sha256": "cc"
+          }
+        ],
+        "at": "2026-10-06T09:38:00.123456Z"
+      },
+      "open_drift": 0,
+      "created_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000001403",
+      "last_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000001403",
+      "created_at": "2026-10-06T09:30:00.123456Z",
+      "updated_at": "2026-10-06T09:38:00.123456Z"
+    },
+    {
+      "id": "0199a1b2-c3d4-7e5f-8a9b-000000001021",
+      "space_id": "0199a1b2-c3d4-7e5f-8a9b-000000001001",
+      "tenant_id": "0199a1b2-c3d4-7e5f-8a9b-000000001002",
+      "kind": "codex_user",
+      "root": "home",
+      "machine": {
+        "id": "0199a1b2-c3d4-7e5f-8a9b-000000001011",
+        "label": "machine-2",
+        "name": "home-linux",
+        "platform": "linux",
+        "linked_at": "2026-10-06T09:33:00.123456Z",
+        "unlinked_at": "2026-10-06T09:50:00.123456Z"
+      },
+      "path": ".codex/AGENTS.md",
+      "label": "~/.codex/AGENTS.md",
+      "settings": {
+        "include": "kept_only",
+        "stale": "mark",
+        "size_budget": 6144,
+        "user_owned": true,
+        "read_by": [
+          "codex"
+        ]
+      },
+      "delivery": "local",
+      "sync_state": "off",
+      "version": 2,
+      "dirty_gen": 2,
+      "compiled_gen": 2,
+      "dirty_at": "2026-10-06T09:36:00.123456Z",
+      "last_compile": {
+        "id": "0199a1b2-c3d4-7e5f-8a9b-000000001031",
+        "ref": "C-0002",
+        "target_id": "0199a1b2-c3d4-7e5f-8a9b-000000001021",
+        "space_id": "0199a1b2-c3d4-7e5f-8a9b-000000001001",
+        "brief": "B-0001",
+        "brief_version": 1,
+        "generation": 2,
+        "status": "delivered",
+        "input_sha256": "aa",
+        "output_sha256": "bb",
+        "drift_sha256": "cc",
+        "bytes": 412,
+        "lines": 12,
+        "refs": [
+          "M-0001",
+          "M-0002"
+        ],
+        "dropped_for_budget": [],
+        "files": [
+          {
+            "path": ".codex/AGENTS.md",
+            "sha256": "bb",
+            "drift_sha256": "cc",
+            "bytes": 412,
+            "lines": 12,
+            "refs": [
+              "M-0001",
+              "M-0002"
+            ],
+            "cites": [],
+            "dropped_for_budget": []
+          }
+        ],
+        "warnings": [],
+        "enqueued_at": "2026-10-06T09:37:00.123456Z",
+        "started_at": "2026-10-06T09:37:00.123456Z",
+        "compiled_at": "2026-10-06T09:37:00.123456Z",
+        "delivered_at": "2026-10-06T09:38:00.123456Z",
+        "receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000001409"
+      },
+      "delivered": {
+        "compile_id": "0199a1b2-c3d4-7e5f-8a9b-000000001031",
+        "compile": "C-0002",
+        "sha256": "cc",
+        "files": [
+          {
+            "path": ".codex/AGENTS.md",
+            "sha256": "cc"
+          }
+        ],
+        "at": "2026-10-06T09:38:00.123456Z"
+      },
+      "open_drift": 0,
+      "created_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000001405",
+      "last_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-00000000140b",
+      "created_at": "2026-10-06T09:30:00.123456Z",
+      "updated_at": "2026-10-06T09:50:00.123456Z"
+    }
+  ]
+}

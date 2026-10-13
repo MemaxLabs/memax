@@ -6,10 +6,10 @@ import { interpolate } from "@/i18n";
 import { memoriesLede } from "@/lib/v2/copy";
 import type { MemoryFilter } from "@/lib/v2/data/memories";
 import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
-import { EmptyState } from "../../_components/empty-state";
 import { useOverlays } from "../../_lib/overlays";
 import { PlaceColumn } from "../place";
 import { useRecordsView } from "../records-view";
+import { EmptySpaceSteps } from "../today/empty-space";
 import { FILTERS, Record } from "./record-list";
 import styles from "./memories.module.css";
 import { useSpaceExport } from "./use-export";
@@ -99,15 +99,8 @@ export function MemoriesPlace() {
         }
       />
       {empty ? (
-        <EmptyState
-          title={copy.empty.memories.title}
-          detail={copy.empty.memories.detail}
-          action={
-            <Button variant="secondary" icon="plus" onClick={remember}>
-              {copy.empty.remember}
-            </Button>
-          }
-        />
+        // Nothing in the space yet: its three steps to a first compile.
+        <EmptySpaceSteps view={view} />
       ) : (
         <Record
           view={view}

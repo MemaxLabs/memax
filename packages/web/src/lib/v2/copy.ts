@@ -82,10 +82,25 @@ export function statusLabel(
       return s.compiling;
     case "waiting-delivery":
       return count(s.waitingDeliveryOne, s.waitingDelivery, line.files);
+    case "machines-in-sync":
+      return count(s.machinesInSyncOne, s.machinesInSync, line.machines);
+    case "machine-drifted":
+      return interpolate(s.machineDrifted, { machine: line.machine });
+    case "machine-held":
+      return interpolate(s.machineHeld, { machine: line.machine });
+    case "machines-behind":
+      return interpolate(s.machinesBehind, {
+        reached: line.reached,
+        of: line.of,
+      });
+    case "no-machines":
+      return s.noMachines;
     case "no-agents":
       return s.noAgents;
     case "not-compiling":
       return s.notCompiling;
+    case "on-v1":
+      return s.onV1;
   }
 }
 
@@ -94,12 +109,16 @@ export function statusState(line: SyncLine) {
   switch (line.kind) {
     case "in-sync":
     case "files-in-sync":
+    case "machines-in-sync":
       return "kept" as const;
     case "drifted":
     case "held":
+    case "machine-drifted":
+    case "machine-held":
       return "proposed" as const;
     case "compiling":
     case "waiting-delivery":
+    case "machines-behind":
       return "working" as const;
     default:
       return "off" as const;
@@ -306,6 +325,20 @@ export function formatShortDate(
 ): string {
   return new Intl.DateTimeFormat(DATE_TAGS[locale], {
     timeZone,
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+/** A date with its year: "Oct 1, 2026" / "2026年10月1日". */
+export function formatDate(
+  date: Date,
+  timeZone: string,
+  locale: Locale,
+): string {
+  return new Intl.DateTimeFormat(DATE_TAGS[locale], {
+    timeZone,
+    year: "numeric",
     month: "short",
     day: "numeric",
   }).format(date);

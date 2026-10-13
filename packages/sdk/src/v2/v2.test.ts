@@ -222,6 +222,33 @@ describe("memax.v2.memories", () => {
     });
   });
 
+  it("sets which repositories a memory applies in", async () => {
+    const { memax, call } = client(
+      jsonResponse({
+        data: { ...result, memory: { ...memory, scope: { repos: [] } } },
+      }),
+    );
+
+    const got = await memax.v2.memories.scope(
+      "M-0219",
+      { repos: [], reason: "It holds everywhere." },
+      { idempotencyKey: "s", ifMatch: 3, space: "personal" },
+    );
+
+    const c = call();
+    expect(c.url).toBe(
+      "https://api.memax.app/v2/memories/M-0219:scope?space=personal",
+    );
+    expect(c.method).toBe("POST");
+    expect(c.headers).toMatchObject({
+      "Idempotency-Key": "s",
+      "If-Match": '"3"',
+    });
+    expect(c.body).toEqual({ repos: [], reason: "It holds everywhere." });
+    const scope: V2.MemoryScope = got.memory.scope;
+    expect(scope.repos).toEqual([]);
+  });
+
   it("reuses the Idempotency-Key when the transport retries", async () => {
     const fetchMock = vi
       .fn()
@@ -696,5 +723,59 @@ describe("memax.v2 conflicts and undo", () => {
       .catch((e: unknown) => e);
     expect((err as MemaxError).code).toBe("undo_refused");
     expect((err as MemaxError).details?.reason).toBe("window_passed");
+  });
+});
+
+describe("memax.v2.search", () => {
+  const receipt: V2.Receipt = {
+    id: memory.created_receipt_id,
+    seq: 12,
+    tenant_id: memory.tenant_id,
+    space_id: memory.space_id,
+    object_kind: "memory",
+    object_id: memory.id,
+    object_ref: memory.ref,
+    action: "kept",
+    actor_kind: "person",
+    via: "web",
+    occurred_at: memory.created_at,
+    recorded_at: memory.created_at,
+    stream_id: memory.id,
+    stream_version: 1,
+  };
+
+  it("searches every space, or the ones named, and pages by cursor", async () => {
+    const page: V2.SearchPage = {
+      items: [{ memory, receipts: [receipt] }],
+      has_more: true,
+      next_cursor: "czIwLjAxMjM0NQ",
+      lexical_only: false,
+    };
+    const { memax, call } = client(jsonResponse({ data: page }));
+    const got = await memax.v2.search("deploy target");
+    expect(got).toEqual(page);
+    expect(call().method).toBe("GET");
+    expect(call().url).toBe("https://api.memax.app/v2/search?q=deploy+target");
+
+    await memax.v2.search("deploy", {
+      spaces: ["memax-v2", "personal"],
+      kind: "decision",
+      includeNotes: true,
+      cursor: "abc",
+      limit: 10,
+    });
+    expect(call(1).url).toBe(
+      "https://api.memax.app/v2/search?q=deploy&space=memax-v2&space=personal&kind=decision&include_notes=true&cursor=abc&limit=10",
+    );
+  });
+
+  it("leaves include_notes out unless it is asked for", async () => {
+    const { memax, call } = client(
+      jsonResponse({
+        data: { items: [], has_more: false, lexical_only: true },
+      }),
+    );
+    await memax.v2.search("deploy", { includeNotes: false });
+    expect(call().url).toBe("https://api.memax.app/v2/search?q=deploy");
   });
 });

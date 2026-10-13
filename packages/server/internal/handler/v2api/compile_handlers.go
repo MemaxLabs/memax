@@ -44,6 +44,9 @@ type restoreBriefResult struct {
 
 type targetList struct {
 	Items []ledger.Target `json:"items"`
+	// OnV2 tells a daemon whether to deliver: a space switched back to V1
+	// has its files written by V1's sync again.
+	OnV2 bool `json:"on_v2"`
 }
 
 type targetResult struct {
@@ -54,9 +57,10 @@ type targetResult struct {
 }
 
 type compileRunPage struct {
-	Items      []ledger.CompileRun `json:"items"`
-	HasMore    bool                `json:"has_more"`
-	NextCursor string              `json:"next_cursor,omitempty"`
+	Items         []ledger.CompileRun `json:"items"`
+	HasMore       bool                `json:"has_more"`
+	NextCursor    string              `json:"next_cursor,omitempty"`
+	RetentionDays int                 `json:"retention_days,omitempty"`
 }
 
 type targetPreview struct {
@@ -122,6 +126,8 @@ type reviseBriefRequest struct {
 
 type createTargetRequest struct {
 	Kind     ledger.TargetKind           `json:"kind"`
+	Root     ledger.TargetRoot           `json:"root"`
+	Machine  *uuid.UUID                  `json:"machine"`
 	Path     *string                     `json:"path"`
 	Settings *ledger.TargetSettingsInput `json:"settings"`
 	Delivery *ledger.Delivery            `json:"delivery"`
@@ -301,12 +307,27 @@ func (h *Handler) listTargets(w http.ResponseWriter, r *http.Request) {
 		writeError(w, e)
 		return
 	}
-	targets, err := h.ledger.ListTargets(r.Context(), p.scope, sp.SpaceID)
+	var targets []ledger.Target
+	var err error
+	if m := r.URL.Query().Get("machine"); m != "" {
+		// One machine's home files, as its daemon polls them.
+		id, perr := uuid.Parse(m)
+		if perr != nil {
+			writeError(w, invalidRequest("machine", "Name a machine by its id."))
+			return
+		}
+		if !h.machineReader(w, r, p, sp) {
+			return
+		}
+		targets, err = h.ledger.ListMachineTargets(r.Context(), p.scope, sp.SpaceID, id)
+	} else {
+		targets, err = h.ledger.ListTargets(r.Context(), p.scope, sp.SpaceID)
+	}
 	if err != nil {
 		writeError(w, h.fromLedger(r, err))
 		return
 	}
-	writeData(w, http.StatusOK, targetList{Items: nonNil(targets)})
+	writeData(w, http.StatusOK, targetList{Items: nonNil(targets), OnV2: sp.OnV2})
 }
 
 // POST /v2/spaces/{space}/targets
@@ -326,10 +347,18 @@ func (h *Handler) createTarget(w http.ResponseWriter, r *http.Request) {
 		writeError(w, e)
 		return
 	}
-	res, err := h.ledger.Apply(r.Context(), &ledger.ConfigureTarget{
+	if e := h.adaptersFor(r, req.Kind); e != nil {
+		writeError(w, e)
+		return
+	}
+	cmd := &ledger.ConfigureTarget{
 		Meta: p.meta(p.scope.Narrow(sp.SpaceID), key, req.commandFields), SpaceID: sp.SpaceID, Kind: req.Kind,
-		Path: req.Path, Settings: req.Settings, Delivery: req.Delivery,
-	})
+		Root: req.Root, Path: req.Path, Settings: req.Settings, Delivery: req.Delivery,
+	}
+	if req.Machine != nil {
+		cmd.Machine = *req.Machine
+	}
+	res, err := h.ledger.Apply(r.Context(), cmd)
 	if !h.commandOK(w, r, res, err) {
 		return
 	}
@@ -430,7 +459,8 @@ func (h *Handler) listCompileRuns(w http.ResponseWriter, r *http.Request) {
 		writeError(w, h.fromLedger(r, err))
 		return
 	}
-	writeData(w, http.StatusOK, compileRunPage{Items: nonNil(res.Runs), HasMore: res.HasMore, NextCursor: res.NextCursor})
+	writeData(w, http.StatusOK, compileRunPage{Items: nonNil(res.Runs), HasMore: res.HasMore, NextCursor: res.NextCursor,
+		RetentionDays: res.RetentionDays})
 }
 
 // POST /v2/targets/{target}/observations

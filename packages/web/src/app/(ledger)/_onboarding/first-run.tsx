@@ -66,7 +66,8 @@ function useTranscriptAgents(
  * did, as it does it. The page polls for the space init creates, then its
  * import, then the judge's and the conflict check's progress, and draws
  * the terminal from what arrives. A new person (no space on the V2
- * record) lands here after signing in.
+ * record, and no V1 work of theirs to switch) lands here after signing
+ * in; someone with V1 work lands on its switch, which links here.
  */
 export function FirstRunScreen() {
   const { t, locale } = useLocale();

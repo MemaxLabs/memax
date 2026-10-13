@@ -62,6 +62,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/trust"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2ui"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
@@ -683,7 +684,7 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 			memories.SetPasskeys(pk)
 		}
 	}
-	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore, llm, forgetBus, web, sessionStore, pk, accounts)
+	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore, llm, forgetBus, web, sessionStore, pk, accounts, planRegistry)
 	app.addClose(readRecorder.Close)
 	// V1's deletes of a hub and of a person's data forget the V2 record
 	// through the ledger first, when there is one.
@@ -865,11 +866,18 @@ func v2UIFromEnv(pool *pgxpool.Pool) *v2ui.Resolver {
 // can't reach from the same configuration (forget.HonestyFromEnv), and the
 // embeddings cache is purged when a Forget's propagation signals bus.
 func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store, llm *anthropic.Client,
-	bus *forget.Bus, web *websurface.Verifier, sessionStore *sessions.Store, pk *passkeys.Service, accounts v2api.Accounts) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
+	bus *forget.Bus, web *websurface.Verifier, sessionStore *sessions.Store, pk *passkeys.Service, accounts v2api.Accounts,
+	planRegistry *plans.Registry) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
 	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
 	dreamCfg := v2dream.ConfigFromEnv(os.LookupEnv)
 	opts := []ledger.Option{ledger.WithForgetHonesty(forget.HonestyFromEnv(os.LookupEnv)),
 		ledger.WithDreamUndoWindow(dreamCfg.UndoWindow)}
+	// The V2 plans (D9) decisions are made under, from the plans registry;
+	// enforced only with V2_PLAN_LIMITS=enforce.
+	planLimits := v2PlansFromEnv(planRegistry)
+	if planLimits != nil {
+		opts = append(opts, ledger.WithPlans(planLimits))
+	}
 	if queueClient != nil {
 		opts = append(opts, ledger.WithJobs(queueClient))
 		if embedCfg.Enabled() {
@@ -880,22 +888,37 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 	l := ledger.New(pool, opts...)
 	svc := compile.New(l, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL"), compile.WithToken(os.Getenv("COMPILE_SERVICE_TOKEN"))), blobStore,
 		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
+	if svc != nil {
+		// Which adapters the compile service has, read once at startup: a
+		// target of a kind it lacks is refused rather than failing to compile.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_ = svc.LoadAdapters(ctx) // a failure is logged; the next target creation asks again
+		}()
+	}
 	search, vectors := v2Retrieval(l, embedCfg)
 	if vectors != nil && bus != nil {
 		bus.Local.Register(func(uuid.UUID) { vectors.Purge() })
+	}
+	// The artifacts session starts diff are cached by key, and Forget
+	// re-renders them in place.
+	if svc != nil && bus != nil {
+		bus.Local.Register(svc.PurgeSpace)
 	}
 	// Nil without a database: nothing records reads.
 	rec := reads.New(l, reads.Options{})
 	if l != nil {
 		slog.Info("/v2 enabled", "compile_jobs", queueClient != nil, "compile_service", svc != nil,
-			"vectors", vectors != nil, "reads", rec != nil)
+			"vectors", vectors != nil, "reads", rec != nil, "plan_limits", planLimits.Enforced())
 	}
 	hopts := []v2api.Option{v2api.WithWebSurface(web), v2api.WithCompile(svc), v2api.WithSessions(sessionStore),
 		v2api.WithReads(rec), v2api.WithReceiptKeys(receiptKeysFromEnv()), v2api.WithPasskeys(pk), v2api.WithAccounts(accounts)}
 	if vectors != nil {
 		hopts = append(hopts, v2api.WithDrafts(vectors))
 	}
-	hopts = append(hopts, v2api.WithAsk(askService(l, search, llm)))
+	// Search across spaces runs the same hybrid search as recall and Ask.
+	hopts = append(hopts, v2api.WithSearch(search), v2api.WithAsk(askService(l, search, llm)))
 	// Dream runs in the worker; here, run-now queues a run under the plan's
 	// caps (the engine needs no model for that).
 	if queueClient != nil {
@@ -911,6 +934,17 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 	hopts = append(hopts, v2api.WithNotifications(v2api.NotificationDelivery{MorningEmail: dreamCfg.Email && emailProvider}),
 		v2api.WithTrust(trust.FromEnv(os.LookupEnv)))
 	return v2api.New(l, slog.Default(), hopts...), search, rec
+}
+
+// v2PlansFromEnv is the V2 plans over the registry (nil without one),
+// enforced when V2_PLAN_LIMITS says so. A value it doesn't know is logged
+// and leaves the limits off.
+func v2PlansFromEnv(registry *plans.Registry) *v2plans.Service {
+	enforce, err := v2plans.EnforceFromEnv(os.LookupEnv)
+	if err != nil {
+		slog.Error("V2 plan limits stay off", "error", err)
+	}
+	return v2plans.New(registry, enforce)
 }
 
 // askService builds ⌘K Ask (internal/ask) on the same hybrid search as
@@ -1066,7 +1100,15 @@ func configureAuth(pool *pgxpool.Pool, s store.Store) (*handler.AuthHandler, fun
 		})
 	}
 
-	requireAuth := handler.RequireAuth(jwtSecret, keyResolver, grantResolver)
+	var authOpts []handler.AuthOption
+	if authH != nil {
+		// A cloud start's key and its person's spaces in one round trip;
+		// any other key or OAuth grant with its person's hubs and V2 scope,
+		// in one round trip too (HubContext reads none of them again).
+		authOpts = append(authOpts, handler.WithStartKeys(authH.ResolveStartKey),
+			handler.WithCredentialPrefetch(authH))
+	}
+	requireAuth := handler.RequireAuth(jwtSecret, keyResolver, grantResolver, authOpts...)
 	if authH == nil {
 		return nil, requireAuth, nil
 	}

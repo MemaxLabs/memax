@@ -26,24 +26,49 @@ type spaceRow struct {
 	Kind     policy.SpaceKind
 	Name     string
 	Rules    policy.Rules
+	// Repository is the repository the space compiles for ("owner/name");
+	// Memax derives conditions only where there is one.
+	Repository string
+	// OnV2 is whether the V2 record serves the space (hubs.v2_enabled_at),
+	// read in the same statement as the rest, and Switching whether this
+	// command is one of the space's own switch steps (withSwitch).
+	OnV2      bool
+	Switching bool
 }
 
 func (s spaceRow) policy() policy.Space {
-	return policy.Space{Name: s.Name, Kind: s.Kind, Rules: s.Rules}
+	return policy.Space{Name: s.Name, Kind: s.Kind, Rules: s.Rules, OnV2: s.OnV2, Switching: s.Switching}
 }
 
 // spaceSQL reads the space $1.
-const spaceSQL = `SELECT id, tenant_id, kind, name, rules FROM v2.spaces WHERE id = $1`
+const spaceSQL = `SELECT id, tenant_id, kind, name, rules, v2_enabled_at IS NOT NULL, COALESCE(repository, '') FROM v2.spaces WHERE id = $1`
 
 func loadSpace(ctx context.Context, tx pgx.Tx, id uuid.UUID) (spaceRow, error) {
-	return scanSpace(tx.QueryRow(ctx, spaceSQL, id), id)
+	return scanSpace(ctx, tx.QueryRow(ctx, spaceSQL, id), id)
+}
+
+// switchKey marks a context as a space's switch running its steps.
+type switchKey struct{}
+
+// withSwitch marks ctx as the switch of spaceID running its steps
+// (RunSwitch): the commands they apply may write to the space's record
+// while it is still on V1 (policy.Space.Switching). Only this package can
+// set it, and only for that one space.
+func withSwitch(ctx context.Context, spaceID uuid.UUID) context.Context {
+	return context.WithValue(ctx, switchKey{}, spaceID)
+}
+
+// switching reports whether ctx is spaceID's switch running its steps.
+func switching(ctx context.Context, spaceID uuid.UUID) bool {
+	id, ok := ctx.Value(switchKey{}).(uuid.UUID)
+	return ok && id == spaceID
 }
 
 // scanSpace reads spaceSQL's row.
-func scanSpace(row pgx.Row, id uuid.UUID) (spaceRow, error) {
+func scanSpace(ctx context.Context, row pgx.Row, id uuid.UUID) (spaceRow, error) {
 	var s spaceRow
 	var rules []byte
-	err := row.Scan(&s.ID, &s.TenantID, &s.Kind, &s.Name, &rules)
+	err := row.Scan(&s.ID, &s.TenantID, &s.Kind, &s.Name, &rules, &s.OnV2, &s.Repository)
 	if errNoRows(err) {
 		return spaceRow{}, ErrNotFound
 	}
@@ -55,6 +80,7 @@ func scanSpace(row pgx.Row, id uuid.UUID) (spaceRow, error) {
 	if err := json.Unmarshal(rules, &s.Rules); err != nil {
 		return spaceRow{}, fmt.Errorf("ledger: space %s has unreadable rules: %w", id, err)
 	}
+	s.Switching = switching(ctx, s.ID)
 	return s, nil
 }
 
@@ -101,16 +127,15 @@ func memorySeq(ref string) (int64, error) {
 // sqlstateCardinality is a scalar subquery that returned more than one row.
 const sqlstateCardinality = "21000"
 
-// lockRef is resolveRef then loadMemory with the row lock, in one
-// statement and one round trip. The display ID is resolved by a scalar
-// subquery, which locks nothing and raises cardinality_violation when the
-// ID matches memories in more than one space of the scope
-// (ErrAmbiguousRef); then the one memory is read and locked, its space
-// checked again once the lock is held, as before.
-func lockRef(ctx context.Context, tx pgx.Tx, scope Scope, ref string) (*Memory, error) {
+// findRef is resolveRef then loadMemory, in one statement and one round
+// trip, without a lock: a Forget reads the memory it names this way before
+// it locks what it writes (locks.go). The display ID is resolved by a
+// scalar subquery, which raises cardinality_violation when the ID matches
+// memories in more than one space of the scope (ErrAmbiguousRef).
+func findRef(ctx context.Context, tx pgx.Tx, scope Scope, ref string) (*Memory, error) {
 	ref = strings.TrimSpace(ref)
 	if id, err := uuid.Parse(ref); err == nil {
-		return loadMemory(ctx, tx, scope, id, true)
+		return loadMemory(ctx, tx, scope, id, false)
 	}
 	n, err := memorySeq(ref)
 	if err != nil {
@@ -118,8 +143,7 @@ func lockRef(ctx context.Context, tx pgx.Tx, scope Scope, ref string) (*Memory, 
 	}
 	m, err := scanMemory(tx.QueryRow(ctx, memorySelect+`
 		 WHERE m.id = (SELECT id FROM v2.memories WHERE seq = $1 AND space_id = ANY($2))
-		   AND m.space_id = ANY($2)
-		   FOR UPDATE OF m`, n, scope.SpaceIDs()))
+		   AND m.space_id = ANY($2)`, n, scope.SpaceIDs()))
 	var pg *pgconn.PgError
 	switch {
 	case errNoRows(err):
@@ -169,11 +193,12 @@ func scanMemory(row pgx.Row) (*Memory, error) {
 }
 
 // loadMemory reads one memory in scope; lock takes the row lock that
-// serialises commands on it.
+// serialises commands on it (a command takes its memories' locks through
+// writer.lockMemories or lockSet: locks.go).
 func loadMemory(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, lock bool) (*Memory, error) {
 	q := memorySelect + ` WHERE m.id = $1 AND m.space_id = ANY($2)`
 	if lock {
-		q += ` FOR UPDATE OF m`
+		q += ` ` + lockWrite + ` OF m`
 	}
 	m, err := scanMemory(tx.QueryRow(ctx, q, id, scope.SpaceIDs()))
 	if errNoRows(err) {
@@ -258,28 +283,30 @@ func loadReceipts(ctx context.Context, tx pgx.Tx, scope Scope, ids []uuid.UUID) 
 }
 
 func insertReceipt(ctx context.Context, tx pgx.Tx, rc *Receipt) error {
-	var source any
-	if rc.Source != nil {
-		b, err := json.Marshal(rc.Source)
-		if err != nil {
-			return err
-		}
-		source = b
-	}
-	err := tx.QueryRow(ctx, `
-		INSERT INTO v2.receipts (id, tenant_id, space_id, object_kind, object_id, object_ref, action,
-		                         actor_kind, actor_id, agent, via, assurance, session_ref, source, reason,
-		                         occurred_at, stream_id, stream_version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-		RETURNING seq, recorded_at`,
-		rc.ID, rc.TenantID, rc.SpaceID, rc.ObjectKind, rc.ObjectID, rc.ObjectRef, string(rc.Action),
-		string(rc.ActorKind), rc.ActorID, nullText(rc.Agent), string(rc.Via), nullText(string(rc.Assurance)),
-		nullText(rc.SessionRef), source, nullText(rc.Reason), rc.OccurredAt, rc.StreamID, rc.StreamVersion,
-	).Scan(&rc.Seq, &rc.RecordedAt)
-	if err != nil {
+	if err := tx.QueryRow(ctx, receiptInsertSQL, receiptArgs(rc)...).Scan(&rc.Seq, &rc.RecordedAt); err != nil {
 		return fmt.Errorf("ledger: write receipt: %w", err)
 	}
 	return nil
+}
+
+// receiptInsertSQL writes a receipt and reads back what the database
+// stamps (receiptArgs are its arguments).
+const receiptInsertSQL = `
+	INSERT INTO v2.receipts (id, tenant_id, space_id, object_kind, object_id, object_ref, action,
+	                         actor_kind, actor_id, agent, via, assurance, session_ref, source, reason,
+	                         occurred_at, stream_id, stream_version)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+	RETURNING seq, recorded_at`
+
+func receiptArgs(rc *Receipt) []any {
+	var source any
+	if rc.Source != nil {
+		// A ReceiptSource is two strings: it always marshals.
+		source, _ = json.Marshal(rc.Source)
+	}
+	return []any{rc.ID, rc.TenantID, rc.SpaceID, rc.ObjectKind, rc.ObjectID, rc.ObjectRef, string(rc.Action),
+		string(rc.ActorKind), rc.ActorID, nullText(rc.Agent), string(rc.Via), nullText(string(rc.Assurance)),
+		nullText(rc.SessionRef), source, nullText(rc.Reason), rc.OccurredAt, rc.StreamID, rc.StreamVersion}
 }
 
 func nullText(s string) any {

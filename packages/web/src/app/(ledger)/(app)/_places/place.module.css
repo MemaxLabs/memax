@@ -40,6 +40,16 @@
   opacity: 0.6;
 }
 
+/* An empty state's actions, side by side (a space still on V1: the
+ * switch, then opening it in V1). */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
 @media (max-width: 639px) {
   /* MobileToday.png's page gutters. */
   .column:global(.mx-page),

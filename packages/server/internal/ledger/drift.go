@@ -68,7 +68,7 @@ func (w *writer) recordObservation(ctx context.Context, c *RecordObservation) (R
 		}
 		return res, err
 	}
-	dec := policy.Decide(w.policyActor(grant), policy.ActionReport, policy.Object{}, sp.policy())
+	dec := w.decideReport(grant, sp, t)
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
 	}
@@ -176,6 +176,13 @@ func (w *writer) closeObservations(ctx context.Context, targetID, spaceID uuid.U
 
 // resolveDrift pulls, overwrites or stops a target's open hand edits.
 func (w *writer) resolveDrift(ctx context.Context, c *ResolveDrift) (Result, error) {
+	if c.Mode == DriftPull {
+		// A pull writes proposals: their M- counter before the target
+		// (locks.go), in the target's lock's round trip.
+		if err := execDeferred(ctx, w.tx, lockCounterSQL, c.Target, string(PrefixMemory)); err != nil {
+			return Result{}, fmt.Errorf("ledger: lock the M- counter: %w", err)
+		}
+	}
 	t, grant, sp, replay, err := w.openTarget(ctx, c.Target)
 	if err != nil {
 		return Result{}, err
@@ -184,10 +191,23 @@ func (w *writer) resolveDrift(ctx context.Context, c *ResolveDrift) (Result, err
 		return w.replayResolve(ctx, replay, t.ID)
 	}
 	action := policy.ActionConfigureTarget
-	if c.Mode == DriftPull {
+	switch c.Mode {
+	case DriftPull:
 		action = policy.ActionPullDrift
+	case DriftStop:
+		action = policy.ActionStopTarget
 	}
 	dec := policy.Decide(w.policyActor(grant), action, policy.Object{}, sp.policy())
+	if dec.Effect != policy.EffectRefuse && t.Root == RootHome {
+		// A machine's hand edits are its person's to settle. Stopping one
+		// of its files takes the layer off that file, as unlinking the
+		// machine does, so a space on V1 allows it too.
+		mact := policy.MachineConfigure
+		if c.Mode == DriftStop {
+			mact = policy.MachineUnlink
+		}
+		dec = policy.DecideMachine(w.policyActor(grant), mact, sp.policy())
+	}
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
 	}

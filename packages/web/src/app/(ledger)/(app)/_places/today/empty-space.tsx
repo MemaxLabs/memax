@@ -14,11 +14,22 @@ import { recordKeys } from "../../_lib/records";
 import type { RecordsView } from "../records-view";
 import styles from "./today.module.css";
 
+/** Whether a space has nothing in it yet: no memory in any state, so its places show EmptySpace's steps. */
+export function hasNothing(view: RecordsView): boolean {
+  return view.overview !== undefined && !view.overview.memories.any;
+}
+
+/** The place's eyebrow, and when the space was made: "memax-web · Project space · created just now". */
+export function createdEyebrow(view: RecordsView): string {
+  const at = view.space.createdAt;
+  return at
+    ? `${view.eyebrow} · ${interpolate(view.l.today.empty.created, { when: view.time(at) })}`
+    : view.eyebrow;
+}
+
 /**
- * A new, empty space (EmptySpace.png): three steps to a first compile,
- * the one to do now in ink, and where else it could start from. Those
- * two aren't available yet, and say so. D2: the compile writes AGENTS.md,
- * a CLAUDE.md that imports it and Cursor rules.
+ * A new, empty space (EmptySpace.png) on Today: "Nothing here yet",
+ * then its three steps (EmptySpaceSteps).
  */
 export function EmptySpace({
   view,
@@ -27,6 +38,36 @@ export function EmptySpace({
   view: RecordsView;
   /** When Dream runs, where the source knows it. */
   dreamAt: string | null;
+}) {
+  const { l, space } = view;
+  const e = l.today.empty;
+  const where = space.repository ?? space.name;
+  return (
+    <div className={`mx-page ${styles.page}`}>
+      <PageHeader
+        eyebrow={createdEyebrow(view)}
+        title={e.title}
+        lede={interpolate(e.lede, { where })}
+      />
+      <EmptySpaceSteps view={view} dreamAt={dreamAt} />
+    </div>
+  );
+}
+
+/**
+ * Three steps to a first compile, the one to do now in ink, and where
+ * else it could start from (those two aren't available yet, and say
+ * so): what a space with nothing in it shows, on Today and in every
+ * place that would otherwise have nothing to show. D2: the compile
+ * writes AGENTS.md, a CLAUDE.md that imports it and Cursor rules.
+ */
+export function EmptySpaceSteps({
+  view,
+  dreamAt = null,
+}: {
+  view: RecordsView;
+  /** When Dream runs, where the source knows it. */
+  dreamAt?: string | null;
 }) {
   const { l, copy, space, overview } = view;
   const spaces = useSpaces().data ?? [];
@@ -49,7 +90,6 @@ export function EmptySpace({
   const now = agents === 0 ? 1 : overview?.waiting ? 2 : 3;
   const cli = cliPrefix();
   const command = interpolate(e.command, { cli, space: space.slug });
-  const where = space.repository ?? space.name;
   const other = spaces.find((s) => s.id !== space.id && s.kind !== "personal");
 
   const copyCommand = async () => {
@@ -73,127 +113,120 @@ export function EmptySpace({
   ];
 
   return (
-    <div className={`mx-page ${styles.page}`}>
-      <PageHeader
-        eyebrow={view.eyebrow}
-        title={e.title}
-        lede={interpolate(e.lede, { where })}
-      />
-      <div className={styles.emptyGrid}>
-        <section className="mx-panel" aria-label={e.steps}>
-          <ol className={styles.steps}>
-            {steps.map((step, i) => {
-              const n = i + 1;
-              const current = n === now;
-              return (
-                <li
-                  key={n}
-                  className={`${styles.step} ${current ? styles.now : ""}`}
-                  aria-current={current ? "step" : undefined}
+    <div className={styles.emptyGrid}>
+      <section className="mx-panel" aria-label={e.steps}>
+        <ol className={styles.steps}>
+          {steps.map((step, i) => {
+            const n = i + 1;
+            const current = n === now;
+            return (
+              <li
+                key={n}
+                className={`${styles.step} ${current ? styles.now : ""}`}
+                aria-current={current ? "step" : undefined}
+              >
+                <span
+                  className={`${styles.stepN} ${current ? styles.current : ""}`}
+                  aria-hidden="true"
                 >
-                  <span
-                    className={`${styles.stepN} ${current ? styles.current : ""}`}
-                    aria-hidden="true"
-                  >
-                    {n < now ? <Icon name="check" size={14} /> : n}
-                  </span>
-                  <div className={styles.stepBody}>
-                    <div>
-                      <h3>{step.title}</h3>
-                      <p>{step.detail}</p>
-                    </div>
-                    {n === 1 && current ? (
-                      <>
-                        <div className={styles.command}>
-                          <span className={styles.prompt} aria-hidden="true">
-                            ›
-                          </span>
-                          <code>{command}</code>
-                          <button
-                            type="button"
-                            className={styles.copyCommand}
-                            aria-label={e.copy}
-                            title={e.copy}
-                            onClick={() => void copyCommand()}
-                          >
-                            <Icon name="copy" size={14} />
-                          </button>
-                        </div>
-                        <span className={styles.emptyActions}>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            icon="plus"
-                            href={`${placeHref(space.slug, "agents")}?overlay=connect`}
-                          >
-                            {e.connectHere}
-                          </Button>
-                          <Button
-                            variant="quiet"
-                            size="sm"
-                            href={setupHref("import", { space: space.slug })}
-                          >
-                            {l.onboarding.emptySpace.follow}
-                          </Button>
+                  {n < now ? <Icon name="check" size={14} /> : n}
+                </span>
+                <div className={styles.stepBody}>
+                  <div>
+                    <h3>{step.title}</h3>
+                    <p>{step.detail}</p>
+                  </div>
+                  {n === 1 && current ? (
+                    <>
+                      <div className={styles.command}>
+                        <span className={styles.prompt} aria-hidden="true">
+                          ›
                         </span>
-                      </>
-                    ) : null}
-                    {n === 2 && current ? (
-                      <span>
+                        <code>{command}</code>
+                        <button
+                          type="button"
+                          className={styles.copyCommand}
+                          aria-label={e.copy}
+                          title={e.copy}
+                          onClick={() => void copyCommand()}
+                        >
+                          <Icon name="copy" size={14} />
+                        </button>
+                      </div>
+                      <span className={styles.emptyActions}>
                         <Button
                           variant="secondary"
                           size="sm"
-                          href={placeHref(space.slug, "review")}
+                          icon="plus"
+                          href={`${placeHref(space.slug, "agents")}?overlay=connect`}
                         >
-                          {l.today.waiting.open}
+                          {e.connectHere}
+                        </Button>
+                        <Button
+                          variant="quiet"
+                          size="sm"
+                          href={setupHref("import", { space: space.slug })}
+                        >
+                          {l.onboarding.emptySpace.follow}
                         </Button>
                       </span>
-                    ) : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-        <aside className={styles.emptySide}>
-          <section className="mx-panel" aria-labelledby="start-from">
-            <header className="mx-panel-head">
-              <h2 className="mx-panel-title" id="start-from">
-                {e.startFrom}
-              </h2>
-            </header>
-            <div className={styles.startFrom}>
-              {other ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon="copy"
-                  disabled
-                  disabledReason={e.conventionsLater}
-                >
-                  {interpolate(e.conventionsFrom, { space: other.name })}
-                </Button>
-              ) : null}
-              <div
-                className={styles.drop}
-                aria-disabled="true"
-                title={interpolate(e.dropLater, { cli })}
+                    </>
+                  ) : null}
+                  {n === 2 && current ? (
+                    <span>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        href={placeHref(space.slug, "review")}
+                      >
+                        {l.today.waiting.open}
+                      </Button>
+                    </span>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+      <aside className={styles.emptySide}>
+        <section className="mx-panel" aria-labelledby="start-from">
+          <header className="mx-panel-head">
+            <h2 className="mx-panel-title" id="start-from">
+              {e.startFrom}
+            </h2>
+          </header>
+          <div className={styles.startFrom}>
+            {other ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="copy"
+                disabled
+                disabledReason={e.conventionsLater}
               >
-                <span className={styles.dropIcon}>
-                  <Icon name="file" />
-                </span>
-                <span className={styles.dropTitle}>{e.drop}</span>
-                <span className="mx-meta">{e.dropMeta}</span>
-              </div>
+                {interpolate(e.conventionsFrom, { space: other.name })}
+              </Button>
+            ) : null}
+            <div
+              className={styles.drop}
+              aria-disabled="true"
+              title={interpolate(e.dropLater, { cli })}
+            >
+              <span className={styles.dropIcon}>
+                <Icon name="file" />
+              </span>
+              <span className={styles.dropTitle}>{e.drop}</span>
+              <span className="mx-meta">{e.dropMeta}</span>
             </div>
-          </section>
-          {dreamAt ? (
-            <p className={`mx-meta ${styles.emptyNote}`}>
-              {interpolate(e.dreamTonight, { time: dreamAt })}
-            </p>
-          ) : null}
-        </aside>
-      </div>
+          </div>
+        </section>
+        {dreamAt ? (
+          <p className={`mx-meta ${styles.emptyNote}`}>
+            {interpolate(e.dreamTonight, { time: dreamAt })}
+          </p>
+        ) : null}
+      </aside>
     </div>
   );
 }

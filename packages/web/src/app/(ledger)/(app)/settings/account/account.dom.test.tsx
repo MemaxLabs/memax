@@ -136,9 +136,10 @@ describe("Settings › Account", () => {
     const rows = within(sessions).getAllByText(
       /^(This browser|memax CLI on ziyang-mbp|Safari on iOS)/,
     );
+    // The CLI session whose daemon writes Personal says so (design §8).
     expect(rows.map((r) => r.textContent)).toEqual([
       "This browser",
-      "memax CLI on ziyang-mbp · 2.0.0",
+      "memax CLI on ziyang-mbp · 2.0.0 · writes Personal",
       "Safari on iOS",
     ]);
     expect(within(sessions).getByText("This one")).toBeTruthy();
@@ -203,7 +204,10 @@ describe("Settings › Account", () => {
     fireEvent.click(
       within(sessions).getAllByRole("button", { name: "Sign out" })[0]!,
     );
-    await screen.findByText("memax CLI on ziyang-mbp is signed out.");
+    // Signing it out takes the layer off its machine.
+    await screen.findByText(
+      "memax CLI on ziyang-mbp is signed out. Its daemon takes your Personal space off ziyang-mbp the next time it runs.",
+    );
     expect(account.signOut).toHaveBeenCalledWith(
       expect.objectContaining({ id: "0192a7c0-0000-7000-8000-0000000005e2" }),
     );

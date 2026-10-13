@@ -19,7 +19,11 @@
 //     the nearest kept facts, with the judge's classifier; a contradiction
 //     is flagged and linked for a person. Conflicts the judge flagged since
 //     are listed too.
-//   - stale: kept memories past their stale_after date are flagged.
+//   - stale: nothing to do. Memax flags what went stale (the hourly date
+//     sweep, internal/stalesweep, and the repository checks), and the
+//     edition lists it, with what has waited a month to be verified
+//     (DreamSnapshot.Surfaced). Editions before migration 068 flagged
+//     dates themselves; their stale actions keep their undo.
 //   - fade: kept memories nobody read or touched in 60 days fade
 //     (Ledger.FadeCandidates: never one in a file whose loads Memax can't
 //     observe, a decision in force, a flagged memory, or one the Brief
@@ -28,7 +32,7 @@
 //     reword, add a line), never a rewrite; an uncited line fails.
 //
 // Cost: a run happens only when the space has new input since its last
-// edition (notes, record changes, a stale_after date that came due), its
+// edition (notes, record changes, a memory that went stale), its
 // model calls are capped (DREAM_MAX_CALLS), and the plan's cadence and
 // run-now caps bound how often (D9). Scheduling is the catch-up sweep in
 // jobs.go: no River Pro (§5.17).
@@ -117,6 +121,9 @@ const (
 	ReasonCap     = "cap"
 	ReasonDryRun  = "dry_run"
 	ReasonGone    = "gone"
+	// ReasonOnV1: the space went back to V1 after the run was queued, and
+	// its record takes no edition (policy.CodeSpaceOnV1).
+	ReasonOnV1 = "space_on_v1"
 )
 
 // Run runs Dream on one space for one slot and publishes its edition.
@@ -141,8 +148,20 @@ func (e *Engine) run(ctx context.Context, args ledger.DreamSpaceArgs, dry bool) 
 	if err != nil {
 		return Outcome{}, err
 	}
+	// Policy would refuse the edition of a space back on V1: stop before any
+	// model call, rather than fail the job after them (the scope read the
+	// space's switch with it).
+	if g, ok := scope.Grant(args.SpaceID); ok {
+		d := policy.Decide(policy.Actor{Kind: actor.Kind, Name: actor.Name, Via: policy.ViaSystem}, policy.ActionPublishEdition,
+			policy.Object{}, policy.Space{Name: g.Name, Kind: g.Kind, OnV2: g.OnV2})
+		if d.Effect == policy.EffectRefuse {
+			e.log.InfoContext(ctx, "dream: the space is on V1, so no run", "space_id", args.SpaceID.String(), "slot", args.Slot,
+				"policy", d.Code, "metric", "dream_skipped_on_v1")
+			return Outcome{Reason: ReasonOnV1}, nil
+		}
+	}
 	if args.Trigger == ledger.DreamManual {
-		if ok, err := e.manualAllowed(ctx, scope, args.SpaceID); err != nil || !ok {
+		if now, err := e.ManualAllowed(ctx, scope, args.SpaceID); err != nil || !now.Allowed {
 			return Outcome{Reason: ReasonCap}, err
 		}
 	}
@@ -167,7 +186,7 @@ func (e *Engine) run(ctx context.Context, args ledger.DreamSpaceArgs, dry bool) 
 		name string
 		fn   func(context.Context) error
 	}{
-		{"fold", r.fold}, {"dedupe", r.dedupe}, {"conflict", r.conflicts}, {"stale", r.stale},
+		{"fold", r.fold}, {"dedupe", r.dedupe}, {"conflict", r.conflicts},
 		{"fade", r.fade}, {"brief", r.brief},
 	} {
 		t := time.Now()
@@ -245,26 +264,42 @@ func callsOf(s ledger.DreamStats) int {
 	return s.Model.Calls
 }
 
-// manualAllowed applies the plan's run-now cap.
-func (e *Engine) manualAllowed(ctx context.Context, scope ledger.Scope, space uuid.UUID) (bool, error) {
-	ok, _, err := e.ManualAllowed(ctx, scope, space)
-	return ok, err
+// RunNow is whether a space may run now under its plan's cap.
+type RunNow struct {
+	Allowed bool
+	// Wait is the cap's window, when it isn't allowed.
+	Wait time.Duration
+	// Refusal is policy's, when the space's plan limits are enforced
+	// (dream_cadence); without them the cap is a rate limit.
+	Refusal *policy.Decision
 }
 
-// ManualAllowed reports whether the space may run now, under its plan's
-// cap (DREAM_MANUAL_PER_DAY on Pro, DREAM_MANUAL_PER_WEEK on Free), and
-// when the next run-now is allowed if not.
-func (e *Engine) ManualAllowed(ctx context.Context, scope ledger.Scope, space uuid.UUID) (bool, time.Duration, error) {
+// ManualAllowed says whether the space may run now, under its plan's cap
+// (DREAM_MANUAL_PER_DAY on a nightly plan, DREAM_MANUAL_PER_WEEK on a
+// weekly one): the space's own plan when plan limits are enforced, else
+// DREAM_PLAN.
+func (e *Engine) ManualAllowed(ctx context.Context, scope ledger.Scope, space uuid.UUID) (RunNow, error) {
 	window, limit := 24*time.Hour, e.cfg.ManualPerDay
 	if e.cfg.Plan == PlanFree {
 		window, limit = 7*24*time.Hour, e.cfg.ManualPerWeek
 	}
+	g, _ := scope.Grant(space)
+	plan := e.ledger.SpacePlan(g)
+	if plan.Enforced {
+		window, limit = policy.RunNowWindow(plan), e.cfg.ManualPerWeek
+		if plan.DreamCadence == policy.CadenceNightly {
+			limit = e.cfg.ManualPerDay
+		}
+	}
 	_, manual, err := e.ledger.RecentEditions(ctx, scope, space, e.now().Add(-window))
 	if err != nil {
-		return false, 0, err
+		return RunNow{}, err
+	}
+	if d := policy.DecideRunNow(plan, manual, limit); d.Effect == policy.EffectRefuse {
+		return RunNow{Wait: window, Refusal: &d}, nil
 	}
 	if manual >= limit {
-		return false, window, nil
+		return RunNow{Wait: window}, nil
 	}
-	return true, 0, nil
+	return RunNow{Allowed: true}, nil
 }

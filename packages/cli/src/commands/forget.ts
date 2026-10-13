@@ -81,8 +81,15 @@ export function reportLines(t: V2.Tombstone, sp: V2.Space): string[] {
         plural(rewritten, "file rewritten", "files rewritten"),
     );
   for (const s of targets) {
-    const label = s.target?.label ?? "a target";
-    if (s.status === "held")
+    const m = s.target?.machine;
+    // A home file is named with its machine: ~/.codex/AGENTS.md on work-mbp.
+    const label = `${s.target?.label ?? "a target"}${m ? ` on ${m.name}` : ""}`;
+    if (s.status === "waiting" && s.reason === "offline")
+      lines.push(
+        chalk.gray(`  ${MARK.working} `) +
+          `${label} holds it until ${m?.name ?? "the machine"} connects${m?.last_seen_at ? ` (last online ${m.last_seen_at.slice(0, 10)})` : ""}; then it is rewritten.`,
+      );
+    else if (s.status === "held")
       lines.push(
         chalk.yellow(`  ${MARK.waiting} `) +
           `${label} has a hand edit, which Memax never writes over. Take the line out yourself.`,

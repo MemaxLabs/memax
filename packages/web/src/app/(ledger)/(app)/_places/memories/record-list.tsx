@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Field, MemoryList, Segmented } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
+import { useHotkey } from "@/lib/v2/keymap/react";
+import { searchHref } from "@/lib/v2/places";
 import type { MemoryFilter, MemoryListItem } from "@/lib/v2/data/memories";
 import type { Section } from "@/lib/v2/data/types";
 import { PlaceSkeleton } from "../../_components/skeleton";
 import { PlaceError } from "../../_components/status";
+import { useOverlays } from "../../_lib/overlays";
 import { useMemoriesList } from "../../_lib/records";
 import { NotYetButton } from "../place";
 import type { RecordsView } from "../records-view";
@@ -29,7 +32,11 @@ const SECTIONS: readonly Section[] = [
 /** The SDK's page size, so "Show 50 more" says what a click loads. */
 const PAGE = 50;
 
-/** Search covers what's loaded: /v2 has no search yet (plan §5.11 brings it). */
+/**
+ * The field filters what's loaded, as Memories.png draws it; finding
+ * anything in any space is Search's (/[space]/search), which a miss here
+ * offers.
+ */
 function matches(item: MemoryListItem, query: string): boolean {
   const q = query.normalize("NFKC").toLowerCase().trim();
   if (!q) return true;
@@ -78,6 +85,19 @@ export function Record({
     const row = fresh ? rows.current.get(fresh.ref) : undefined;
     row?.querySelector<HTMLElement>(".mx-row-link")?.focus();
   }, [items, list.isFetchingNextPage]);
+
+  // V on a stale row (the row's link has focus) opens VerifyStale.
+  const { openVerify } = useOverlays();
+  useHotkey("memory.verify", () => {
+    const active = document.activeElement;
+    for (const [ref, el] of rows.current) {
+      if (!el.contains(active)) continue;
+      if (items.find((item) => item.ref === ref)?.state !== "stale") break;
+      openVerify(ref);
+      return;
+    }
+    return false;
+  });
 
   const loadMore = () => {
     before.current = new Set(items.map((item) => item.ref));
@@ -166,9 +186,24 @@ export function Record({
                   : m.emptyFilter}
               </span>
               {query ? (
-                <Button variant="quiet" size="sm" onClick={() => setQuery("")}>
-                  {m.clear}
-                </Button>
+                <span className={styles.noneActions}>
+                  {/* What's loaded is one space's newest; Search reads every space. */}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="search"
+                    href={searchHref(space.slug, query)}
+                  >
+                    {l.search.everywhere}
+                  </Button>
+                  <Button
+                    variant="quiet"
+                    size="sm"
+                    onClick={() => setQuery("")}
+                  >
+                    {m.clear}
+                  </Button>
+                </span>
               ) : null}
             </div>
           ) : null}

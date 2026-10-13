@@ -36,9 +36,12 @@ export const ledgerMemoryEn = {
   page: {
     eyebrow: "Memories · {space} · {section}",
     edit: "Edit",
+    verify: "Verify",
     move: "Move to space",
     moveLater: "Moving a memory to another space isn't available yet",
     cite: "Copy citation",
+    // A phone's row of three (MobileMemory.png).
+    citeShort: "Cite",
     forget: "Forget",
     // States board: "Forget · confirm inline, then leave the redaction".
     forgetConfirm: {
@@ -91,6 +94,10 @@ export const ledgerMemoryEn = {
     reachOnly: "reaches {what}",
     files: "{n} files",
     filesOne: "1 file",
+    // A Personal space's home files: "3 files on 2 machines".
+    filesOn: "{files} on {machines}",
+    machines: "{n} machines",
+    machinesOne: "1 machine",
     agents: "{n} agents",
     agentsOne: "1 agent",
     lineage: "Lineage",
@@ -112,7 +119,8 @@ export const ledgerMemoryEn = {
       flaggedConflictBare: "Flagged by {name} as a conflict",
       flaggedBare: "Flagged by {name}",
       resolved: "Settled by {name}",
-      verified: "Checked against the code",
+      verified: "Verified by {name}",
+      verifiedYou: "Verified by you",
       faded: "Faded",
       restored: "Restored by {name}",
       forgot: "Forgotten by {name}",
@@ -123,6 +131,7 @@ export const ledgerMemoryEn = {
       answered: "Answered by {name}",
       undid: "Undone by {name}",
       returned: "Returned to Review by {name}",
+      unflagged: "No longer stale: what it relies on holds again ({name})",
     },
     mergedInto: "Merged into this",
     // Undo on one of the judge's folds: 14 days, by anyone who may keep.
@@ -138,10 +147,42 @@ export const ledgerMemoryEn = {
     reaches: "Reaches",
     reachesMeta: "{files} · {agents}",
     reachesLater: "Compiled files show here once Memax compiles this space.",
+    // A personal fact tied to repositories (scope.repos), as init ties a
+    // repository's own notes (CLAUDE.local.md, Claude Code's memory).
+    appliesIn: "Applies in",
+    appliesInNote:
+      "Only in these repositories. It stays out of the files your agents load in every project, and they read it over MCP.",
+    everywhere: "Apply everywhere",
+    everywhereDone: "{ref} applies everywhere now",
     staysTrue: "Stays true while",
+    // Each typed condition in words; {path}, {glob}, {text} and {name}
+    // are set in mono.
+    conditions: {
+      path: "{path} is in the repository",
+      glob: "A path matching {glob} is in the repository",
+      contains: "{path} contains {text}",
+      containsWord: "{path} contains the word {text}",
+      dep: "{name} is in {manifest}",
+      depRange: "{name} {range} is in {manifest}",
+      unchanged: "{path} is unchanged",
+      pr: {
+        open: "PR #{number} in {repo} is open",
+        merged: "PR #{number} in {repo} is merged",
+        closed: "PR #{number} in {repo} is closed",
+      },
+      until: "Until {date}",
+    },
+    // A machine checks when an agent starts; the checker flags, so the
+    // stamp is Memax's (stale design §3.1, decision 7).
     checked:
-      "Checked {when} by {name}. Dream flags it stale if either changes.",
-    checkedOne: "Checked {when} by {name}. Dream flags it stale if it changes.",
+      "Checked on {branch} {when}. Memax marks it stale if one stops holding.",
+    checkedOne:
+      "Checked on {branch} {when}. Memax marks it stale if it stops holding.",
+    checkedFor:
+      "Checked on {branch} {when}, when {name} started. Memax marks it stale if one stops holding.",
+    checkedForOne:
+      "Checked on {branch} {when}, when {name} started. Memax marks it stale if it stops holding.",
+    notChecked: "Not checked yet.",
     proposed: "Waiting in Review. Keep it there, or edit it first.",
     openReview: "Open Review",
     forgotten:
@@ -205,6 +246,12 @@ export const ledgerMemoryEn = {
       deliveryDetail: "The daemon writes it next.",
       compiling: "{label} compiling without it",
       held: "{label} has a hand edit",
+      onMachine: "{label} on {machine}",
+      offline: "{label} on {machine} holds it until {machine} connects",
+      offlineDetail:
+        "{machine} was last online {date}. Its files are rewritten when it connects.",
+      offlineNever:
+        "{machine} hasn't connected since it was linked. Its files are rewritten when it does.",
       heldDetail:
         "Memax never writes over a hand edit, so the line stays there until you take it out.",
       stopped: "{label} isn't compiled any more",
@@ -216,6 +263,10 @@ export const ledgerMemoryEn = {
       ledger: "Written to the forget ledger",
       ledgerDetail:
         "IDs only, outside the database, so restoring a backup can't bring it back.",
+      checksOne: "Check results on 1 machine",
+      checks: "Check results on {n} machines",
+      checksDetail:
+        "The paths its conditions named, never its words. Each machine's daemon drops them as soon as it hears of the Forget, and Memax hears back at its next check.",
       told: "{agent} told on its next read",
       toldWaiting: "{agent} is told on its next read",
       paused: "{agent} is paused",
@@ -259,6 +310,11 @@ export const ledgerMemoryEn = {
         ask: "answers",
       },
       handEdits: "{files}, until you take out the line",
+      handEditsOn: "{files} on {machines}, until you take out the line",
+      sourceFiles:
+        "The {n} files of yours Memax imported it from, on your machines. Memax never edits them, so take the line out there yourself.",
+      sourceFilesOne:
+        "The file of yours Memax imported it from, on your machine. Memax never edits it, so take the line out there yourself.",
       copies: "Wherever you pasted {targets}",
     },
     footer:

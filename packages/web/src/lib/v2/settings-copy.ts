@@ -180,7 +180,8 @@ export function processorRows(
         parts.push(
           interpolate(p.hosts, {
             hosts: joinList(
-              u.hosts.map((h) => named(NAMES.hosts, h)),
+              // A pinned endpoint ("baseten/fp8") is its company's.
+              u.hosts.map((h) => named(NAMES.hosts, h.split("/", 1)[0]!)),
               locale,
             ),
           }),
@@ -203,7 +204,7 @@ export function processorRows(
 /** What Forget can't reach, the providers that may keep words among them. */
 export function unreachableLines(
   copy: SecurityCopy,
-  security: SecurityView,
+  security: Pick<SecurityView, "backupDays" | "processors">,
   locale: Locale,
 ): string[] {
   const u = copy.forget.unreachable;

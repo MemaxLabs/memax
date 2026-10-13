@@ -41,3 +41,21 @@ export function confirmDefault(message: string): Promise<boolean> {
     });
   });
 }
+
+/** Ask with the answer's line already holding `prefill`, to edit in place. */
+export function askPrefilled(
+  message: string,
+  prefill: string,
+): Promise<string> {
+  return new Promise((resolve) => {
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    rl.question(message, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+    rl.write(prefill);
+  });
+}

@@ -57,6 +57,7 @@ func (m *AnthropicModel) Complete(ctx context.Context, c Call) (string, error) {
 		Providers:         c.Tier.Routing.Providers,
 		Quantizations:     c.Tier.Routing.Quantizations,
 		Temperature:       c.Tier.Temperature,
+		Thinking:          c.Tier.Thinking,
 	}
 	if c.Tier.Strict {
 		req.OutputSchema = c.Schema

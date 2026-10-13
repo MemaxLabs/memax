@@ -166,12 +166,100 @@
   color: var(--ink-3);
 }
 
+/* Phone only: the full-screen Ask's title. */
+.phoneTitle {
+  display: none;
+}
+
 @media (max-width: 639px) {
-  /* A phone: the layer starts near the top, and the key legend (keys a
-   * phone hasn't got) gives way. MobileAsk.png's full-screen Ask is
-   * Phase 3's (epic 3.5). */
+  /* MobileAsk.dc.html: Ask fills the screen above the tab bar. The title
+   * and Ask / Remember share the header's first row, the field the
+   * second; the answer scrolls; the key legend (keys a phone hasn't got)
+   * gives way. */
   :global(.mx-cmd-layer):has(.bar) {
-    top: max(var(--space-3), env(safe-area-inset-top));
+    top: 0;
+    left: 0;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    background: var(--sheet);
+    transform: none;
+  }
+
+  :global(.mx-cmd-layer[data-starting-style]):has(.bar) {
+    transform: none;
+  }
+
+  .phoneTitle {
+    position: absolute;
+    top: max(12px, env(safe-area-inset-top));
+    left: max(16px, env(safe-area-inset-left));
+    z-index: 1;
+    display: block;
+    max-width: calc(100% - 200px);
+    margin: 0;
+    overflow: hidden;
+    font-size: 15px;
+    line-height: 30px;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .bar:global(.mx-cmd) {
+    flex: 1;
+    min-height: 0;
+    max-width: none;
+    background: var(--sheet);
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .bar :global(.mx-cmd-input) {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      ". mode"
+      "field field";
+    gap: 10px 0;
+    padding: max(12px, env(safe-area-inset-top))
+      max(16px, env(safe-area-inset-right)) 12px
+      max(16px, env(safe-area-inset-left));
+    background: var(--paper);
+  }
+
+  .bar :global(.mx-cmd-input > .mx-seg) {
+    grid-area: mode;
+  }
+
+  /* The field as a Field: a box with its icon inside. */
+  .bar :global(.mx-cmd-input > .mx-icon) {
+    grid-area: field;
+    align-self: center;
+    z-index: 1;
+    margin-left: 12px;
+    pointer-events: none;
+  }
+
+  .bar :global(.mx-cmd-field) {
+    grid-area: field;
+    box-sizing: border-box;
+    height: 44px;
+    padding: 0 12px 0 40px;
+    background: var(--card);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+  }
+
+  .bar :global(.mx-cmd-field:focus-visible) {
+    border-color: var(--ink);
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
   }
 
   .bar :global(.mx-cmd-foot) {
@@ -179,7 +267,62 @@
   }
 
   .bar :global(.mx-cmd-body) {
-    max-height: calc(100dvh - 160px);
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    padding: 16px max(16px, env(safe-area-inset-right)) 24px
+      max(16px, env(safe-area-inset-left));
+  }
+
+  .bar :global(.mx-answer) {
+    font-size: 17px;
+    line-height: 27px;
+  }
+
+  /* The sources in a panel, and Keep as memory across the screen. */
+  .sources {
+    margin-top: 16px;
+    padding: 2px 14px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+  }
+
+  .sources > :global(.mx-section-label) {
+    display: none;
+  }
+
+  .sourceRow + .sourceRow {
+    border-top: 1px solid var(--line);
+  }
+
+  .sourceRow {
+    padding: 10px 0;
+  }
+
+  .actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .actions .notYet,
+  .actions .spacer {
+    display: none;
+  }
+
+  .actions > :global(.mx-btn--keep) {
+    --_h: 48px;
+    font-size: 15px;
+  }
+
+  .actions :global(.mx-btn-kbd) {
+    display: none;
+  }
+
+  .keptSeal {
+    justify-content: center;
+    margin: 0;
   }
 
   .fields {

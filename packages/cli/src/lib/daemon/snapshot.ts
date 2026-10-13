@@ -24,6 +24,12 @@ export type LocalState =
   | "off_block_removed"
   /** Stopped; the block had edits, so Memax left it. */
   | "off_block_kept"
+  /** Stopped at home; Memax took its own file out. */
+  | "off_file_removed"
+  /** Stopped at home; the file had edits, so Memax left it. */
+  | "off_file_kept"
+  /** The space is on V1 again: V1's sync writes the file, Memax doesn't. */
+  | "on_v1"
   /** Not written on this device (MCP, copy-out, pull request). */
   | "remote"
   /** Nothing compiled yet. */
@@ -59,7 +65,18 @@ export interface RepoSnapshot {
   space_slug: string;
   polled_at?: string;
   error?: string;
+  /** The space was switched back to V1: its files are left as they are. */
+  on_v1?: boolean;
   targets: TargetSnapshot[];
+}
+
+/** This machine's home link, as the daemon sees it. */
+export interface HomeSnapshot extends RepoSnapshot {
+  machine_id: string;
+  /** Set while the layer is off because this machine is signed out. */
+  signed_out?: boolean;
+  /** Set while the layer is off because the Personal space answered 404. */
+  gone?: boolean;
 }
 
 export interface DaemonSnapshot {
@@ -68,6 +85,8 @@ export interface DaemonSnapshot {
   version: string;
   api_url: string;
   repos: RepoSnapshot[];
+  /** The home link, when this machine's home is linked (memax link --home). */
+  home?: HomeSnapshot;
   /** The process's memory in MiB, for `memax daemon status --format json`. */
   memory?: { rss: number; heap_used: number };
   /** Set while `memax compile` delivers in place of a daemon. */

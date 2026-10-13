@@ -535,7 +535,7 @@ func (h *MCPHandler) toolHubs(r *http.Request, ownerID string, exclude map[strin
 	if denied := mcpRequirePermission(r, PermHubRead, ""); denied != nil {
 		return denied
 	}
-	hubs, err := h.accessibleMCPHubs(r, ownerID)
+	hubs, err := h.accessibleMCPHubsCounted(r, ownerID)
 	if err != nil {
 		return mcpError(fmt.Sprintf("Hubs failed: %s", err.Error()))
 	}
@@ -880,14 +880,33 @@ func (h *MCPHandler) toolTopics(r *http.Request, args json.RawMessage, ownerID s
 // --- Helpers ---
 
 func (h *MCPHandler) accessibleMCPHubs(r *http.Request, ownerID string) ([]model.HubWithRole, error) {
+	// HubContext read the list for this request already.
+	hubs, ok := RequestHubs(r, ownerID)
+	if !ok {
+		var err error
+		if hubs, err = h.store.ListUserHubs(ownerID); err != nil {
+			return nil, err
+		}
+	}
+	return accessibleOnly(r, hubs), nil
+}
+
+// accessibleMCPHubsCounted is accessibleMCPHubs with each hub's V1 memory
+// count, which memax_hubs shows: the request's own list carries none, so
+// it is read here, for this tool alone.
+func (h *MCPHandler) accessibleMCPHubsCounted(r *http.Request, ownerID string) ([]model.HubWithRole, error) {
 	hubs, err := h.store.ListUserHubs(ownerID)
 	if err != nil {
 		return nil, err
 	}
+	return accessibleOnly(r, hubs), nil
+}
 
+// accessibleOnly keeps the hubs the request's credential can reach.
+func accessibleOnly(r *http.Request, hubs []model.HubWithRole) []model.HubWithRole {
 	accessibleIDs := GetAccessibleHubIDs(r)
 	if len(accessibleIDs) == 0 {
-		return hubs, nil
+		return hubs
 	}
 	allowed := make(map[string]bool, len(accessibleIDs))
 	for _, hubID := range accessibleIDs {
@@ -900,7 +919,7 @@ func (h *MCPHandler) accessibleMCPHubs(r *http.Request, ownerID string) ([]model
 			filtered = append(filtered, hub)
 		}
 	}
-	return filtered, nil
+	return filtered
 }
 
 func (h *MCPHandler) resolveMCPHub(r *http.Request, ownerID string, ref string) (model.HubWithRole, error) {

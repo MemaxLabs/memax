@@ -83,9 +83,12 @@ type NewMemory struct {
 	Sources  []SourceInput
 	// StaleAfter is when the memory should be verified again.
 	StaleAfter *time.Time
-	// Conditions are "stays true while" predicates (a JSON array).
+	// Conditions are "stays true while" predicates a person attaches: typed
+	// (conditions.Condition), ids and origin set by the ledger. Memax
+	// derives path conditions on its own besides.
 	Conditions json.RawMessage
-	// Applies is where it applies, e.g. {"paths": ["packages/web/**"]}.
+	// Applies is where it applies, e.g. {"paths": ["packages/web/**"]} or
+	// {"repos": ["acme/web"]} (repo_scope.go): paths, agents and repos.
 	Applies   json.RawMessage
 	ValidFrom *time.Time
 	ValidTo   *time.Time
@@ -241,7 +244,13 @@ func (n *NewMemory) validate() error {
 	if n.Conditions, err = jsonOr(n.Conditions, "conditions", "[]", '['); err != nil {
 		return err
 	}
+	if _, err := sentConditions(n.Conditions); err != nil {
+		return err
+	}
 	if n.Applies, err = jsonOr(n.Applies, "scope", "{}", '{'); err != nil {
+		return err
+	}
+	if n.Applies, err = normaliseScope(n.Applies); err != nil {
 		return err
 	}
 	if n.ValidFrom != nil && n.ValidTo != nil && n.ValidTo.Before(*n.ValidFrom) {
@@ -381,6 +390,18 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp := *c
 		cp.Meta = strip
 		v = cp
+	case *ConnectCloudAgent:
+		// Not the key: each attempt makes its own, and a retry under the
+		// same idempotency key is the same request.
+		cp := *c
+		cp.Meta = strip
+		cp.Key = StartKey{}
+		v = cp
+	case *RekeyAgent:
+		cp := *c
+		cp.Meta = strip
+		cp.Key = StartKey{}
+		v = cp
 	case *SetAutonomy:
 		cp := *c
 		cp.Meta = strip
@@ -499,6 +520,35 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp.Meta = strip
 		v = cp
 	case *RestoreBrief:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *LinkMachine:
+		// The session that sends it doesn't change what it asks for.
+		cp := *c
+		cp.Meta, cp.SessionID = strip, uuid.Nil
+		v = cp
+	case *UnlinkMachine:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *RenameMachine:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *ScopeMemory:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *Verify:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *FlagStale:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *FlagDue:
 		cp := *c
 		cp.Meta = strip
 		v = cp

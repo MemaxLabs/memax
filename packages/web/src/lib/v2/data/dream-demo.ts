@@ -211,6 +211,7 @@ function edition214(): DreamEditionView {
       ),
       note: {
         kind: "stale",
+        cause: "source",
         changedAt: on("2026-09-11", "09:20"),
         source: "PR #198",
       },
@@ -243,6 +244,8 @@ function edition214(): DreamEditionView {
     actions,
     surfaced: [
       {
+        kind: "conflict",
+        receiptId: null,
         memory: row(
           "M-0431",
           `Deploy the v2 API to Fly.io in iad and ams.`,

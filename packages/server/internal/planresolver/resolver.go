@@ -714,11 +714,9 @@ func maxLimit(a, b int) int {
 	return b
 }
 
-// applyOverrides merges per-user admin overrides onto limits.
+// applyOverrides merges per-user admin overrides onto limits, through the
+// registry's cache (plans.OverridesTTL), so a request reads them at most
+// once a minute rather than on every rate-limit check.
 func (r *Resolver) applyOverrides(ctx context.Context, userID string, limits *model.UserLimits) {
-	override, err := r.store.GetPlanOverride(ctx, userID)
-	if err != nil || override == nil || len(override.Overrides) == 0 {
-		return
-	}
-	plans.ApplyOverrides(limits, override.Overrides)
+	plans.ApplyOverrides(limits, r.registry.UserOverrides(ctx, userID))
 }

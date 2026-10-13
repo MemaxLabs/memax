@@ -131,3 +131,22 @@ export interface SwitchSource {
 export function switchRunning(view: SwitchView | undefined): boolean {
   return view?.state === "running";
 }
+
+/**
+ * Whether a space still on V1 holds anything a person or their agents
+ * made there, which switching it would move: memories (the preview
+ * already leaves V1's onboarding seeds out), personas, agent files,
+ * agents, or decisions waiting on V1's board. V1 Dream runs alone don't
+ * count, since Dream ran on its own. Every account starts with an empty
+ * personal space on V1, and this is what tells a V1 person from a new
+ * one (onboarding/routes.ts).
+ */
+export function holdsV1Work(preview: SwitchPreviewView): boolean {
+  return (
+    preview.notes.total > 0 ||
+    preview.personas > 0 ||
+    preview.configs > 0 ||
+    preview.agents.length > 0 ||
+    preview.gates > 0
+  );
+}

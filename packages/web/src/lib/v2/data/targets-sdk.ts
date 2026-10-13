@@ -1,5 +1,5 @@
 import type { V2 } from "memax-sdk";
-import type { V2Client } from "./sdk-records";
+import { agentKey, type V2Client } from "./sdk-records";
 import {
   isScoped,
   isShim,
@@ -49,6 +49,18 @@ export function targetOf(
     kind: target.kind,
     label: target.label,
     path: target.path ?? null,
+    root: target.root,
+    machine: target.machine
+      ? {
+          id: target.machine.id,
+          label: target.machine.label,
+          name: target.machine.name,
+        }
+      : null,
+    readBy:
+      target.root === "home"
+        ? (target.settings.read_by ?? []).map((a) => agentKey(a) ?? a)
+        : [],
     reads:
       isShim(target.kind) || isScoped(target.kind)
         ? (canonical?.path ?? "AGENTS.md")
@@ -152,6 +164,8 @@ function refreshed(target: V2.Target, before: TargetView): TargetView {
 
 export function createSdkTargets(client: V2Client): TargetsSource {
   return {
+    // Every target, a personal space's home files once per machine: the
+    // screens group them by file (home-files.ts).
     async list({ space, signal }) {
       const { items } = await client.v2.targets.list(space.slug, { signal });
       return items.map((t) => targetOf(t, items));

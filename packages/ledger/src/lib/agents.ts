@@ -1,3 +1,5 @@
+import { AGENTS as REGISTRY, readerMark } from "@memaxlabs/agents";
+
 /** Where an agent runs. Shown after its name when a stamp asks for its surface. */
 export type AgentSurface = "cli" | "ide" | "cloud" | "chat" | "memax";
 
@@ -14,25 +16,34 @@ export interface AgentInfo {
   kind?: AgentKind;
 }
 
-/**
- * The agents Memax ships with. Monograms only, never a vendor's logo or colour.
- * Apps can add to this through `LedgerProvider agents`; any other key still
- * renders, with a monogram derived from its name.
- */
-export const AGENTS = {
-  "claude-code": { mono: "CC", name: "Claude Code", surface: "cli" },
-  codex: { mono: "CX", name: "Codex", surface: "cloud" },
-  cursor: { mono: "CU", name: "Cursor", surface: "ide" },
-  chatgpt: { mono: "GPT", name: "ChatGPT", surface: "chat" },
-  claude: { mono: "CL", name: "Claude", surface: "chat" },
-  gemini: { mono: "GM", name: "Gemini CLI", surface: "cli" },
-  copilot: { mono: "CP", name: "Copilot", surface: "ide" },
-  opencode: { mono: "OC", name: "OpenCode", surface: "cli" },
-  dream: { mono: "DR", name: "Dream", surface: "memax", kind: "dream" },
-} as const satisfies Record<string, AgentInfo>;
+type Shipped = (typeof REGISTRY)[number]["key"];
 
 /** A key of the shipped registry. Any string is accepted wherever an agent is expected. */
-export type KnownAgent = keyof typeof AGENTS;
+export type KnownAgent = Shipped | "antigravity" | "dream";
+
+const antigravity = readerMark("antigravity")!;
+
+/**
+ * The agents Memax ships with, from `@memaxlabs/agents`: each connection by
+ * its short key (`gemini`), Antigravity, which reads Memax's files without
+ * being a connection, and Dream. Monograms only, never a vendor's logo or
+ * colour. Apps can add to this through `LedgerProvider agents`; any other
+ * key still renders, with a monogram derived from its name.
+ */
+export const AGENTS: Readonly<Record<KnownAgent, AgentInfo>> = {
+  ...(Object.fromEntries(
+    REGISTRY.map((a) => [
+      a.key,
+      { mono: a.mark, name: a.name, surface: a.surface },
+    ]),
+  ) as Record<Shipped, AgentInfo>),
+  antigravity: {
+    mono: antigravity.mark,
+    name: antigravity.name,
+    surface: antigravity.surface,
+  },
+  dream: { mono: "DR", name: "Dream", surface: "memax", kind: "dream" },
+};
 
 /** The result of looking up who did something. `surface` is a surface key or a literal label. */
 export interface ResolvedAgent {

@@ -19,14 +19,21 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/analytics"
 )
@@ -244,8 +251,90 @@ type CompleteRequest struct {
 	// Empty admits any.
 	Quantizations []string
 	// Temperature, when set, is sent as the request's temperature. Nil
-	// leaves the model's default (Claude Sonnet 5.5 refuses any other).
+	// leaves the model's default (Claude Sonnet 5.5 and Haiku 5.5 refuse
+	// any other; see ModelParams). No request sends top_p.
 	Temperature *float64
+	// Thinking, when set, is the request's thinking control (thinking.type
+	// and output_config.effort) in place of the client's default for the
+	// model (see Thinking).
+	Thinking Thinking
+}
+
+// ErrRefusal is a model declining a request: stop_reason "refusal", from
+// Claude's safety classifiers (Claude Haiku 5.5 has them, and no
+// server-side fallback). Complete, CompleteMessages and the streams return
+// a *RefusalError that wraps it. Callers treat it as a failed call and go
+// on to their next tier: the same words to the same model are declined
+// again, so it isn't worth a retry.
+var ErrRefusal = errors.New("the model declined the request")
+
+// RefusalError is a refusal, with the model and stop_details.category
+// ("cyber", "bio", "frontier_llm", "general_harms"; may be empty). It
+// never carries the model's words.
+type RefusalError struct {
+	Model, Category string
+}
+
+func (e *RefusalError) Error() string {
+	if e.Category == "" {
+		return fmt.Sprintf("anthropic: %s declined the request (stop_reason refusal)", e.Model)
+	}
+	return fmt.Sprintf("anthropic: %s declined the request (stop_reason refusal, category %s)", e.Model, e.Category)
+}
+
+func (e *RefusalError) Unwrap() error { return ErrRefusal }
+
+// stopDetails is a response's stop_details (set only on a refusal).
+type stopDetails struct {
+	Category string `json:"category"`
+}
+
+// refusals counts refused calls (memax.llm.refusals) by model, purpose and
+// category, across every caller of the shared client.
+var refusals = sync.OnceValue(func() metric.Int64Counter {
+	c, _ := otel.Meter("memax.llm").Int64Counter("memax.llm.refusals",
+		metric.WithDescription("Model calls the model declined (stop_reason refusal), by model, purpose and category"))
+	return c
+})
+
+// refused counts and logs a refusal and returns its error.
+func refused(ctx context.Context, model, purpose string, details *stopDetails) error {
+	e := &RefusalError{Model: model}
+	if details != nil {
+		e.Category = details.Category
+	}
+	if purpose == "" {
+		purpose = "anthropic.unknown"
+	}
+	refusals().Add(context.WithoutCancel(ctx), 1, metric.WithAttributes(attribute.String("model", model),
+		attribute.String("purpose", purpose), attribute.String("category", e.Category)))
+	slog.WarnContext(ctx, "anthropic: the model declined the request", "metric", "llm_refusal", "model", model,
+		"purpose", purpose, "category", e.Category)
+	return e
+}
+
+// setThinking puts the request's thinking control in body: its Thinking
+// when set, else the client's default for the model (thinkingDisabledFor).
+// An effort goes in output_config beside any format.
+func setThinking(body map[string]any, model string, t Thinking) {
+	mode := t.Mode
+	if mode == "" && t.Effort != "" {
+		mode = ThinkingAdaptive
+	}
+	switch {
+	case mode != "":
+		body["thinking"] = map[string]any{"type": mode}
+	case thinkingDisabledFor(model) != nil:
+		body["thinking"] = thinkingDisabledFor(model)
+	}
+	if t.Effort != "" {
+		oc, _ := body["output_config"].(map[string]any)
+		if oc == nil {
+			oc = map[string]any{}
+			body["output_config"] = oc
+		}
+		oc["effort"] = t.Effort
+	}
 }
 
 // CompleteResponse is the output of a single LLM completion call.
@@ -287,14 +376,12 @@ func (c *Client) Complete(ctx context.Context, req CompleteRequest) (*CompleteRe
 	if req.System != "" {
 		body["system"] = req.System
 	}
-	if thinking := thinkingDisabledFor(req.Model); thinking != nil {
-		body["thinking"] = thinking
-	}
 	if len(req.OutputSchema) > 0 {
 		body["output_config"] = map[string]any{
 			"format": map[string]any{"type": "json_schema", "schema": req.OutputSchema},
 		}
 	}
+	setThinking(body, req.Model, req.Thinking)
 	if req.Temperature != nil {
 		body["temperature"] = *req.Temperature
 	}
@@ -335,29 +422,42 @@ func (c *Client) Complete(ctx context.Context, req CompleteRequest) (*CompleteRe
 		return nil, fmt.Errorf("anthropic API error %d: %s", resp.StatusCode, respBody)
 	}
 
+	return c.decodeResponse(ctx, tracking, start, resp.StatusCode, respBody)
+}
+
+// decodeResponse reads a Messages API response: its text, tokens and stop
+// reason, or a *RefusalError when the model declined.
+func (c *Client) decodeResponse(ctx context.Context, tracking llmTracking, start time.Time, status int, respBody []byte) (*CompleteResponse, error) {
 	var apiResp struct {
-		Content    []contentBlock `json:"content"`
-		StopReason string         `json:"stop_reason"`
-		Usage      struct {
+		Content     []contentBlock `json:"content"`
+		StopReason  string         `json:"stop_reason"`
+		StopDetails *stopDetails   `json:"stop_details"`
+		Usage       struct {
 			InputTokens  int `json:"input_tokens"`
 			OutputTokens int `json:"output_tokens"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(respBody, &apiResp); err != nil {
-		c.trackLLMGeneration(tracking.withError(start, resp.StatusCode, fmt.Errorf("decode response: %w", err)))
+		c.trackLLMGeneration(tracking.withError(start, status, fmt.Errorf("decode response: %w", err)))
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
-	if len(apiResp.Content) == 0 {
-		c.trackLLMGeneration(tracking.withError(start, resp.StatusCode, fmt.Errorf("empty response from Anthropic")))
-		return nil, fmt.Errorf("empty response from Anthropic")
-	}
-	text := textFromContent(apiResp.Content)
 	if apiResp.Usage.InputTokens > 0 {
 		tracking.inputTokens = apiResp.Usage.InputTokens
 	}
 	tracking.outputTokens = apiResp.Usage.OutputTokens
+	if apiResp.StopReason == "refusal" {
+		// Whatever text came before the refusal isn't an answer.
+		err := refused(ctx, tracking.model, tracking.purpose, apiResp.StopDetails)
+		c.trackLLMGeneration(tracking.withError(start, status, err))
+		return nil, err
+	}
+	if len(apiResp.Content) == 0 {
+		c.trackLLMGeneration(tracking.withError(start, status, fmt.Errorf("empty response from Anthropic")))
+		return nil, fmt.Errorf("empty response from Anthropic")
+	}
+	text := textFromContent(apiResp.Content)
 	tracking.output = c.captureOutput(text)
-	c.trackLLMGeneration(tracking.withSuccess(start, resp.StatusCode))
+	c.trackLLMGeneration(tracking.withSuccess(start, status))
 
 	return &CompleteResponse{
 		Text:         text,
@@ -442,38 +542,7 @@ func (c *Client) CompleteMessages(ctx context.Context, model string, maxTokens i
 		c.trackLLMGeneration(tracking.withError(start, resp.StatusCode, fmt.Errorf("anthropic API error %d", resp.StatusCode)))
 		return nil, fmt.Errorf("anthropic API error %d: %s", resp.StatusCode, respBody)
 	}
-
-	var apiResp struct {
-		Content    []contentBlock `json:"content"`
-		StopReason string         `json:"stop_reason"`
-		Usage      struct {
-			InputTokens  int `json:"input_tokens"`
-			OutputTokens int `json:"output_tokens"`
-		} `json:"usage"`
-	}
-	if err := json.Unmarshal(respBody, &apiResp); err != nil {
-		c.trackLLMGeneration(tracking.withError(start, resp.StatusCode, fmt.Errorf("decode response: %w", err)))
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	if len(apiResp.Content) == 0 {
-		c.trackLLMGeneration(tracking.withError(start, resp.StatusCode, fmt.Errorf("empty response from Anthropic")))
-		return nil, fmt.Errorf("empty response from Anthropic")
-	}
-	text := textFromContent(apiResp.Content)
-	if apiResp.Usage.InputTokens > 0 {
-		tracking.inputTokens = apiResp.Usage.InputTokens
-	}
-	tracking.outputTokens = apiResp.Usage.OutputTokens
-	tracking.output = c.captureOutput(text)
-	c.trackLLMGeneration(tracking.withSuccess(start, resp.StatusCode))
-
-	return &CompleteResponse{
-		Text:         text,
-		InputTokens:  apiResp.Usage.InputTokens,
-		OutputTokens: apiResp.Usage.OutputTokens,
-		StopReason:   apiResp.StopReason,
-		RawBody:      string(respBody),
-	}, nil
+	return c.decodeResponse(ctx, tracking, start, resp.StatusCode, respBody)
 }
 
 // CompleteStream sends a streaming completion request. It calls onDelta for each text chunk
@@ -527,9 +596,7 @@ func (c *Client) CompleteStreamUsage(ctx context.Context, req CompleteRequest, o
 	if req.System != "" {
 		body["system"] = req.System
 	}
-	if thinking := thinkingDisabledFor(req.Model); thinking != nil {
-		body["thinking"] = thinking
-	}
+	setThinking(body, req.Model, req.Thinking)
 	if req.Temperature != nil {
 		body["temperature"] = *req.Temperature
 	}
@@ -538,6 +605,7 @@ func (c *Client) CompleteStreamUsage(ctx context.Context, req CompleteRequest, o
 	}
 
 	var usage StreamUsage
+	var details *stopDetails
 	reqBody, err := json.Marshal(body)
 	if err != nil {
 		c.trackLLMGeneration(tracking.withError(start, 0, fmt.Errorf("marshal request: %w", err)))
@@ -584,9 +652,10 @@ func (c *Client) CompleteStreamUsage(ctx context.Context, req CompleteRequest, o
 		var event struct {
 			Type  string `json:"type"`
 			Delta struct {
-				Type       string `json:"type"`
-				Text       string `json:"text"`
-				StopReason string `json:"stop_reason"`
+				Type        string       `json:"type"`
+				Text        string       `json:"text"`
+				StopReason  string       `json:"stop_reason"`
+				StopDetails *stopDetails `json:"stop_details"`
 			} `json:"delta"`
 			Message struct {
 				Usage struct {
@@ -623,6 +692,9 @@ func (c *Client) CompleteStreamUsage(ctx context.Context, req CompleteRequest, o
 			if event.Delta.StopReason != "" {
 				usage.StopReason = event.Delta.StopReason
 			}
+			if event.Delta.StopDetails != nil {
+				details = event.Delta.StopDetails
+			}
 		}
 	}
 
@@ -641,6 +713,13 @@ func (c *Client) CompleteStreamUsage(ctx context.Context, req CompleteRequest, o
 	tracking.outputTokens = usage.OutputTokens
 	if !firstTokenAt.IsZero() {
 		tracking.timeToFirstToken = firstTokenAt.Sub(start).Seconds()
+	}
+	if usage.StopReason == "refusal" {
+		// The words already streamed stay with the caller, which reads
+		// the error as the answer failing partway.
+		err := refused(ctx, req.Model, req.Purpose, details)
+		c.trackLLMGeneration(tracking.withError(start, resp.StatusCode, err))
+		return usage, err
 	}
 	tracking.output = c.captureOutput(capturedOutput.String())
 	c.trackLLMGeneration(tracking.withSuccess(start, resp.StatusCode))

@@ -8,6 +8,12 @@ export interface DaemonPaths {
   dir: string;
   /** The linked repositories (`memax link`). */
   repos: string;
+  /**
+   * This machine's home link (`memax link --home`): the Personal space and
+   * the home files approved here. Apart from repos.json, so a link rooted
+   * at the home folder never matches a repository under it.
+   */
+  home: string;
   /** What this device wrote: run refs and drift hashes, never content. */
   state: string;
   pid: string;
@@ -26,6 +32,14 @@ export interface DaemonPaths {
   loads: string;
   /** What each agent's last session in each repository was told (lib/hook/seen.ts). */
   seen: string;
+  /**
+   * The checks (checks.ts): per linked repository, the results last
+   * reported (refs, condition ids, hashes, outcomes and paths, never a
+   * file's contents), and the reports waiting to be sent.
+   */
+  checks: string;
+  /** Session starts' check requests, queued by the hook (lib/hook/check-requests.ts). */
+  checkRequests: string;
 }
 
 // sun_path is 104 bytes on macOS and 108 on Linux.
@@ -37,6 +51,7 @@ export function daemonPaths(
   return {
     dir,
     repos: join(dir, "repos.json"),
+    home: join(dir, "home.json"),
     state: join(dir, "state.json"),
     pid: join(dir, "daemon.pid"),
     log: join(dir, "daemon.log"),
@@ -45,6 +60,8 @@ export function daemonPaths(
     warm: join(dir, "warm.json"),
     loads: join(dir, "loads"),
     seen: join(dir, "seen"),
+    checks: join(dir, "checks"),
+    checkRequests: join(dir, "checks", "requests"),
   };
 }
 

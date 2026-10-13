@@ -17,6 +17,8 @@ export interface Stack {
   dbUrl: string;
   zz: string;
   token: string;
+  /** The API's JWT secret, for tokens a test signs (an agent's grant). */
+  secret: string;
   logs: string[];
   stop(): Promise<void>;
 }
@@ -46,6 +48,43 @@ export function sessionToken(
   const head = b64url('{"alg":"HS256","typ":"JWT"}');
   const body = b64url(
     JSON.stringify({ sub, exp: now + 7200, iat: now, surface }),
+  );
+  const sig = createHmac("sha256", secret)
+    .update(`${head}.${body}`)
+    .digest("base64url");
+  return `${head}.${body}.${sig}`;
+}
+
+/** Runs a build step to the end without blocking the event loop. */
+function run(cmd: string, args: string[], cwd?: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { cwd, stdio: "inherit" });
+    child.once("error", reject);
+    child.once("exit", (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`${cmd} ${args.join(" ")} exited with ${code}`)),
+    );
+  });
+}
+
+/** An agent's OAuth grant token, as the server signs them (SignGrantAccessToken). */
+export function grantToken(
+  sub: string,
+  agent: string,
+  grant: string,
+  secret: string,
+): string {
+  const now = Math.floor(Date.now() / 1000);
+  const head = b64url('{"alg":"HS256","typ":"JWT"}');
+  const body = b64url(
+    JSON.stringify({
+      sub,
+      exp: now + 7200,
+      iat: now,
+      agent_name: agent,
+      grant_id: grant,
+    }),
   );
   const sig = createHmac("sha256", secret)
     .update(`${head}.${body}`)
@@ -205,11 +244,13 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
   const dbUrl = u.toString();
   const secret = randomBytes(24).toString("hex");
 
-  // Go binaries: prebuilt (MEMAX_E2E_BIN), or built here.
+  // Go binaries: prebuilt (MEMAX_E2E_BIN), or built here. The builds run
+  // as child processes the test waits for, never synchronously: a minute
+  // with the event loop blocked times out vitest's worker calls.
   let bin = process.env.MEMAX_E2E_BIN ?? "";
   if (!bin || !existsSync(join(bin, "server"))) {
     bin = mkdtempSync(join(tmpdir(), "memax-e2e-bin-"));
-    execFileSync(
+    await run(
       "go",
       [
         "build",
@@ -222,20 +263,17 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
         "./cmd/migrate",
         "./cmd/devseed",
       ],
-      { cwd: SERVER, stdio: "inherit" },
+      SERVER,
     );
   }
-  // The compile service imports the built compiler.
-  for (const pkg of ["compiler", "compile-service"]) {
-    execFileSync(
-      process.execPath,
-      [
-        join(REPO, "packages", pkg, "node_modules", "typescript", "bin", "tsc"),
-        "-p",
-        join(REPO, "packages", pkg),
-      ],
-      { stdio: "inherit" },
-    );
+  // The compile service imports the built compiler, which imports the
+  // built agents registry.
+  for (const pkg of ["agents", "compiler", "compile-service"]) {
+    await run(process.execPath, [
+      join(REPO, "packages", pkg, "node_modules", "typescript", "bin", "tsc"),
+      "-p",
+      join(REPO, "packages", pkg),
+    ]);
   }
 
   execFileSync("psql", [
@@ -341,6 +379,7 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
       dbUrl,
       zz,
       token: sessionToken(zz, secret),
+      secret,
       logs,
       async stop() {
         for (const c of children) c.kill("SIGTERM");

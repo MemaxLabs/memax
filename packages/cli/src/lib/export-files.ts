@@ -156,6 +156,8 @@ export function writeExport(
   dir: string,
   files: Map<string, Uint8Array>,
   replace: boolean,
+  /** The file that says a folder holds one of ours (an OKF bundle's index.md). */
+  marker = "export.json",
 ): void {
   if (existsSync(dir) && readdirSync(dir).length > 0) {
     if (!replace) {
@@ -163,7 +165,7 @@ export function writeExport(
         `${dir} isn't empty. Choose another --out, or pass --force to replace the export there.`,
       );
     }
-    if (!existsSync(join(dir, "export.json"))) {
+    if (!existsSync(join(dir, marker))) {
       throw new ExportFilesError(
         `${dir} doesn't hold a Memax export, so --force won't replace it. Choose another --out.`,
       );

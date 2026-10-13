@@ -98,6 +98,7 @@ func (j *Judge) CheckImport(ctx context.Context, args ledger.JudgeImportArgs) (*
 	default:
 		check, err := j.classifier.FindImportDisagreements(ctx, in.Pending, 0)
 		run.Calls = check.Calls
+		j.refused(ctx, "import", args.ImportID.String(), check.Refused)
 		if err != nil {
 			j.Metrics.LLMFailed.Add(1)
 			j.cfg.Log.WarnContext(ctx, "judge: import check failed", "metric", "judge_import_failed",
@@ -140,6 +141,8 @@ type ImportCheck struct {
 	Tier Tier
 	// Calls counts the model calls, Batches the batches.
 	Calls, Batches int
+	// Refused counts the calls a tier declined, by tier.
+	Refused map[string]int
 }
 
 // FindImportDisagreements asks the model which of an import's proposals
@@ -151,9 +154,9 @@ func (c *Classifier) FindImportDisagreements(ctx context.Context, pending []ledg
 	if batch <= 0 {
 		batch = ImportBatch
 	}
-	var out ImportCheck
+	out := ImportCheck{Refused: map[string]int{}}
 	for _, b := range importBatches(pending, batch) {
-		groups, tier, n, err := c.askImport(ctx, b)
+		groups, tier, n, err := c.askImport(ctx, b, out.Refused)
 		out.Calls += n
 		out.Batches++
 		if err != nil {
@@ -213,8 +216,10 @@ func importBatches(pending []ledger.ImportCandidate, n int) [][]ledger.ImportCan
 	return out
 }
 
-// askImport makes the call for one batch: each tier in turn, each twice.
-func (c *Classifier) askImport(ctx context.Context, batch []ledger.ImportCandidate) ([]ImportGroup, Tier, int, error) {
+// askImport makes the call for one batch: each tier in turn, each twice,
+// counting in refused the calls a tier declined (it goes straight to the
+// next tier).
+func (c *Classifier) askImport(ctx context.Context, batch []ledger.ImportCandidate, refused map[string]int) ([]ImportGroup, Tier, int, error) {
 	if len(batch) < 2 {
 		return nil, c.cfg.Primary, 0, nil
 	}
@@ -238,6 +243,10 @@ func (c *Classifier) askImport(ctx context.Context, batch []ledger.ImportCandida
 			last = err
 			if ctx.Err() != nil {
 				return nil, Tier{}, calls, fmt.Errorf("%w: %v", ErrNoAnswer, ctx.Err())
+			}
+			if errors.Is(err, anthropic.ErrRefusal) {
+				refused[t.Name]++
+				break
 			}
 			prompt = importPrompt(batch, t.Strict) + "\n\nYour previous answer was not usable (" +
 				truncate(err.Error(), 200) + "). Answer again with only the JSON object."

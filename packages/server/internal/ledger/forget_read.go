@@ -88,7 +88,7 @@ func (l *Ledger) PreviewForget(ctx context.Context, scope Scope, actor Actor, vi
 		p := &ForgetPreview{Ref: mem.Ref, Version: mem.Version, Carries: nonNilSlice(carried),
 			Files: []TombstoneTarget{}, Allowed: true}
 		grant, _ := scope.Grant(mem.SpaceID)
-		pa := toPolicyActor(actor, via, grant)
+		pa := toPolicyActor(actor, via, grant, l.plans)
 		decide := func(m Carried, decision bool) {
 			if !p.Allowed {
 				return
@@ -118,7 +118,11 @@ func (l *Ledger) PreviewForget(ctx context.Context, scope Scope, actor Actor, vi
 			if err != nil {
 				return err
 			}
-			p.Files = append(p.Files, TombstoneTarget{ID: t.ID, Kind: t.Kind, Label: t.Label, Delivery: t.Delivery})
+			f := TombstoneTarget{ID: t.ID, Kind: t.Kind, Label: t.Label, Delivery: t.Delivery}
+			if t.Machine != nil {
+				f.Machine = &TombstoneMachine{ID: t.Machine.ID, Label: t.Machine.Label, Name: t.Machine.Name}
+			}
+			p.Files = append(p.Files, f)
 		}
 		if err := tx.QueryRow(ctx, `
 			WITH readers AS (
@@ -339,6 +343,28 @@ func loadTombstone(ctx context.Context, tx pgx.Tx, scope Scope, objectID uuid.UU
 	return t, nil
 }
 
+// checksStep says where the machines' check results stand: done once
+// every machine that checked the space in the window before the Forget has
+// checked it since (its daemon dropped them on hearing; a run after the
+// Forget is written without them), else waiting on those that haven't,
+// counted. A space retired with its check runs keeps the count it had.
+func checksStep(before, notSince *int, last *time.Time, atForget int) TombstoneStep {
+	waiting := 0
+	switch {
+	case before != nil && *before > 0:
+		waiting = *notSince
+	case atForget > 0:
+		waiting = atForget // the runs went with the space
+	}
+	s := TombstoneStep{Kind: StepChecks, Count: &waiting}
+	if waiting == 0 {
+		s.Status, s.At = StepDone, last
+		return s
+	}
+	s.Status, s.Reason = StepWaiting, StepReasonNextCheck
+	return s
+}
+
 // fillTombstone builds the steps and the copies Memax can't reach, from
 // the op's propagation rows, its targets as they stand now, and its
 // notices.
@@ -357,16 +383,41 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 	}
 	t.Steps = append(t.Steps, asked, TombstoneStep{Kind: StepRemoved, Status: StepDone, At: &at})
 
-	// The op's destinations.
+	// The op's destinations, and a home file's machine (personal-layer
+	// design §5.4): offline when its daemon hasn't read its files lately.
 	rows, err := tx.Query(ctx, `
 		SELECT p.destination_kind, p.destination_id, COALESCE(p.label, ''), p.status, p.detail, p.done_at,
-		       t.kind, t.delivery, t.sync_state, t.delivered_at, dc.seq, COALESCE(t.path, '')
+		       t.kind, t.delivery, t.sync_state, t.delivered_at, dc.seq, COALESCE(t.path, ''),
+		       mc.id, mc.seq, mc.name, mc.unlinked_at IS NULL, mc.last_seen_at,
+		       COALESCE(mc.last_seen_at < now() - $2::interval, true),
+		       -- A checks step: the machines that checked the space in the
+		       -- window before the Forget, those that haven't checked it
+		       -- since, and when the last of them did.
+		       CASE WHEN p.destination_kind = 'checks' THEN (
+		           SELECT count(*)::int FROM (
+		               SELECT DISTINCT r.person_id, r.device FROM v2.check_runs r
+		                WHERE r.space_id = p.space_id AND r.observer = 'device'
+		                  AND r.recorded_at < $3 AND r.recorded_at >= $3 - $4::interval) m) END,
+		       CASE WHEN p.destination_kind = 'checks' THEN (
+		           SELECT count(*)::int FROM (
+		               SELECT DISTINCT r.person_id, r.device FROM v2.check_runs r
+		                WHERE r.space_id = p.space_id AND r.observer = 'device'
+		                  AND r.recorded_at < $3 AND r.recorded_at >= $3 - $4::interval) m
+		            WHERE NOT EXISTS (
+		                SELECT 1 FROM v2.check_runs a
+		                 WHERE a.space_id = p.space_id AND a.observer = 'device'
+		                   AND a.person_id = m.person_id AND a.device = m.device AND a.checked_at > $3)) END,
+		       CASE WHEN p.destination_kind = 'checks' THEN (
+		           SELECT max(a.checked_at) FROM v2.check_runs a
+		            WHERE a.space_id = p.space_id AND a.observer = 'device' AND a.checked_at > $3) END
 		  FROM v2.propagations p
 		  LEFT JOIN v2.targets t ON t.id = p.destination_id
 		  LEFT JOIN v2.compile_runs dc ON dc.id = t.delivered_compile_id
+		  LEFT JOIN v2.machines mc ON mc.id = t.machine_id AND mc.space_id = t.space_id
 		 WHERE p.op_id = $1
-		 ORDER BY CASE p.destination_kind WHEN 'target' THEN 0 WHEN 'artifacts' THEN 1 WHEN 'attachments' THEN 1 WHEN 'caches' THEN 2 ELSE 3 END,
-		          p.created_at, p.id`, t.OpID)
+		 ORDER BY CASE p.destination_kind WHEN 'target' THEN 0 WHEN 'artifacts' THEN 1 WHEN 'attachments' THEN 1 WHEN 'caches' THEN 2
+		                  WHEN 'checks' THEN 3 ELSE 4 END,
+		          p.created_at, p.id`, t.OpID, MachineOfflineAfter.String(), t.ForgottenAt, ChecksWindow.String())
 	if err != nil {
 		return fmt.Errorf("ledger: tombstone steps: %w", err)
 	}
@@ -381,12 +432,23 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 		deliveredAt         *time.Time
 		deliveredSeq        *int64
 		path                string
+		machineID           *uuid.UUID
+		machineSeq          *int
+		machineName         *string
+		linked              *bool
+		lastSeenAt          *time.Time
+		offline             bool
+		// A checks step's machines: those that checked before, those not
+		// heard from since, and when the last checked.
+		checkedBefore, notSince *int
+		lastCheck               *time.Time
 	}
 	var dests []dest
 	for rows.Next() {
 		var d dest
 		if err := rows.Scan(&d.kind, &d.id, &d.label, &d.status, &d.detail, &d.doneAt, &d.tKind, &d.delivery, &d.state,
-			&d.deliveredAt, &d.deliveredSeq, &d.path); err != nil {
+			&d.deliveredAt, &d.deliveredSeq, &d.path, &d.machineID, &d.machineSeq, &d.machineName, &d.linked,
+			&d.lastSeenAt, &d.offline, &d.checkedBefore, &d.notSince, &d.lastCheck); err != nil {
 			rows.Close()
 			return fmt.Errorf("ledger: tombstone steps: %w", err)
 		}
@@ -396,7 +458,7 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("ledger: tombstone steps: %w", err)
 	}
-	var committed, handEdits, copies []string
+	var committed, handEdits, heldOn, copies []string
 	for _, d := range dests {
 		var detail struct {
 			Generation int64      `json:"generation"`
@@ -404,6 +466,7 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 			Delivery   Delivery   `json:"delivery"`
 			Compile    string     `json:"compile"`
 			Count      *int       `json:"count"`
+			Machines   int        `json:"machines"`
 		}
 		_ = json.Unmarshal(d.detail, &detail)
 		stepKind := d.kind
@@ -427,6 +490,9 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 				s.Reason = StepReasonCompiling
 			}
 		}
+		if d.kind == StepChecks {
+			s = checksStep(d.checkedBefore, d.notSince, d.lastCheck, detail.Machines)
+		}
 		if d.kind != "target" {
 			t.Steps = append(t.Steps, s)
 			continue
@@ -438,6 +504,15 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 		s.Target = &TombstoneTarget{Kind: kind, Label: d.label, Delivery: delivery}
 		if d.id != nil {
 			s.Target.ID = *d.id
+		}
+		home := d.machineID != nil
+		if home {
+			// A home file reads as its target does: "~/.codex/AGENTS.md" on work-mbp.
+			if d.path != "" {
+				s.Target.Label = targetLabelAt(RootHome, kind, d.path)
+			}
+			s.Target.Machine = &TombstoneMachine{ID: *d.machineID, Label: machineLabel(*d.machineSeq),
+				Name: *d.machineName, Linked: d.linked, LastSeenAt: d.lastSeenAt}
 		}
 		// A compiled file is rewritten when the daemon (or a pull request)
 		// delivers a run at least as new as the one Forget's compile made.
@@ -452,12 +527,22 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 				// Nothing new to deliver: the file never held a newer copy.
 			default:
 				s.Status, s.Reason, s.At = StepWaiting, StepReasonDelivery, nil
+				if home && d.offline {
+					// Its file holds it until the machine connects.
+					s.Reason = StepReasonOffline
+				}
 			}
 		}
 		if s.Status == StepHeld {
-			handEdits = append(handEdits, d.label)
+			if !slices.Contains(handEdits, s.Target.Label) {
+				handEdits = append(handEdits, s.Target.Label)
+			}
+			if home && !slices.Contains(heldOn, *d.machineName) {
+				heldOn = append(heldOn, *d.machineName)
+			}
 		}
-		if delivery.writesFiles() {
+		// A home file is never committed (a home link refuses git work trees).
+		if delivery.writesFiles() && !home {
 			committed = append(committed, d.label)
 		}
 		if delivery == DeliveryCopy {
@@ -546,7 +631,24 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 		t.Unreachable = append(t.Unreachable, u)
 	}
 	if len(handEdits) > 0 {
-		t.Unreachable = append(t.Unreachable, UnreachableCopy{Kind: UnreachableHandEdits, Files: handEdits})
+		t.Unreachable = append(t.Unreachable, UnreachableCopy{Kind: UnreachableHandEdits, Files: handEdits, Machines: heldOn})
+	}
+	// The person's own files Memax imported a Personal memory from, on their
+	// machines: Memax never edits them, so they hold it still. Counted only;
+	// their paths were forgotten with it.
+	if t.Kind == ObjectMemory {
+		var n int
+		if err := tx.QueryRow(ctx, `
+			SELECT count(*) FROM v2.memory_sources ms
+			  JOIN v2.sources s ON s.id = ms.source_id AND s.space_id = ms.space_id
+			 WHERE ms.memory_id = $1 AND ms.space_id = $2 AND s.kind = 'file'
+			   AND EXISTS (SELECT 1 FROM v2.spaces sp WHERE sp.id = $2 AND sp.kind = 'personal')`,
+			t.ObjectID, t.SpaceID).Scan(&n); err != nil {
+			return fmt.Errorf("ledger: tombstone sources: %w", err)
+		}
+		if n > 0 {
+			t.Unreachable = append(t.Unreachable, UnreachableCopy{Kind: UnreachableSourceFiles, Count: n})
+		}
 	}
 	if len(copies) > 0 {
 		t.Unreachable = append(t.Unreachable, UnreachableCopy{Kind: UnreachableCopies, Targets: copies})
@@ -732,17 +834,26 @@ func (l *Ledger) ForgetRequests(ctx context.Context, scope Scope, memoryID uuid.
 		return nil, ErrDisabled
 	}
 	var out []ForgetRequest
-	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, forgetRequestSelect+`
-			 WHERE f.memory_id = $1 AND f.space_id = ANY ($2) AND f.status = 'waiting' ORDER BY f.created_at`, memoryID, scope.SpaceIDs())
-		if err != nil {
-			return fmt.Errorf("ledger: forget requests: %w", err)
-		}
-		out, err = pgx.CollectRows(rows, scanForgetRequest)
-		return err
-	})
+	b := &pgx.Batch{}
+	queueForgetRequests(b, &out, memoryID, scope.SpaceIDs())
+	err := l.ReadBatch(ctx, scope, b)
 	if out == nil {
 		out = []ForgetRequest{}
 	}
 	return out, err
+}
+
+// queueForgetRequests queues the forget requests waiting on a memory in
+// spaces; out is filled in when b's results are read.
+func queueForgetRequests(b *pgx.Batch, out *[]ForgetRequest, memoryID uuid.UUID, spaces []uuid.UUID) {
+	b.Queue(forgetRequestSelect+`
+		 WHERE f.memory_id = $1 AND f.space_id = ANY ($2) AND f.status = 'waiting' ORDER BY f.created_at`, memoryID, spaces).
+		Query(func(rows pgx.Rows) error {
+			got, err := pgx.CollectRows(rows, scanForgetRequest)
+			if err != nil {
+				return fmt.Errorf("ledger: forget requests: %w", err)
+			}
+			*out = got
+			return nil
+		})
 }

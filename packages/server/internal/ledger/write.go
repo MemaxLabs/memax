@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/riverqueue/river"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/conditions"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
@@ -55,6 +55,13 @@ type writer struct {
 	forgetHonesty ForgetHonesty
 	// dreamUndoWindow is how long one of Dream's actions can be undone.
 	dreamUndoWindow time.Duration
+
+	// locks are the memories the command holds: it locks them in one round
+	// (locks.go).
+	locks *memoryLocks
+	// plans are the ledger's (plans.go): the plans its decisions are made
+	// under.
+	plans Plans
 }
 
 // write is Remember and Propose.
@@ -132,10 +139,14 @@ func (w *writer) writeMemory(ctx context.Context, sp spaceRow, grant SpaceGrant,
 	if len(srcs) > 0 {
 		primary = &ReceiptSource{Kind: string(srcs[0].Kind), Ref: srcs[0].Ref}
 	}
+	attached, err := w.personConditions(nm.Conditions)
+	if err != nil {
+		return Result{}, err
+	}
 	id, rc, err := w.insertMemory(ctx, sp, grant, memoryRow{
 		Statement: nm.Statement, Section: nm.Section, Kind: nm.Kind, Decision: nm.Decision, Trust: trust,
-		StaleAfter: nm.StaleAfter, Conditions: nm.Conditions, Applies: nm.Applies,
-		ValidFrom: nm.ValidFrom, ValidTo: nm.ValidTo,
+		StaleAfter: nm.StaleAfter, Conditions: attached, Applies: nm.Applies,
+		ValidFrom: nm.ValidFrom, ValidTo: nm.ValidTo, Files: fileRefs(nm.Sources),
 	}, state, primary)
 	if err != nil {
 		return Result{}, err
@@ -163,7 +174,8 @@ func (w *writer) writeMemory(ctx context.Context, sp spaceRow, grant SpaceGrant,
 
 // review is Keep and Reject.
 func (w *writer) review(ctx context.Context, ref string, expected int, cmd CommandName) (Result, error) {
-	mem, grant, sp, replay, err := w.open(ctx, ref)
+	// A Keep supersedes what the memory supersedes: those are locked with it.
+	mem, grant, sp, replay, err := w.openWith(ctx, ref, lockAlso{supersedes: cmd == CommandKeep})
 	if err != nil || replay != nil {
 		return deref(replay), err
 	}
@@ -240,7 +252,9 @@ func (w *writer) supersedeOnKeep(ctx context.Context, sp spaceRow, kept *Memory,
 	if len(ids) == 0 {
 		return receipts, nil
 	}
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, ids, "FOR UPDATE")
+	// Held since the command's first statement (openWith's supersedes),
+	// unless a link landed since: then the command starts again.
+	locked, err := w.lockMemories(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +275,8 @@ func (w *writer) supersedeOnKeep(ctx context.Context, sp spaceRow, kept *Memory,
 // edit writes a new version, or, when policy downgrades it, a new
 // proposal that supersedes the memory.
 func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
-	mem, grant, sp, replay, err := w.open(ctx, c.Memory)
+	// Edit, then keep, supersedes what the proposal supersedes.
+	mem, grant, sp, replay, err := w.openWith(ctx, c.Memory, lockAlso{supersedes: c.Keep})
 	if err != nil || replay != nil {
 		return deref(replay), err
 	}
@@ -341,9 +356,16 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 		}
 	}
 
+	// A person's new words for a kept memory past its date to check again
+	// are that check (as Dream counts it): the date goes, or the compiled
+	// files would keep marking the memory as being verified.
+	staleAfter := mem.StaleAfter
 	if w.meta.Actor.Kind == policy.ActorPerson {
 		w.startUndo(UndoEdit, w.undoWindow)
-		w.undo.touch(mem)
+		w.undo.touchWithDate(mem)
+		if mem.Lifecycle == lifecycle.Kept {
+			staleAfter = nextStaleAfter(mem.StaleAfter, nil, w.now)
+		}
 	}
 	rc := w.receipt(sp, mem.ID, mem.Ref, ActionEdited, mem.streamVersion+1, w.meta.Reason)
 	if err := insertReceipt(ctx, w.tx, &rc); err != nil {
@@ -361,14 +383,18 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 		return Result{}, fmt.Errorf("ledger: write version: %w", err)
 	}
 	w.indexVersion(sp.ID, mem.ID, version)
+	conds, err := renewedConditions(sp, mem.Conditions, statement, mem.Applies)
+	if err != nil {
+		return Result{}, err
+	}
 	hash, bands := signature(statement)
 	if _, err := w.tx.Exec(ctx, fmt.Sprintf(`
 		UPDATE v2.memories
 		   SET section = $2, current_version = $3, trust = $4, search = %s, content_sha256 = $11, minhash_bands = $12,
-		       lifecycle = $6, flags = $7, stream_version = $8, last_receipt_id = $9, updated_at = now()
+		       lifecycle = $6, flags = $7, stale_after = $13, conditions = $14, stream_version = $8, last_receipt_id = $9, updated_at = now()
 		 WHERE id = $1 AND space_id = $10`, fmt.Sprintf(searchExpr, "$5::text")),
 		mem.ID, string(section), version, string(trust), statement,
-		string(next.Lifecycle), next.Flags.Strings(), rc.StreamVersion, rc.ID, sp.ID, hash, bands); err != nil {
+		string(next.Lifecycle), next.Flags.Strings(), rc.StreamVersion, rc.ID, sp.ID, hash, bands, staleAfter, []byte(conds)); err != nil {
 		return Result{}, fmt.Errorf("ledger: update memory: %w", err)
 	}
 	receipts := []Receipt{rc}
@@ -427,9 +453,18 @@ func (w *writer) supersede(ctx context.Context, sp spaceRow, grant SpaceGrant, o
 // open loads and locks the target memory, then claims the idempotency
 // key in its space (returning the original result on a replay). That is
 // two round trips: the ref resolves inside the locking statement
-// (lockRef), and the space's read goes out with the claim (spaceAndClaim).
+// (lockSet), and the space's read goes out with the claim (spaceAndClaim).
 func (w *writer) open(ctx context.Context, ref string) (*Memory, SpaceGrant, spaceRow, *Result, error) {
-	mem, err := lockRef(ctx, w.tx, w.meta.Scope, ref)
+	return w.openWith(ctx, ref, lockAlso{})
+}
+
+// openWith is open, locking also's memories in the same statement as the
+// one named: the command's one round of memory locks (locks.go).
+func (w *writer) openWith(ctx context.Context, ref string, also lockAlso) (*Memory, SpaceGrant, spaceRow, *Result, error) {
+	mem, _, err := w.lockSet(ctx, ref, nil, also)
+	if err == nil && mem == nil {
+		err = ErrNotFound
+	}
 	if err != nil {
 		return nil, SpaceGrant{}, spaceRow{}, nil, err
 	}
@@ -451,10 +486,32 @@ type memoryRow struct {
 	Decision   *DecisionFields
 	Trust      policy.Trust
 	StaleAfter *time.Time
+	// Conditions are typed conditions with their ids (stored or attached);
+	// insertMemory adds the derived ones.
 	Conditions json.RawMessage
 	Applies    json.RawMessage
 	ValidFrom  *time.Time
 	ValidTo    *time.Time
+	// Files are the repository files its sources cite (fileRefs); nil
+	// takes the ones the conditions it carries name.
+	Files []string
+}
+
+// personConditions are conditions sent with a new memory, typed and
+// attached as a person's. Only people attach them; Memax derives its own.
+func (w *writer) personConditions(raw json.RawMessage) (json.RawMessage, error) {
+	sent, err := sentConditions(raw)
+	if err != nil || len(sent) == 0 {
+		return json.RawMessage("[]"), err
+	}
+	if w.meta.Actor.Kind != policy.ActorPerson {
+		return nil, invalid("conditions", "only people attach conditions; Memax reads the paths a memory names on its own")
+	}
+	cs, err := attachConditions(nil, sent, conditions.OriginPerson)
+	if err != nil {
+		return nil, err
+	}
+	return conditions.Encode(cs), nil
 }
 
 // insertMemory allocates the display ID and writes the creating receipt,
@@ -486,6 +543,11 @@ func (w *writer) insertMemory(ctx context.Context, sp spaceRow, grant SpaceGrant
 		}
 		decision = b
 	}
+	had, err := storedConditions(row.Conditions)
+	if err != nil {
+		return uuid.Nil, Receipt{}, err
+	}
+	conds := conditions.Encode(conditionsFor(sp, had, row.Statement, row.Files, row.Applies))
 	hash, bands := signature(row.Statement)
 	if _, err := w.tx.Exec(ctx, fmt.Sprintf(`
 		INSERT INTO v2.memories (id, tenant_id, space_id, seq, section, kind, lifecycle, flags, trust,
@@ -494,7 +556,7 @@ func (w *writer) insertMemory(ctx context.Context, sp spaceRow, grant SpaceGrant
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, 1, $10, $11, $12, $13, $14, $15, %s, $18, $19, $17, $17)`,
 		fmt.Sprintf(searchExpr, "$16::text")),
 		id, sp.TenantID, sp.ID, seq, string(row.Section), string(row.Kind), string(state.Lifecycle),
-		state.Flags.Strings(), string(row.Trust), row.StaleAfter, []byte(row.Conditions), decision,
+		state.Flags.Strings(), string(row.Trust), row.StaleAfter, []byte(conds), decision,
 		[]byte(row.Applies), row.ValidFrom, row.ValidTo, row.Statement, rc.ID, hash, bands); err != nil {
 		return uuid.Nil, Receipt{}, fmt.Errorf("ledger: write memory: %w", err)
 	}
@@ -599,17 +661,18 @@ func (w *writer) objectReceipt(sp spaceRow, kind string, objectID uuid.UUID, ref
 // status there (SpaceGrant, from WithConnection), falling back to
 // Actor.Autonomy.
 func (w *writer) policyActor(g SpaceGrant) policy.Actor {
-	return toPolicyActor(w.meta.Actor, w.meta.Via, g)
+	return toPolicyActor(w.meta.Actor, w.meta.Via, g, w.plans)
 }
 
 // personAssurance is the assurance a person's change carries (none for
 // anyone else); it doesn't depend on the space.
 func (w *writer) personAssurance() policy.Assurance {
-	return toPolicyActor(w.meta.Actor, w.meta.Via, SpaceGrant{}).Assurance()
+	return toPolicyActor(w.meta.Actor, w.meta.Via, SpaceGrant{}, nil).Assurance()
 }
 
-// toPolicyActor is an actor as policy sees it in one space (policyActor).
-func toPolicyActor(a Actor, via policy.Via, g SpaceGrant) policy.Actor {
+// toPolicyActor is an actor as policy sees it in one space (policyActor),
+// with the plans of the person and the space its grant names.
+func toPolicyActor(a Actor, via policy.Via, g SpaceGrant, plans Plans) policy.Actor {
 	autonomy := a.Autonomy
 	if g.Autonomy != "" {
 		autonomy = g.Autonomy
@@ -619,6 +682,7 @@ func toPolicyActor(a Actor, via policy.Via, g SpaceGrant) policy.Actor {
 		Autonomy: autonomy, AgentStatus: g.AgentStatus, Credential: a.Credential, Via: via,
 		PersonPresent: a.PersonPresent, CanElicit: a.CanElicit,
 		Passkey: a.Passkey, Verified: a.Verified,
+		Plan: personPlan(plans, g), SpacePlan: spacePlan(plans, g),
 	}
 }
 
@@ -626,6 +690,7 @@ func (w *writer) object(mem *Memory, contradicts bool) policy.Object {
 	return policy.Object{
 		Ref: mem.Ref, Lifecycle: mem.Lifecycle, Decision: mem.Kind == KindDecision,
 		External: mem.Trust.External(), ContradictsDecision: contradicts,
+		Stale: mem.Lifecycle == lifecycle.Kept && mem.Flags.Has(lifecycle.Stale),
 	}
 }
 
@@ -658,6 +723,17 @@ func (w *writer) claim(ctx context.Context, spaceID uuid.UUID) (*Result, error) 
 // the same order as before. A replay's original result is read after, as
 // claim reads it.
 func (w *writer) spaceAndClaim(ctx context.Context, spaceID uuid.UUID) (spaceRow, *Result, error) {
+	sp, c, err := w.spaceAndClaimed(ctx, spaceID)
+	if err != nil {
+		return sp, nil, err
+	}
+	replay, err := w.replay(ctx, c)
+	return sp, replay, err
+}
+
+// spaceAndClaimed is spaceAndClaim without the replay: the key's earlier
+// record, for a caller that replays its own object (a check run).
+func (w *writer) spaceAndClaimed(ctx context.Context, spaceID uuid.UUID) (spaceRow, *claimed, error) {
 	w.space = spaceID
 	var sp spaceRow
 	var spaceErr error
@@ -665,7 +741,7 @@ func (w *writer) spaceAndClaim(ctx context.Context, spaceID uuid.UUID) (spaceRow
 	b := &pgx.Batch{}
 	b.Queue(spaceSQL, spaceID).QueryRow(func(row pgx.Row) error {
 		read = true
-		sp, spaceErr = scanSpace(row, spaceID)
+		sp, spaceErr = scanSpace(ctx, row, spaceID)
 		// The claim's answer is read either way; the space's error wins.
 		return nil
 	})
@@ -689,11 +765,7 @@ func (w *writer) spaceAndClaim(ctx context.Context, spaceID uuid.UUID) (spaceRow
 		return sp, nil, fmt.Errorf("ledger: claim idempotency key: %w", err)
 	}
 	c, err := w.earlierClaim(ctx, spaceID, inserted)
-	if err != nil {
-		return sp, nil, err
-	}
-	replay, err := w.replay(ctx, c)
-	return sp, replay, err
+	return sp, c, err
 }
 
 // replay is the original result of a key applied before; nil when the key
@@ -708,6 +780,16 @@ func (w *writer) replay(ctx context.Context, c *claimed) (*Result, error) {
 	}
 	if c.objectID != nil && isAgentCommand(w.command) {
 		if res.Connection, err = loadConnection(ctx, w.tx, w.meta.Scope, *c.objectID); err != nil {
+			return nil, err
+		}
+		return &res, nil
+	}
+	if c.objectID != nil && isMachineCommand(w.command) {
+		// The machine and its targets as they are now.
+		if res.Machine, err = loadMachine(ctx, w.tx, w.meta.Scope, *c.objectID, false); err != nil {
+			return nil, err
+		}
+		if res.Targets, err = w.machineTargets(ctx, res.Machine.SpaceID, res.Machine.ID); err != nil {
 			return nil, err
 		}
 		return &res, nil
@@ -769,32 +851,17 @@ func (w *writer) earlierClaim(ctx context.Context, spaceID uuid.UUID, inserted b
 	if inserted {
 		return nil, nil
 	}
-	actorID := w.actorID()
-	var command string
-	var hash []byte
-	var outcome *string
-	c := &claimed{}
+	stored := &storedClaim{}
 	err := w.tx.QueryRow(ctx, `
 		SELECT command, request_hash, outcome, policy, object_id, receipt_ids
 		  FROM v2.command_keys
 		 WHERE space_id = $1 AND actor_kind = $2 AND actor_id IS NOT DISTINCT FROM $3 AND idempotency_key = $4`,
-		spaceID, string(w.meta.Actor.Kind), actorID, w.meta.IdempotencyKey,
-	).Scan(&command, &hash, &outcome, &c.policy, &c.objectID, &c.receiptIDs)
+		spaceID, string(w.meta.Actor.Kind), w.actorID(), w.meta.IdempotencyKey,
+	).Scan(&stored.command, &stored.hash, &stored.outcome, &stored.policy, &stored.objectID, &stored.receiptIDs)
 	if err != nil {
 		return nil, fmt.Errorf("ledger: read idempotency key: %w", err)
 	}
-	// Forget purges the stored hash of a command that carried the words it
-	// forgot (it could confirm a guess of them); such a key replays its
-	// original result for the same command.
-	if command != string(w.command) || (hash != nil && !bytes.Equal(hash, w.hash)) {
-		return nil, fmt.Errorf("%w: key %q was used for another %s; send a new key for a new command",
-			ErrIdempotencyKeyReused, w.meta.IdempotencyKey, command)
-	}
-	if outcome == nil {
-		return nil, errors.New("ledger: idempotency record without an outcome")
-	}
-	c.outcome = Outcome(*outcome)
-	return c, nil
+	return matchClaim(w.meta.IdempotencyKey, w.command, w.hash, stored)
 }
 
 // record stores the result against the idempotency key.

@@ -209,6 +209,7 @@ func TestUndoTransitions(t *testing.T) {
 		{st(Faded), st(Kept, Conflict)},
 		{st(Kept), st(Kept, Stale)},
 		{st(Proposed), st(Proposed, Conflict)},
+		{st(Faded), st(Faded)},
 	}
 	for _, c := range ok {
 		if err := CanRestore(c.from, c.to); err != nil {

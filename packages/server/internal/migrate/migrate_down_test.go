@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	gomigrate "github.com/golang-migrate/migrate/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb/catalock"
@@ -271,6 +272,110 @@ func TestRule11MigrationStepsBack(t *testing.T) {
 	}
 	if err := returned(2); err != nil {
 		t.Errorf("a returned receipt after 042 again: %v", err)
+	}
+}
+
+// machinesVersion is migration 056 (machines and home targets).
+const machinesVersion = 56
+
+// TestMachinesMigrationStepsBack rolls back only 056 while a linked
+// machine and its home target exist: the home target and the machine go,
+// their receipts stay (receipts are append-only), and 048's CHECKs come
+// back NOT VALID, so a new machine receipt is refused until 056 is
+// applied again.
+func TestMachinesMigrationStepsBack(t *testing.T) {
+	cs := withFreshDB(t)
+	if err := Run(cs, migrationsDir()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cs)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	const (
+		person  = "11111111-1111-1111-1111-111111111111"
+		space   = "22222222-2222-2222-2222-222222222222"
+		machine = "33333333-3333-3333-3333-333333333333"
+		target  = "44444444-4444-4444-4444-444444444444"
+	)
+	receipt := func(tx pgx.Tx, kind, object, ref, action string, version int) (string, error) {
+		var id string
+		err := tx.QueryRow(ctx, `
+			INSERT INTO v2.receipts (id, tenant_id, space_id, object_kind, object_id, object_ref, action, actor_kind, actor_id,
+			                         via, occurred_at, stream_id, stream_version)
+			VALUES (gen_random_uuid(), $1, $7, $2, $3, $4, $5, 'person', $1, 'cli', now(), $3, $6)
+			RETURNING id::text`, person, kind, object, ref, action, version, space).Scan(&id)
+		return id, err
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO users (id, email, name) VALUES ('`+person+`', 'rt@test', 'rt');
+		INSERT INTO hubs (id, name, slug, hub_type, owner_id) VALUES ('`+space+`', 'P', 'rt-p', 'personal', '`+person+`')`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // a failed seed must not hold the pool open
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.space_ids', '{`+space+`}', true), set_config('app.tenant_ids', '{`+person+`}', true)`); err != nil {
+		t.Fatal(err)
+	}
+	linked, err := receipt(tx, "machine", machine, "machine-1", "linked", 1)
+	if err != nil {
+		t.Fatalf("a machine receipt after 056: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO v2.machines (id, tenant_id, space_id, seq, device_key, name, platform, linked_at, created_receipt_id, last_receipt_id)
+		VALUES ($1, $2, $3, 1, gen_random_uuid(), 'work-mbp', 'darwin', now(), $4, $4)`, machine, person, space, linked); err != nil {
+		t.Fatalf("seed machine: %v", err)
+	}
+	configured, err := receipt(tx, "target", target, ".codex/AGENTS.md", "configured", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO v2.targets (id, tenant_id, space_id, kind, path, root, machine_id, delivery, sync_state,
+		                        created_receipt_id, last_receipt_id)
+		VALUES ($1, $2, $3, 'codex_user', '.codex/AGENTS.md', 'home', $4, 'local', 'compiling', $5, $5)`,
+		target, person, space, machine, configured); err != nil {
+		t.Fatalf("seed home target: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit seed: %v", err)
+	}
+
+	machinesTable := func() bool {
+		var ok bool
+		if err := pool.QueryRow(ctx, `SELECT to_regclass('v2.machines') IS NOT NULL`).Scan(&ok); err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	m := newMigrator(t, cs)
+	if err := migrateDownTo(t, m, machinesVersion-1); err != nil {
+		t.Fatalf("migrate down to %03d: %v", machinesVersion-1, err)
+	}
+	if machinesTable() {
+		t.Error("after down: v2.machines remains")
+	}
+	var targets, receipts int
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM v2.targets), (SELECT count(*) FROM v2.receipts WHERE space_id = $1)`,
+		space).Scan(&targets, &receipts); err != nil || targets != 0 || receipts != 2 {
+		t.Errorf("after down: %d targets and %d receipts, %v; the home target goes, receipts are never dropped", targets, receipts, err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO v2.receipts (id, tenant_id, space_id, object_kind, object_id, object_ref, action, actor_kind, via, occurred_at, stream_id, stream_version)
+		VALUES (gen_random_uuid(), $1, $3, 'machine', $2, 'machine-1', 'unlinked', 'memax', 'system', now(), $2, 2)`,
+		person, machine, space); err == nil {
+		t.Error("048's CHECKs aren't back: a new machine receipt was accepted")
+	}
+	if err := m.Up(); err != nil && !errors.Is(err, gomigrate.ErrNoChange) {
+		t.Fatalf("migrate up again: %v", err)
+	}
+	if !machinesTable() {
+		t.Error("after second up: no v2.machines")
 	}
 }
 

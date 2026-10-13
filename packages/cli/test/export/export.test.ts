@@ -276,6 +276,48 @@ describe("memax export", () => {
   });
 });
 
+describe("memax export --okf", () => {
+  it("writes each space as an OKF bundle, and replaces only a bundle", async () => {
+    const cwd = tmp();
+    const { memax } = fakeMemax();
+    const c = capture();
+    expect(await exportSpaces({ okf: true }, { memax, cwd, out: c.out })).toBe(
+      0,
+    );
+    const dir = join(cwd, "memax-export", "memax-v2");
+    const got = load(dir);
+    expect([...got.keys()].sort()).toEqual([
+      "index.md",
+      "log.md",
+      "memories/M-0001.md",
+      "memories/M-0002.md",
+      "memories/M-0003.md",
+      "memories/M-0005.md",
+      "tombstones/M-0004.md",
+    ]);
+    const dec = new TextDecoder();
+    expect(dec.decode(got.get("index.md"))).toMatch(
+      /^---\nokf_version: "0\.2"\n---\n/,
+    );
+    expect(dec.decode(got.get("memories/M-0001.md"))).toContain(
+      'type: "decision"',
+    );
+    expect(c.text()).toContain("Exported memax-v2 as an OKF bundle");
+    expect(c.text()).toContain("it carries no signatures");
+    // --force replaces a bundle, and only a bundle.
+    expect(
+      await exportSpaces(
+        { okf: true, force: true },
+        { memax, cwd, out: c.out },
+      ),
+    ).toBe(0);
+    rmSync(join(dir, "index.md"));
+    await expect(
+      exportSpaces({ okf: true, force: true }, { memax, cwd, out: c.out }),
+    ).rejects.toThrow(/doesn't hold a Memax export/);
+  });
+});
+
 describe("memax verify-export", () => {
   async function written(): Promise<string> {
     const cwd = tmp();
@@ -323,6 +365,23 @@ describe("memax verify-export", () => {
       await verifyExportFolder(zipPath, { offline: true }, { out: c.out }),
     ).toBe(0);
     expect(c.text()).toContain("checked with the keys the export carries");
+  });
+
+  it("verifies a Personal space's export, its home files' machines included", async () => {
+    const personal = fileURLToPath(
+      new URL(
+        "../../../sdk/src/v2/testdata/export-v1/personal",
+        import.meta.url,
+      ),
+    );
+    const c = capture();
+    expect(
+      await verifyExportFolder(personal, { offline: true }, { out: c.out }),
+    ).toBe(0);
+    expect(c.text()).toContain("Verified personal");
+    expect(c.text()).toContain(
+      "2 memories, 0 tombstones and 1 Brief version match their receipts",
+    );
   });
 
   it("fails a changed memory file, receipt or checkpoint, saying where", async () => {

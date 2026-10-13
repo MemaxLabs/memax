@@ -37,7 +37,9 @@ import (
 //
 // What is undoable: Keep, Reject and Edit (with or without Keep) by a
 // person, a person's own Remember (undoing it withdraws the memory: it
-// ends rejected, migration 052), a conflict resolution, and the judge's
+// ends rejected, migration 052), a Verify (the flag, the words and the
+// date come back), a change to where a memory applies (its scope comes
+// back, migration 062), a conflict resolution, and the judge's
 // folds (duplicates and re-proposals). Forget never is, and neither is the judge putting a
 // Write agent's write back in Review (`returned`): undoing it would make
 // the write kept again on the agent's authority while it contradicts a
@@ -122,6 +124,17 @@ type memorySnapshot struct {
 	Trust          policy.Trust        `json:"trust"`
 	HasDecision    bool                `json:"has_decision"`
 	DecisionStatus string              `json:"decision_status,omitempty"`
+	// HasDate says the command may have moved the memory's date to check
+	// again (Verify, an edit of a memory past its date), and StaleAfter is
+	// the date before it. Entries without it leave the date as it is.
+	HasDate    bool       `json:"has_date,omitempty"`
+	StaleAfter *time.Time `json:"stale_after,omitempty"`
+	// HasScope says the command changed where the memory applies
+	// (ScopeMemory), and Scope is its scope before (paths, agents and
+	// repositories, never words). Entries without it leave the scope as
+	// it is.
+	HasScope bool            `json:"has_scope,omitempty"`
+	Scope    json.RawMessage `json:"scope,omitempty"`
 }
 
 type undoMemory struct {
@@ -167,6 +180,38 @@ func (j *undoJournal) touch(m *Memory) {
 		snap.DecisionStatus = m.Decision.Status
 	}
 	j.Memories = append(j.Memories, undoMemory{ID: m.ID, Ref: m.Ref, Before: snap})
+}
+
+// touchWithDate is touch, with the memory's date to check again, for a
+// command that may move it.
+func (j *undoJournal) touchWithDate(m *Memory) {
+	if j == nil {
+		return
+	}
+	j.touch(m)
+	for i := range j.Memories {
+		if j.Memories[i].ID == m.ID {
+			j.Memories[i].Before.HasDate, j.Memories[i].Before.StaleAfter = true, m.StaleAfter
+		}
+	}
+}
+
+// touchWithScope is touch, with where the memory applies, for a command
+// that changes it.
+func (j *undoJournal) touchWithScope(m *Memory) {
+	if j == nil {
+		return
+	}
+	j.touch(m)
+	scope := m.Applies
+	if len(scope) == 0 {
+		scope = json.RawMessage(`{}`)
+	}
+	for i := range j.Memories {
+		if j.Memories[i].ID == m.ID {
+			j.Memories[i].Before.HasScope, j.Memories[i].Before.Scope = true, scope
+		}
+	}
 }
 
 // withdraw records a memory the command created (Remember). It had no
@@ -351,7 +396,7 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 			"This %s is too old to undo. Change %s instead: edit it, reject it or forget it.", what, first.Ref)}
 	}
 
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, e.memoryIDs, "FOR UPDATE")
+	locked, err := w.lockMemories(ctx, e.memoryIDs)
 	if err != nil {
 		return Result{}, err
 	}
@@ -425,6 +470,15 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 			m.ID, before.Version).Scan(&statement); err != nil {
 			return Result{}, fmt.Errorf("ledger: undo %s: version %d: %w", m.Ref, before.Version, err)
 		}
+		// Conditions derive from the scope the memory will have.
+		applies := m.Applies
+		if before.HasScope {
+			applies = before.Scope
+		}
+		conds, err := renewedConditions(sp, m.Conditions, statement, applies)
+		if err != nil {
+			return Result{}, err
+		}
 		rc := w.receipt(sp, m.ID, m.Ref, ActionUndid, m.streamVersion+1, reason)
 		rc.Source = &ReceiptSource{Kind: "receipt", Ref: e.receiptID.String()}
 		if err := insertReceipt(ctx, w.tx, &rc); err != nil {
@@ -440,10 +494,13 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 			                       WHEN $8 = '' THEN COALESCE(decision, '{}'::jsonb) - 'status'
 			                       ELSE jsonb_set(COALESCE(decision, '{}'::jsonb), '{status}', to_jsonb($8::text)) END,
 			       search = %s, content_sha256 = $10, minhash_bands = $11,
+			       stale_after = CASE WHEN $15 THEN $16::timestamptz ELSE stale_after END, conditions = $17,
+			       scope = CASE WHEN $18 THEN $19::jsonb ELSE scope END,
 			       stream_version = $12, last_receipt_id = $13, updated_at = now()
 			 WHERE id = $1 AND space_id = $14`, fmt.Sprintf(searchExpr, "$9::text")),
 			m.ID, string(to.Lifecycle), to.Flags.Strings(), before.Version, string(before.Section), string(before.Trust),
-			before.HasDecision, before.DecisionStatus, statement, hash, bands, rc.StreamVersion, rc.ID, sp.ID); err != nil {
+			before.HasDecision, before.DecisionStatus, statement, hash, bands, rc.StreamVersion, rc.ID, sp.ID,
+			before.HasDate, before.StaleAfter, []byte(conds), before.HasScope, []byte(applies)); err != nil {
 			return Result{}, fmt.Errorf("ledger: undo %s: %w", m.Ref, err)
 		}
 		if to.Lifecycle == lifecycle.Proposed || to.Lifecycle == lifecycle.Kept {
@@ -544,6 +601,10 @@ func undoNoun(k UndoKind) string {
 		return "conflict resolution"
 	case UndoRemember:
 		return "Remember"
+	case UndoVerify:
+		return "verification"
+	case UndoScope:
+		return "change to where it applies"
 	}
 	return "fold"
 }
@@ -574,7 +635,7 @@ func (w *writer) loadUndoEntry(ctx context.Context, receiptID uuid.UUID) (*undoE
 		if err != nil {
 			return nil, fmt.Errorf("ledger: load receipt: %w", err)
 		}
-		msg := fmt.Sprintf("That receipt (%s %s) can't be undone. Your own Remembers, keeps, rejections and edits, "+
+		msg := fmt.Sprintf("That receipt (%s %s) can't be undone. Your own Remembers, keeps, rejections, edits and verifications, "+
 			"conflict resolutions and the judge's folds can.", action, ref)
 		switch action {
 		case ActionUndid:

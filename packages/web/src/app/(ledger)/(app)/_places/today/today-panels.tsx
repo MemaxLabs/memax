@@ -26,7 +26,9 @@ import { agentDay, dreamDate } from "@/lib/v2/today-copy";
 import { editionHref, gateHref, placeHref } from "@/lib/v2/places";
 import { GateRow } from "../../_components/gate-row";
 import { StatementText } from "../../_components/statement-text";
-import { TargetRow } from "../../_components/target-row";
+import { LinkHome } from "../../_components/link-home";
+import { TargetList } from "../../_components/target-list";
+import { useOverlays } from "../../_lib/overlays";
 import type { RecordsView } from "../records-view";
 import styles from "./today.module.css";
 
@@ -109,7 +111,8 @@ export function TodayDream({
 
 /**
  * "Waiting on you": the questions agents asked first (each opens in
- * Review), then a few of Review's items, then "N more in Review".
+ * Review), then a few of Review's items, then "N more in Review". A
+ * stale fact offers Verify over its rail (VerifyStale).
  */
 export function WaitingPanel({
   view,
@@ -123,6 +126,7 @@ export function WaitingPanel({
   const waiting = data.waiting;
   const picked = pickToday(waiting.gates, waiting.items);
   const shown = picked.items;
+  const { openVerify } = useOverlays();
   const more = Math.max(
     0,
     waiting.total - picked.gates.length - picked.items.length,
@@ -190,11 +194,25 @@ export function WaitingPanel({
                 time={view.time(item.at)}
                 id={item.ref}
                 space={item.intoSpace ?? space.name}
+                // On a phone the top bar names this space; a row names
+                // only another one (MobileToday.png).
+                className={item.intoSpace ? styles.elsewhere : undefined}
                 href={href(item)}
                 note={
                   note
                     ? noteText(rc, note, agentName, timeZone, locale)
                     : undefined
+                }
+                actions={
+                  item.state === "stale" ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => openVerify(item.ref)}
+                    >
+                      {l.review.flag.verify}
+                    </Button>
+                  ) : undefined
                 }
               >
                 <StatementText text={item.statement} />
@@ -367,14 +385,10 @@ export function CompiledPanel({
         />
       </header>
       {targets?.length ? (
-        targets.map((target) => (
-          <TargetRow
-            key={target.id}
-            space={space.slug}
-            target={target}
-            variant="plain"
-          />
-        ))
+        <TargetList space={space} targets={targets} variant="plain" />
+      ) : space.kind === "personal" && targets ? (
+        // Personal compiles into each agent's own files, machine by machine.
+        <LinkHome lead={l.machines.panel.none} />
       ) : (
         <p className={styles.panelNote}>{c.none}</p>
       )}

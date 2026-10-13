@@ -12,15 +12,13 @@ import {
   type TargetPreviewView,
   type TargetView,
 } from "@/lib/v2/data/targets";
+import { isBlock, siblingsOf } from "@/lib/v2/data/home-files";
 import { useHotkey } from "@/lib/v2/keymap/react";
 import { placeHref } from "@/lib/v2/places";
 import { HeaderSkeleton, PlaceSkeleton } from "../../_components/skeleton";
 import { PlaceError } from "../../_components/status";
-import {
-  TargetRow,
-  TargetStatus,
-  targetHref,
-} from "../../_components/target-row";
+import { TargetList } from "../../_components/target-list";
+import { TargetStatus, targetHref } from "../../_components/target-row";
 import { useToast } from "../../_components/toasts";
 import { StatusPage } from "../../../_components/status-page";
 import { useBrief, useTargetPreview, useTargets } from "../../_lib/compile";
@@ -28,6 +26,13 @@ import { briefHref } from "../brief";
 import { useCompile } from "../brief/use-compile";
 import { useRecordsView, type RecordsView } from "../records-view";
 import { CodeView } from "./code-view";
+import {
+  HomeStopped,
+  homeLede,
+  MachineSwitcher,
+  useMachineOf,
+  useStopHere,
+} from "./home-target";
 import { TargetSettings } from "./target-settings";
 import { useTargetSettings } from "./use-target-settings";
 import styles from "./target.module.css";
@@ -97,6 +102,12 @@ function Target({
   const brief = useBrief(space);
   const compile = useCompile(space);
   const toast = useToast();
+  // A Personal space's home file is one machine's copy (home-target.tsx).
+  const home = useMachineOf(view, target);
+  const stopHere = useStopHere(view, target, home.name ?? "");
+  const siblings = siblingsOf(target, all);
+  // The other files: a home file's other machines are its switcher's.
+  const others = all.filter((o) => !siblings.some((s) => s.id === o.id));
   const canCompile = space.role !== "viewer" && target.syncState !== "off";
   const tool = agentName(TARGET_READERS[target.kind][0] ?? target.kind);
   const name = targetName(target);
@@ -143,8 +154,9 @@ function Target({
     { now, timeZone, locale },
   );
   const where = space.repository ?? space.name;
-  const lede =
-    target.kind === "cursor_mdc" && noFile
+  const lede = home.name
+    ? homeLede(l.machines, target, home.name)
+    : target.kind === "cursor_mdc" && noFile
       ? t.lede.cursorNone
       : interpolate(
           target.kind in t.lede
@@ -162,6 +174,17 @@ function Target({
         lede={lede}
         actions={
           <>
+            {home.name &&
+            target.syncState !== "off" &&
+            space.role === "owner" ? (
+              <Button
+                variant="quiet"
+                pending={stopHere.pending}
+                onClick={() => void stopHere.stop()}
+              >
+                {l.machines.target.stop}
+              </Button>
+            ) : null}
             <Button
               variant="quiet"
               icon="copy"
@@ -186,6 +209,16 @@ function Target({
         }
       />
       <ul className={styles.meta}>
+        {home.name ? (
+          <li>
+            <MachineSwitcher
+              view={view}
+              target={target}
+              all={all}
+              machines={home.machines}
+            />
+          </li>
+        ) : null}
         <li>
           <TargetStatus target={target} />
         </li>
@@ -207,7 +240,16 @@ function Target({
       <div className={styles.grid}>
         <div className={styles.files}>
           {target.syncState === "off" ? (
-            <Stopped view={view} target={target} />
+            home.name ? (
+              <HomeStopped
+                view={view}
+                target={target}
+                machine={home.machine}
+                name={home.name}
+              />
+            ) : (
+              <Stopped view={view} target={target} />
+            )
           ) : null}
           {target.syncState === "held" ? (
             <Held view={view} target={target} />
@@ -226,6 +268,8 @@ function Target({
                 view={view}
                 output={output}
                 copyOut={target.kind === "chatgpt"}
+                machine={home.name}
+                block={home.name !== null && isBlock(target)}
               />
             ))
           ) : (
@@ -237,19 +281,15 @@ function Target({
           )}
         </div>
         <aside className={styles.side}>
-          <TargetSettings view={view} target={target} />
-          {all.length > 1 ? (
+          <TargetSettings view={view} target={target} machine={home.name} />
+          {others.length > 0 ? (
             <section className="mx-panel" aria-labelledby="other-targets">
               <header className="mx-panel-head">
                 <h2 className="mx-panel-title" id="other-targets">
                   {t.otherTargets}
                 </h2>
               </header>
-              {all
-                .filter((other) => other.id !== target.id)
-                .map((other) => (
-                  <TargetRow key={other.id} space={space.slug} target={other} />
-                ))}
+              <TargetList space={space} targets={others} />
             </section>
           ) : null}
         </aside>
@@ -262,22 +302,31 @@ function FilePanel({
   view,
   output,
   copyOut,
+  machine,
+  block,
 }: {
   view: RecordsView;
   output: CompiledFileView;
   copyOut: boolean;
+  /** A home file's machine, which heads it in place of the repository. */
+  machine: string | null;
+  /** Memax's block in a file the person owns: say the rest stays on the machine. */
+  block: boolean;
 }) {
   const { space, l } = view;
   const t = l.brief.target;
   const where = space.repository ?? space.name;
+  const head = machine
+    ? interpolate(l.machines.target.fileHead, { machine, file: output.label })
+    : output.path
+      ? `${where} / ${output.path}`
+      : output.label;
   return (
     <section className="mx-panel" aria-label={output.label}>
       <header className="mx-panel-head">
         <span className={styles.fileHead}>
           <Icon name="file" />
-          <span>
-            {output.path ? `${where} / ${output.path}` : output.label}
-          </span>
+          <span>{head}</span>
         </span>
         <span className="mx-meta">{copyOut ? t.text : t.markdown}</span>
       </header>
@@ -285,6 +334,11 @@ function FilePanel({
         content={output.content}
         label={interpolate(t.code, { file: output.label })}
       />
+      {block && machine ? (
+        <p className={styles.blockNote}>
+          {interpolate(l.machines.target.block, { machine })}
+        </p>
+      ) : null}
     </section>
   );
 }

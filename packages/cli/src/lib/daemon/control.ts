@@ -22,7 +22,24 @@ export type ControlRequest =
   | { cmd: "status" }
   | { cmd: "stop" }
   | { cmd: "reload" }
-  | { cmd: "wake"; space?: string };
+  | { cmd: "wake"; space?: string }
+  /** Run a linked repository's checks now (memax check). */
+  | { cmd: "check"; root: string }
+  /** Take the Personal layer off this machine now (HomeOffReason says why). */
+  | { cmd: "home_off"; reason: HomeOffReason };
+
+/**
+ * Why the Personal layer comes off this machine:
+ * - `unlinked`: the server answered memax unlink --home; home.json goes.
+ * - `signed_out`: memax logout, or a refresh refused for good; home.json
+ *   stays, so memax login puts the layer back.
+ * - `other_person`: memax login as someone else; home.json, the previous
+ *   person's link, goes.
+ * - `gone`: the Personal space answers 404 (forgotten, deleted, or not
+ *   this session's person's); home.json stays, and a poll that succeeds
+ *   again writes the files again.
+ */
+export type HomeOffReason = "unlinked" | "signed_out" | "other_person" | "gone";
 
 export type ControlHandler = (req: ControlRequest) => Promise<unknown>;
 

@@ -234,6 +234,18 @@ func (w *writer) forgetNote(ctx context.Context, c *ForgetNote) (Result, error) 
 	if err != nil {
 		return Result{}, err
 	}
+	if len(carried) > 0 {
+		// What carries the note, and the other side of every conflict they
+		// are in, in one round (locks.go); then what carries it, again,
+		// under the locks: a carry written in between starts the command
+		// again (lockCarried).
+		if _, _, err := w.lockSet(ctx, "", carriedIDs(carried), lockAlso{conflicts: true}); err != nil {
+			return Result{}, err
+		}
+		if carried, err = allNoteCarriers(ctx, w.tx, sp.ID, n); err != nil {
+			return Result{}, err
+		}
+	}
 	locked, err := w.lockCarried(ctx, carried)
 	if err != nil {
 		return Result{}, err
@@ -393,7 +405,7 @@ func (l *Ledger) PreviewForgetNote(ctx context.Context, actor Actor, via policy.
 			return err
 		}
 		out = &NoteForgetPreview{Ref: n.Ref, Carries: nonNilSlice(carried)}
-		d := policy.Decide(toPolicyActor(actor, via, g), policy.ActionForget, policy.Object{Ref: n.Ref}, sp.policy())
+		d := policy.Decide(toPolicyActor(actor, via, g, l.plans), policy.ActionForget, policy.Object{Ref: n.Ref}, sp.policy())
 		out.Allowed = d.Effect != policy.EffectRefuse
 		if !out.Allowed {
 			out.Policy = &d

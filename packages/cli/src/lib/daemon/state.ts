@@ -15,6 +15,18 @@ export interface FileLocal {
   /** The target's version after that report: it moves when a person resolves it. */
   reported_version?: number;
   written_at?: string;
+  /**
+   * When Memax took what it wrote back out (its block, or its own file at
+   * home): a stopped target, an unlinked or signed-out machine. The next
+   * delivery starts afresh rather than reading the file as a hand edit.
+   */
+  taken_out_at?: string;
+  /**
+   * Memax created the file (it wasn't there before its first write), so a
+   * file of the person's that is empty once Memax's block is out is
+   * Memax's to remove.
+   */
+  created?: boolean;
 }
 
 export interface TargetLocal {
@@ -74,15 +86,17 @@ export class DeviceState {
     return f;
   }
 
-  /** Records that this device wrote `sha` to `path`. */
+  /** Records that this device wrote `sha` to `path` (`created`: where nothing was). */
   wrote(
     root: string,
     targetId: string,
     path: string,
     sha: string,
     at = new Date(),
+    created = false,
   ): void {
     const f = this.file(root, targetId, path);
+    if (created) f.created = true;
     if (f.sha && f.sha !== sha) {
       f.history = [
         f.sha,
@@ -93,7 +107,30 @@ export class DeviceState {
     f.written_at = at.toISOString();
     f.reported = undefined;
     f.reported_version = undefined;
+    f.taken_out_at = undefined;
     this.changed();
+  }
+
+  /**
+   * Records that Memax took what it wrote at `path` back out. The hashes it
+   * wrote are kept: a file put back from a backup is still known as ours.
+   */
+  tookOut(root: string, targetId: string, path: string, at = new Date()): void {
+    const f = this.file(root, targetId, path);
+    f.taken_out_at = at.toISOString();
+    f.reported = undefined;
+    f.reported_version = undefined;
+    this.changed();
+  }
+
+  /** Forgets which run is on disk here, so the next pass delivers again. */
+  unacked(root: string, targetId: string): void {
+    const t = this.peek(root, targetId);
+    if (t?.compile) {
+      t.compile = undefined;
+      t.acked_at = undefined;
+      this.changed();
+    }
   }
 
   /** Every hash this device wrote to `path`. */

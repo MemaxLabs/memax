@@ -39,6 +39,7 @@ export function scoped(spec: ScopedSpec): Adapter {
     tool: spec.tool,
     defaultPath: spec.defaultPath,
     pathHint: `inside ${spec.dirs.join(" or ")}`,
+    roots: ["repo"],
     acceptsPath: (path) => spec.dirs.some((dir) => hasSegments(path, dir)),
     limits: spec.limits,
     reads: (target) => target.canonical,

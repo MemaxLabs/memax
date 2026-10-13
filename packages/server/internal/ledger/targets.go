@@ -60,6 +60,16 @@ func (w *writer) configureTarget(ctx context.Context, c *ConfigureTarget) (Resul
 	if c.Target == uuid.Nil {
 		return w.addTarget(ctx, c)
 	}
+	if c.Enabled != nil && *c.Enabled {
+		// Turning a home file back on reads its machine still linked: the
+		// machine before the target, as LinkMachine locks them (locks.go),
+		// in the target's lock's round trip. A repository's target has none.
+		if err := execDeferred(ctx, w.tx, `
+			SELECT 1 FROM v2.machines m WHERE m.id = (SELECT t.machine_id FROM v2.targets t WHERE t.id = $1) FOR SHARE OF m`,
+			c.Target); err != nil {
+			return Result{}, fmt.Errorf("ledger: lock the machine: %w", err)
+		}
+	}
 	t, grant, sp, replay, err := w.openTarget(ctx, c.Target)
 	if err != nil {
 		return Result{}, err
@@ -70,7 +80,10 @@ func (w *writer) configureTarget(ctx context.Context, c *ConfigureTarget) (Resul
 	if c.ExpectedVersion != 0 && c.ExpectedVersion != t.Version {
 		return Result{}, &EditClashError{Ref: t.Label, Expected: c.ExpectedVersion, Current: t.Version}
 	}
-	dec := policy.Decide(w.policyActor(grant), policy.ActionConfigureTarget, policy.Object{}, sp.policy())
+	if c.Root != "" || c.Machine != uuid.Nil {
+		return Result{}, invalid("root", "a target's root and machine are fixed; add a new target instead")
+	}
+	dec := w.decideTarget(grant, sp, t.Root)
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
 	}
@@ -78,16 +91,26 @@ func (w *writer) configureTarget(ctx context.Context, c *ConfigureTarget) (Resul
 	path, settings, delivery := t.Path, t.Settings, t.Delivery
 	if c.Path != nil {
 		path = *c.Path
-		if err := checkTargetPath(t.Kind, path); err != nil {
+		if err := checkTargetPathAt(t.Root, t.Kind, path); err != nil {
 			return Result{}, err
 		}
+		if t.Root == RootHome {
+			// The file's owner follows from its path.
+			settings.UserOwned = homeOwned(t.Kind, path)
+		}
 	}
-	if settings, err = settings.apply(c.Settings, t.Kind); err != nil {
+	if settings, err = settings.apply(c.Settings, t.Kind, t.Root, path); err != nil {
 		return Result{}, err
 	}
 	if c.Delivery != nil {
 		delivery = *c.Delivery
-		if err := checkDelivery(t.Kind, delivery); err != nil {
+		if err := checkDeliveryAt(t.Root, t.Kind, delivery); err != nil {
+			return Result{}, err
+		}
+	}
+	if t.Root == RootHome && c.Enabled != nil && *c.Enabled {
+		// A file comes back on only on a linked machine.
+		if _, err := w.linkedMachine(ctx, sp.ID, t.Machine.ID); err != nil {
 			return Result{}, err
 		}
 	}
@@ -99,12 +122,12 @@ func (w *writer) configureTarget(ctx context.Context, c *ConfigureTarget) (Resul
 	case c.Enabled != nil && *c.Enabled && state == SyncOff:
 		state = SyncCompiling
 	}
-	if path == t.Path && settings == t.Settings && delivery == t.Delivery && state == t.SyncState {
+	if path == t.Path && settings.equal(t.Settings) && delivery == t.Delivery && state == t.SyncState {
 		// Nothing to change: no receipt, nothing written.
 		return Result{Outcome: OutcomeApplied, Policy: dec, Target: t, Unchanged: true}, nil
 	}
 
-	rc := w.objectReceipt(sp, ObjectTarget, t.ID, targetRef(&Target{Kind: t.Kind, Path: path}), action, t.Version+1, w.meta.Reason)
+	rc := w.objectReceipt(sp, ObjectTarget, t.ID, targetRef(&Target{Kind: t.Kind, Root: t.Root, Path: path}), action, t.Version+1, w.meta.Reason)
 	if err := insertReceipt(ctx, w.tx, &rc); err != nil {
 		return Result{}, err
 	}
@@ -160,9 +183,19 @@ func (w *writer) addTarget(ctx context.Context, c *ConfigureTarget) (Result, err
 		}
 		return w.replayTarget(ctx, replay, *replay.objectID)
 	}
-	dec := policy.Decide(w.policyActor(grant), policy.ActionConfigureTarget, policy.Object{}, sp.policy())
+	root := c.Root
+	if root == "" {
+		root = RootRepo
+	}
+	dec := w.decideTarget(grant, sp, root)
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
+	}
+	var machine *Machine
+	if root == RootHome {
+		if machine, err = w.linkedMachine(ctx, sp.ID, c.Machine); err != nil {
+			return Result{}, err
+		}
 	}
 	var hasBrief bool
 	if err := w.tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM v2.briefs WHERE space_id = $1)`, sp.ID).Scan(&hasBrief); err != nil {
@@ -171,11 +204,11 @@ func (w *writer) addTarget(ctx context.Context, c *ConfigureTarget) (Result, err
 	if !hasBrief {
 		return Result{}, invalid("brief", "write the space's Brief before choosing where it compiles")
 	}
-	path := c.Kind.DefaultPath()
+	path := c.Kind.defaultPathAt(root)
 	if c.Path != nil {
 		path = *c.Path
 	}
-	if err := checkTargetPath(c.Kind, path); err != nil {
+	if err := checkTargetPathAt(root, c.Kind, path); err != nil {
 		return Result{}, err
 	}
 	delivery := DeliveryLocal
@@ -185,10 +218,10 @@ func (w *writer) addTarget(ctx context.Context, c *ConfigureTarget) (Result, err
 	if c.Delivery != nil {
 		delivery = *c.Delivery
 	}
-	if err := checkDelivery(c.Kind, delivery); err != nil {
+	if err := checkDeliveryAt(root, c.Kind, delivery); err != nil {
 		return Result{}, err
 	}
-	settings, err := defaultSettings(c.Kind).apply(c.Settings, c.Kind)
+	settings, err := defaultSettingsAt(c.Kind, root, path).apply(c.Settings, c.Kind, root, path)
 	if err != nil {
 		return Result{}, err
 	}
@@ -197,15 +230,19 @@ func (w *writer) addTarget(ctx context.Context, c *ConfigureTarget) (Result, err
 		return Result{}, err
 	}
 	id := newID()
-	rc := w.objectReceipt(sp, ObjectTarget, id, targetRef(&Target{Kind: c.Kind, Path: path}), ActionConfigured, 1, w.meta.Reason)
+	rc := w.objectReceipt(sp, ObjectTarget, id, targetRef(&Target{Kind: c.Kind, Root: root, Path: path}), ActionConfigured, 1, w.meta.Reason)
 	if err := insertReceipt(ctx, w.tx, &rc); err != nil {
 		return Result{}, err
 	}
+	var machineID *uuid.UUID
+	if machine != nil {
+		machineID = &machine.ID
+	}
 	if _, err := w.tx.Exec(ctx, `
-		INSERT INTO v2.targets (id, tenant_id, space_id, kind, path, settings, delivery, sync_state,
+		INSERT INTO v2.targets (id, tenant_id, space_id, kind, root, machine_id, path, settings, delivery, sync_state,
 		                        dirty_gen, compiled_gen, stream_version, created_receipt_id, last_receipt_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, 'compiling', 1, 0, 1, $8, $8)`,
-		id, sp.TenantID, sp.ID, string(c.Kind), nullText(path), settingsJSON, string(delivery), rc.ID); err != nil {
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'compiling', 1, 0, 1, $10, $10)`,
+		id, sp.TenantID, sp.ID, string(c.Kind), string(root), machineID, nullText(path), settingsJSON, string(delivery), rc.ID); err != nil {
 		return Result{}, fmt.Errorf("ledger: write target: %w", err)
 	}
 	w.enqueueCompile(id, sp.ID)
@@ -445,7 +482,7 @@ func (w *writer) recordDelivery(ctx context.Context, c *RecordDelivery) (Result,
 		}
 		return res, err
 	}
-	dec := policy.Decide(w.policyActor(grant), policy.ActionReport, policy.Object{}, sp.policy())
+	dec := w.decideReport(grant, sp, t)
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
 	}
@@ -628,21 +665,24 @@ func (l *Ledger) AdvanceCounter(ctx context.Context, scope Scope, spaceID uuid.U
 
 // writeBookkeeping runs fn in a read-write transaction as memax_v2 in the
 // scope, with the transaction's login role for any River work. Only
-// bookkeeping that needs no receipt goes through it.
+// bookkeeping that needs no receipt goes through it. fn is a transaction's
+// statements and nothing else, so a deadlock runs it again (retry.go).
 func (l *Ledger) writeBookkeeping(ctx context.Context, scope Scope, fn func(tx pgx.Tx, loginRole string) error) error {
 	if l == nil {
 		return ErrDisabled
 	}
-	tx, loginRole, err := l.begin(ctx, scope, pgx.ReadWrite)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if err := fn(tx, loginRole); err != nil {
-		return mapDBError(err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return mapDBError(err)
-	}
-	return nil
+	return l.retry(ctx, "bookkeeping", func() error {
+		tx, loginRole, err := l.begin(ctx, scope, pgx.ReadWrite)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if err := fn(tx, loginRole); err != nil {
+			return mapDBError(err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return mapDBError(err)
+		}
+		return nil
+	})
 }

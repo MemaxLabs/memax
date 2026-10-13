@@ -59,8 +59,9 @@ export const ledgerActivityEn = {
     compiles: "Compiles",
     notRecorded: "Not recorded yet",
   },
+  // D9: how far back Activity's reads and compiles go on each plan.
   retention:
-    "Pro keeps 30 days of activity. The Team plan keeps all of it, with export.",
+    "Activity goes back 30 days on Free, 90 days on Pro and a year on Team. Receipts are kept for good.",
   export: {
     loaded: "Export CSV · {n} loaded",
     loadedOne: "Export CSV · 1 loaded",
@@ -193,6 +194,8 @@ export const ledgerActivityEn = {
     paused: "{actor} paused {agent}.",
     resumed: "{actor} resumed {agent}.",
     disconnected: "{actor} disconnected {agent}. Its credential is revoked.",
+    rekeyed:
+      "{actor} gave {agent} a new start key. The old one no longer works.",
     revised: "{actor} revised the Brief ({ref}).",
     configured: "{actor} changed how {ref} is written.",
     requested: "{actor} asked for {ref} to be compiled.",
@@ -220,6 +223,17 @@ export const ledgerActivityEn = {
     switched:
       "{actor} switched this space to V2. Agents now read what people keep here.",
     switchedBack: "{actor} switched this space back to V1.",
+    // A machine is named by its label (machine-2), never its name.
+    machineLinked:
+      "{actor} linked {ref}: this space is written into its agents' own files.",
+    machineRenamed: "{actor} renamed {ref}.",
+    machineUnlinked: "{actor} took this space off {ref}.",
+    // Which repositories a memory applies in (scope.repos).
+    scoped: "{actor} changed where {ref} applies.",
+    // Its "stays true while" conditions (Memax typing them, for now).
+    conditionsChanged: "{actor} changed what {ref} stays true while.",
+    unflagged:
+      "{actor} took the stale mark off {ref}: what it relies on holds again.",
     other: "{actor} changed {ref}.",
   },
 } as const;

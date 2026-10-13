@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { compile, DEFAULT_BUDGET, type Memory } from "../src/index.js";
+import {
+  compile,
+  DEFAULT_BUDGET,
+  extractManagedBlock,
+  HOME_BUDGET,
+  MANAGED_END,
+  MANAGED_START,
+  type Memory,
+  type TargetSettings,
+} from "../src/index.js";
 import { input, memory } from "./helpers.js";
 
 /** `n` distinct facts of about `size` characters, most-read first by ref. */
@@ -144,5 +153,86 @@ describe("line guidance", () => {
     expect(
       result.warnings.find((w) => w.code === "over_guidance")?.message,
     ).toMatch(/^CLAUDE\.md has 2\d\d lines; Claude Code suggests under 200\.$/);
+  });
+});
+
+describe("the 6 KiB budget of a personal space's files", () => {
+  const personal = (memories: Memory[], targets: TargetSettings[]) => {
+    const i = input(memories, targets);
+    i.space = { ...i.space, slug: "ana", kind: "personal" };
+    return i;
+  };
+  const home: TargetSettings[] = [
+    { kind: "agents_md", path: ".memax/personal/AGENTS.md" },
+    { kind: "claude_user" },
+    { kind: "codex_user", current: "" },
+  ];
+  const utf8 = (s: string) => new TextEncoder().encode(s).length;
+  /** A block's budget covers its lines; the two marker lines come on top. */
+  const markers = utf8(`${MANAGED_START}\n${MANAGED_END}\n`);
+
+  it("keeps every home file to 6 KiB by default and lists what was dropped", () => {
+    const result = compile(personal(facts(200, 80), home));
+    expect(HOME_BUDGET).toBe(6 * 1024);
+    expect(result.files).toHaveLength(3);
+    for (const f of result.files) {
+      const body = f.user_owned
+        ? utf8(extractManagedBlock(f.content) ?? "") - markers
+        : f.bytes;
+      expect(body, f.path).toBeLessThanOrEqual(6 * 1024);
+      expect(body, f.path).toBeGreaterThan(6 * 1024 - 100);
+      expect(f.dropped_for_budget.length, f.path).toBeGreaterThan(0);
+      expect(f.refs.length + f.dropped_for_budget.length, f.path).toBe(200);
+    }
+    const rules = result.files.find((f) => f.target === "claude_user");
+    expect(result.warnings.map((w) => w.message)).toContain(
+      `${rules?.dropped_for_budget.length} facts didn't fit the 6 KiB budget for .claude/rules/memax-personal.md. The rest stay live over MCP.`,
+    );
+  });
+
+  it("drops each section's least-read facts first, sharing the budget across sections", () => {
+    const sections = ["preferences", "conventions", "decisions"];
+    const spread = facts(200, 80).map((m, i) => ({
+      ...m,
+      section: sections[i % 3],
+    }));
+    const rules = compile(personal(spread, [{ kind: "claude_user" }])).files[0];
+    const n = (r: string) => Number(r.slice(2));
+    sections.forEach((_, s) => {
+      const inSection = (r: string) => (n(r) - 1) % 3 === s;
+      const kept = rules.refs.filter(inSection).map(n);
+      const dropped = rules.dropped_for_budget.filter(inSection).map(n);
+      // Higher refs are read less (facts() scores them n - i).
+      expect(kept.length).toBeGreaterThan(15);
+      expect(Math.max(...kept)).toBeLessThan(Math.min(...dropped));
+    });
+    for (const heading of ["Preferences", "Conventions", "Decisions"])
+      expect(rules.content).toContain(`## ${heading}`);
+  });
+
+  it("takes a budget from 1 KiB up, while a project's AGENTS.md keeps 32 KiB", () => {
+    for (const budget of [1024, 4096, 16 * 1024]) {
+      const rules = compile(
+        personal(facts(400, 80), [
+          { kind: "claude_user", size_budget: budget },
+        ]),
+      ).files[0];
+      expect(rules.bytes).toBeLessThanOrEqual(budget);
+      expect(rules.bytes + 100).toBeGreaterThan(budget);
+    }
+    expect(compile(input(facts(400, 80))).files[0].bytes).toBeGreaterThan(
+      31 * 1024,
+    );
+  });
+
+  it("doesn't count the person's own lines around a block against it", () => {
+    const mine = `# Mine\n\n${"My own line.\n".repeat(800)}`;
+    const target = (current: string): TargetSettings[] => [
+      { kind: "codex_user", current },
+    ];
+    const alone = compile(personal(facts(200, 80), target(""))).files[0];
+    const there = compile(personal(facts(200, 80), target(mine))).files[0];
+    expect(there.refs).toEqual(alone.refs);
+    expect(there.drift_sha256).toBe(alone.drift_sha256);
   });
 });

@@ -13,22 +13,22 @@ import (
 // RetrievalResultEntry is the per-question retrieval output, matching the
 // JSONL format produced by run_retrieval.py.
 type RetrievalResultEntry struct {
-	QuestionID        string       `json:"question_id"`
-	QuestionType      string       `json:"question_type"`
-	Question          string       `json:"question"`
-	Answer            FlexString   `json:"answer"`
-	QuestionDate      string       `json:"question_date"`
-	HaystackDates     []string     `json:"haystack_dates"`
-	HaystackSessions  [][]Turn     `json:"haystack_sessions"`
-	HaystackSessionIDs []string    `json:"haystack_session_ids"`
-	AnswerSessionIDs  []string     `json:"answer_session_ids"`
-	RetrievalResults  *RetrievalResults `json:"retrieval_results"`
+	QuestionID         string            `json:"question_id"`
+	QuestionType       string            `json:"question_type"`
+	Question           string            `json:"question"`
+	Answer             FlexString        `json:"answer"`
+	QuestionDate       string            `json:"question_date"`
+	HaystackDates      []string          `json:"haystack_dates"`
+	HaystackSessions   [][]Turn          `json:"haystack_sessions"`
+	HaystackSessionIDs []string          `json:"haystack_session_ids"`
+	AnswerSessionIDs   []string          `json:"answer_session_ids"`
+	RetrievalResults   *RetrievalResults `json:"retrieval_results"`
 }
 
 // RetrievalResults holds the retrieval output for a single question.
 type RetrievalResults struct {
-	Query       string              `json:"query"`
-	RankedItems []RankedItem        `json:"ranked_items"`
+	Query       string                `json:"query"`
+	RankedItems []RankedItem          `json:"ranked_items"`
 	Metrics     map[string]MetricsAtK `json:"metrics"` // "session" and/or "turn"
 }
 

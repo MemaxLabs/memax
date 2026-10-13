@@ -186,6 +186,9 @@ func (m *Mailer) Render(e *ledger.DreamEdition, sp ledger.DreamEmailSpace, r led
 	}
 	if len(d.Lines) == 0 {
 		for _, s := range e.Surfaced {
+			if s.Kind != ledger.SurfacedConflict {
+				continue
+			}
 			if t, ok := words(s.Memory); ok {
 				d.Lines = append(d.Lines, mailLine{Kind: "conflict", Text: t})
 				break

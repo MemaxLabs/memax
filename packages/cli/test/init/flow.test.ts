@@ -4,12 +4,21 @@
 // non-interactive form, the dry run, and the rule that a hand-written file
 // is never overwritten.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import type { V2 } from "memax-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readHomeLink, writeHomeLink } from "../../src/lib/daemon/home-link.js";
 import { readRegistry } from "../../src/lib/daemon/registry.js";
+import { gitRoot } from "../../src/lib/project-context.js";
 import type { AgentEntry } from "../../src/lib/init/agents.js";
+import { claudeProjectFolder } from "../../src/lib/init/files.js";
 import { runGit } from "../../src/lib/init/git.js";
 import { runInit } from "../../src/lib/init/run.js";
 import type {
@@ -109,6 +118,7 @@ async function init(
   o: InitOptions,
   answers: Array<[RegExp, boolean | string]> = [],
   interactive = true,
+  more: Partial<InitDeps> = {},
 ): Promise<Run> {
   const lines: string[] = [];
   const asked: string[] = [];
@@ -166,6 +176,7 @@ async function init(
     version: "test",
     now: () => performance.now(),
     sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 5))),
+    ...more,
   };
   const code = await runInit(o, d);
   return { code, out: lines.join("\n"), asked, mcp };
@@ -265,7 +276,6 @@ describe("memax init", () => {
     expect(kinds).toEqual([
       ["agents_md", false],
       ["claude_md", true],
-      ["cursor_mdc", false],
       ["chatgpt", false],
     ]);
     expect(readFileSync(join(h.repo, ".memax.yml"), "utf8")).toContain(
@@ -486,5 +496,188 @@ describe("memax init's hooks", () => {
     expect(report.agents.find((a) => a.kind === "claude-code")?.hook).toBe(
       "plugin",
     );
+  });
+});
+
+// Personal facts tied to one repository (personal-layer design §3.3): this
+// repository's Claude Code auto memory and CLAUDE.local.md go to Personal
+// with scope.repos, so a home file never loads them in another project.
+describe("memax init and the home link (personal-layer design §6.1)", () => {
+  /** memax link --home as init calls it: records the call, links like it. */
+  function homeLink(answer = true) {
+    const calls: Array<{ yes: boolean; interactive: boolean }> = [];
+    const fn: NonNullable<InitDeps["homeLink"]> = async (o, io) => {
+      calls.push({ yes: o.yes, interactive: io.interactive });
+      if (!o.yes && !(await io.confirm("  …takes them off. [Y/n] ", true)))
+        return 0;
+      writeHomeLink(h.paths, {
+        space_id: personal.id,
+        space_slug: personal.slug,
+        machine_id: "m-1",
+        home: h.home,
+        files: [],
+      });
+      io.out("  ✓ Linked this machine (machine-1, work-mbp) to personal-zz.");
+      return answer ? 0 : 1;
+    };
+    return { fn, calls };
+  }
+  const answers: Array<[RegExp, boolean | string]> = [
+    [/Connect Claude Code/, true],
+    [/Bring \d+ notes/, true],
+    [/Which holds/, "2"],
+    [/Keep the \d+\?|Keep it\?/, true],
+    [/CLAUDE.md is yours/, true],
+    [/Start the Memax daemon/, false],
+    [/Replace AGENTS.md/, false],
+  ];
+
+  it("offers it at a terminal, after the Personal import and bulk keep, with link --home's consent", async () => {
+    mkdirSync(join(h.home, ".claude"), { recursive: true });
+    const link = homeLink();
+    const r = await init({}, [...answers, [/takes them off/, true]], true, {
+      homeLink: link.fn,
+    });
+    expect(r.code).toBe(0);
+    expect(link.calls).toEqual([{ yes: false, interactive: true }]);
+    // Asked after the Keep, before the daemon and the compile.
+    const at = (re: RegExp) => r.asked.findIndex((q) => re.test(q));
+    expect(at(/takes them off/)).toBeGreaterThan(at(/Keep the|Keep it/));
+    expect(at(/takes them off/)).toBeLessThan(at(/Start the Memax daemon/));
+    expect(r.out).toContain("Linked this machine (machine-1, work-mbp)");
+
+    // Run again: already linked, said as done, not asked.
+    const again = await init({}, answers, true, { homeLink: homeLink().fn });
+    expect(again.asked.filter((q) => /takes them off/.test(q))).toEqual([]);
+    expect(again.out).toContain(
+      "This machine's home is linked to personal-zz.",
+    );
+  });
+
+  it("never links silently: --yes only says how, --yes --home links without asking", async () => {
+    const quiet = homeLink();
+    const r = await init({ yes: true }, [], false, { homeLink: quiet.fn });
+    expect(quiet.calls).toEqual([]);
+    expect(r.out).toContain(
+      "Write personal-zz into your agents' own files on this machine too: memax link --home",
+    );
+    expect(readHomeLink(h.paths)).toBeNull();
+
+    const asked = homeLink();
+    const json = await init(
+      { yes: true, home: true, format: "json" },
+      [],
+      false,
+      {
+        homeLink: asked.fn,
+      },
+    );
+    expect(asked.calls).toEqual([{ yes: true, interactive: false }]);
+    expect(JSON.parse(json.out).home).toEqual({ linked: true });
+  });
+
+  it("doesn't offer it where no Personal space is on V2, nor with --no-home", async () => {
+    const link = homeLink();
+    // Personal still on V1 and kept there (--no-personal): nothing to link.
+    const v1 = await init(
+      { yes: true, personal: false, format: "json" },
+      [],
+      false,
+      {
+        homeLink: link.fn,
+      },
+    );
+    expect(JSON.parse(v1.out).home).toBeNull();
+    await init({ yes: true, home: false }, [], false, { homeLink: link.fn });
+    expect(link.calls).toEqual([]);
+    expect(readHomeLink(h.paths)).toBeNull();
+  });
+
+  it("outside a repository, the home link is the first file init gives", async () => {
+    mkdirSync(join(h.home, ".claude"), { recursive: true });
+    const link = homeLink();
+    const r = await init(
+      {},
+      [
+        [/Connect Claude Code/, true],
+        [/Bring \d+ notes/, true],
+        [/Keep the \d+\?|Keep it\?/, true],
+        [/takes them off/, true],
+      ],
+      true,
+      { homeLink: link.fn, cwd: h.home },
+    );
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("Not in a git repository");
+    expect(link.calls).toHaveLength(1);
+    expect(readHomeLink(h.paths)?.space_id).toBe(personal.id);
+  });
+});
+
+describe("memax init: this repository's own notes", () => {
+  const autoMemory = () =>
+    join(
+      h.home,
+      ".claude",
+      "projects",
+      claudeProjectFolder(gitRoot(h.repo)!),
+      "memory",
+    );
+  beforeEach(() => {
+    put(h.repo, "CLAUDE.local.md", "- Use the staging database for acme.\n");
+    put(
+      autoMemory(),
+      "notes.md",
+      "- The web app's e2e tests need the stack up.\n",
+    );
+  });
+
+  it("ties them to this repository, and nothing else", async () => {
+    const r = await init({ yes: true, format: "json" }, [], false);
+    expect(r.code).toBe(0);
+    const [project, home] = bodies();
+    const scopeOf = (b: V2.ImportInput, ref: RegExp) =>
+      b.items.filter((i) => ref.test(i.ref ?? "")).map((i) => i.scope ?? null);
+    expect(scopeOf(home, /^CLAUDE\.local\.md:/)).toEqual([
+      { repos: ["acme/web"] },
+    ]);
+    expect(scopeOf(home, /^~\/\.claude\/projects\//)).toEqual([
+      { repos: ["acme/web"] },
+    ]);
+    // Files that apply everywhere stay everywhere.
+    expect(scopeOf(home, /^~\/\.claude\/CLAUDE\.md:/)).toEqual([null]);
+    expect(scopeOf(home, /^~\/\.codex\//).every((s) => s === null)).toBe(true);
+    // The project's own files are unchanged: a scoped rule keeps its paths.
+    expect(project.items.some((i) => i.scope?.repos)).toBe(false);
+    expect(scopeOf(project, /^\.cursor\/rules\//)).toEqual([
+      { paths: ["**/*.test.ts"] },
+    ]);
+  });
+
+  it("leaves them on this machine when the repository has no remote", async () => {
+    execFileSync("git", ["remote", "remove", "origin"], { cwd: h.repo });
+    const dry = await init({ dryRun: true }, [], false);
+    expect(dry.out).toMatch(
+      /CLAUDE\.local\.md\s+left here: this repository has no remote/,
+    );
+    const r = await init({ yes: true, format: "json" }, [], false);
+    expect(r.code).toBe(0);
+    const home = bodies().find((b) =>
+      b.items.some((i) => i.ref?.startsWith("~/.claude/CLAUDE.md")),
+    )!;
+    expect(
+      home.items.filter(
+        (i) =>
+          i.ref?.startsWith("CLAUDE.local.md") ||
+          i.ref?.startsWith("~/.claude/projects/"),
+      ),
+    ).toEqual([]);
+    expect(home.files?.map((f) => f.kind)).not.toContain("claude_local");
+    const report = JSON.parse(r.out) as {
+      files: Array<{ path: string; noRepository?: boolean }>;
+    };
+    expect(
+      report.files.find((f) => f.path === "CLAUDE.local.md")?.noRepository,
+    ).toBe(true);
   });
 });

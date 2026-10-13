@@ -15,6 +15,11 @@ import { ledgerReviewZh } from "./review-zh";
 import { ledgerAccountZh } from "./account-zh";
 import { ledgerSettingsZh } from "./settings-zh";
 import { ledgerTodayZh } from "./today-zh";
+import { ledgerVerifyZh } from "./verify-zh";
+import { ledgerMachinesZh } from "./machines-zh";
+import { ledgerNewSpaceZh } from "./new-space-zh";
+import { ledgerSearchZh } from "./search-zh";
+import { ledgerPublicZh } from "./public-zh";
 
 export const ledgerZh: Translations["ledger"] = {
   meta: {
@@ -45,6 +50,10 @@ export const ledgerZh: Translations["ledger"] = {
   records: ledgerRecordsZh,
   review: ledgerReviewZh,
   memory: ledgerMemoryZh,
+  verify: ledgerVerifyZh,
+  machines: ledgerMachinesZh,
+  search: ledgerSearchZh,
+  newSpace: ledgerNewSpaceZh,
   brief: ledgerBriefZh,
   today: ledgerTodayZh,
   dream: ledgerDreamZh,
@@ -52,6 +61,7 @@ export const ledgerZh: Translations["ledger"] = {
   consent: ledgerConsentZh,
   settings: ledgerSettingsZh,
   account: ledgerAccountZh,
+  public: ledgerPublicZh,
   devTokens: {
     breadcrumb: "Ledger · 开发样张",
     title: "设计令牌与字体",

@@ -25,6 +25,8 @@ export const ledgerRecordsEn = {
     undid: "undone",
     // The judge put a write kept at once back in Review (rule 11).
     returned: "back in Review",
+    // Memax took its own stale mark off: what it relies on holds again.
+    unflagged: "no longer stale",
     // A decision gate's receipts.
     asked: "asked",
     withdrawn: "withdrawn",
@@ -76,6 +78,9 @@ export const ledgerRecordsEn = {
     conflictAsked: "{agent} asked you to decide.",
     stale: "Its source changed on {date}",
     staleSource: "Its source changed on {date} · {source}",
+    staleDate: "Its date to check again has passed",
+    // A condition stopped holding on the default branch (a check run).
+    staleCheck: "One of its conditions stopped holding on {date}",
     merged: "Merged into {ref} by {name}",
     faded: "No agent has read it in {n} days. Restore it, or let it rest.",
   },
@@ -120,6 +125,9 @@ export const ledgerRecordsEn = {
     withdraw: "{ref} wasn't withdrawn.",
     forget: "{ref} wasn't forgotten.",
     declineForget: "{ref} wasn't kept.",
+    // Where a memory applies (scope.repos) didn't change.
+    scope: "{ref} still applies where it did.",
+    verify: "{ref} wasn't verified.",
     // 409 forget_carries: what goes with it changed after the person confirmed.
     carriesChanged:
       "What goes with it changed since you confirmed, so nothing was forgotten. Check it again, then forget it.",
@@ -154,9 +162,51 @@ export const ledgerRecordsEn = {
     unavailable: "That isn't available yet.",
     unknown: "Try again, and reload the page if it keeps happening.",
     retry: "Try again",
+    // NewSpace: a space that wasn't made, and why (spec PolicyCode).
+    createSpace: "{name} wasn't made.",
+    refusedSpace: {
+      personal_exists:
+        "You have a personal space already, and each person has one.",
+      space_kind: "Team spaces come with Team. Make a project space for now.",
+      space_limit: "You own 50 project spaces, the most one person can.",
+      space_by_person:
+        "Only a person makes spaces, signed in as themselves, never with an agent's key.",
+      other: "Memax refused it: {message}",
+      otherBare: "Memax refused it.",
+    },
+    // A plan limit a refusal met (policy limit, D9), by code: what the
+    // plan allows ({plan} its name, {allowed} the allowance), then, when a
+    // plan lifts it, what that plan adds (upgrade).
+    planLimit: {
+      space_limit: "You own the {allowed} project spaces {plan} has.",
+      space_limitOne: "You own the project space {plan} has.",
+      agent_kind_limit:
+        "You've connected the {allowed} kinds of agent {plan} has.",
+      agent_kind_limitOne: "You've connected the kind of agent {plan} has.",
+      ask_limit:
+        "You've asked the {allowed} questions {plan} answers this month. Asks start again on the 1st.",
+      seat_needed:
+        "Only the owner keeps in {space} on {plan}. Members need a Team seat to keep.",
+      dream_cadence:
+        "Dream has run now as often as {plan} allows this week. It still runs on its own.",
+      dream_cadenceToday:
+        "Dream has run now as often as {plan} allows today. It still runs on its own.",
+      upgrade: {
+        space_limit: "Pro has as many as you like.",
+        agent_kind_limit:
+          "Pro connects as many as you like, and another machine running one you have doesn't count.",
+        ask_limit: "Pro answers 1,000 a month.",
+        seat_needed: "On Team, every member holds a seat.",
+        dream_cadence: "Pro runs it nightly.",
+      },
+    },
+    // The V2 plans' names (D9).
+    plans: { free: "Free", pro: "Pro", team: "Team", enterprise: "Enterprise" },
     // By spec PolicyCode.
     refused: {
       viewer: "Viewers can propose and comment. A member keeps.",
+      seat_needed:
+        "Only the owner keeps in {space} on this plan. Members need a Team seat to keep.",
       owners_keep: "Only owners keep in {space}. Ask an owner to keep it.",
       external_needs_review:
         "It quotes an outside source, so only a web sign-in can keep it. Sign out, sign in again on this page, then keep it.",
@@ -178,6 +228,10 @@ export const ledgerRecordsEn = {
         "Only a person answers a question. Sign in as yourself, not with an agent's key.",
       not_your_gate:
         "Only the agent that asked, the person it works for, or someone who can answer it can withdraw it.",
+      space_on_v1:
+        "{space} is still on V1, so nothing here changes until it switches to V2. Its owner switches it from its Today.",
+      verify_by_person:
+        "Only a person verifies it. Sign in as yourself, not with an agent's key.",
       other: "Memax refused it: {message}",
       otherBare: "Memax refused it.",
     },
@@ -221,6 +275,10 @@ export const ledgerRecordsEn = {
       resolve: "Undid the settlement. {ref} is back in Review as a conflict.",
       fold: "Unfolded {ref}. It's back in Review.",
       remember: "Undid remembering {ref}. It's withdrawn.",
+      verify: "Undid the verification. {ref} is stale again.",
+      verifyUpdate:
+        "Undid the update. {ref} reads as it did, and is stale again.",
+      scope: "Undid the change. {ref} applies where it did before.",
     },
     // Why an undo didn't go through, by spec UndoRefusal and policy code.
     refused: {

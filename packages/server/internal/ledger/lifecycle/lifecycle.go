@@ -338,7 +338,10 @@ func CanRestore(from, to State) error {
 		return refuse("only kept memories and proposals carry flags")
 	case to.Flags.Has(Stale) && to.Lifecycle != Kept:
 		return refuse("only kept memories can be stale")
-	case from.Lifecycle == to.Lifecycle && (to.Lifecycle == Proposed || to.Lifecycle == Kept):
+	// The same lifecycle again (an undo that restores flags, words, a date
+	// or a scope). A faded memory can change where it applies, so undoing
+	// that leaves it faded.
+	case from.Lifecycle == to.Lifecycle && (to.Lifecycle == Proposed || to.Lifecycle == Kept || to.Lifecycle == Faded):
 		return nil
 	case Allowed(from.Lifecycle, to.Lifecycle) || UndoAllowed(from.Lifecycle, to.Lifecycle):
 		return nil

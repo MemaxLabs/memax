@@ -195,7 +195,9 @@ export function noteText(
       return joinSentences([first, asked], locale);
     }
     case "stale": {
+      if (note.cause === "date") return n.staleDate;
       const date = formatShortDate(new Date(note.changedAt), timeZone, locale);
+      if (note.cause === "check") return interpolate(n.staleCheck, { date });
       return note.source
         ? interpolate(n.staleSource, { date, source: note.source })
         : interpolate(n.stale, { date });
@@ -219,7 +221,9 @@ export type FailedCommand =
   | "answer"
   | "withdraw"
   | "forget"
-  | "declineForget";
+  | "declineForget"
+  | "scope"
+  | "verify";
 
 function refusalReason(
   refused: Record<string, string>,
@@ -235,6 +239,55 @@ function refusalReason(
     return interpolate(other.other, { message: failure.message });
   }
   return other.otherBare;
+}
+
+/** The plan-limit codes planLimitText words. */
+const PLAN_LIMIT_CODES = new Set([
+  "space_limit",
+  "agent_kind_limit",
+  "ask_limit",
+  "seat_needed",
+  "dream_cadence",
+]);
+
+/**
+ * Why a plan limit refused a command (policy `limit`, D9): what the plan
+ * allows, then what the plan that lifts it adds. Null for a refusal that
+ * met no plan limit, which is worded by its code (the fair-use caps, the
+ * alpha's Ask limit).
+ */
+export function planLimitText(
+  copy: RecordsCopy,
+  failure: Extract<CommandFailure, { kind: "refused" }>,
+  { space = "" }: { space?: string },
+  locale: Locale,
+): string | null {
+  const { limit, code } = failure;
+  if (!limit || !code || !PLAN_LIMIT_CODES.has(code)) return null;
+  const p = copy.failure.planLimit;
+  const one = limit.allowed === 1;
+  const sentence = {
+    space_limit: one ? p.space_limitOne : p.space_limit,
+    agent_kind_limit: one ? p.agent_kind_limitOne : p.agent_kind_limit,
+    ask_limit: p.ask_limit,
+    seat_needed: p.seat_needed,
+    dream_cadence:
+      limit.plan === "free" ? p.dream_cadence : p.dream_cadenceToday,
+  }[code as keyof typeof p.upgrade];
+  const vars = {
+    plan: copy.failure.plans[limit.plan] ?? limit.plan,
+    allowed:
+      limit.allowed === undefined
+        ? ""
+        : new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US").format(
+            limit.allowed,
+          ),
+    space,
+  };
+  const upgrade = limit.upgrade
+    ? p.upgrade[code as keyof typeof p.upgrade]
+    : null;
+  return joinSentences([interpolate(sentence, vars), upgrade], locale);
 }
 
 /** Why the passkey re-check didn't let a command through. */
@@ -287,6 +340,11 @@ export function failureText(
   let reason: string;
   switch (failure.kind) {
     case "refused": {
+      const plan = planLimitText(copy, failure, { space }, locale);
+      if (plan) {
+        reason = plan;
+        break;
+      }
       // Answering follows Keep's rules for a decision, worded for
       // answering; Forget has its own codes and words.
       const own =
@@ -355,6 +413,50 @@ export function failureText(
   return joinSentences([lead, reason], locale);
 }
 
+/**
+ * Why NewSpace's space wasn't made, and what to do: "acme wasn't made.
+ * You have a personal space already, and each person has one." Policy
+ * refusals by code (personal_exists, space_kind, space_limit,
+ * space_by_person); an unknown code falls back to the server's English.
+ */
+export function spaceFailureText(
+  copy: RecordsCopy,
+  failure: CommandFailure,
+  { name, locale }: { name: string; locale: Locale },
+): string {
+  const f = copy.failure;
+  const lead = interpolate(f.createSpace, { name });
+  let reason: string;
+  switch (failure.kind) {
+    case "refused":
+      reason =
+        planLimitText(copy, failure, {}, locale) ??
+        refusalReason(
+          f.refusedSpace as Record<string, string>,
+          failure,
+          {},
+          f.refusedSpace,
+        );
+      break;
+    case "rate-limited":
+      reason =
+        failure.retryAfter !== null
+          ? interpolate(f.rateLimited, { n: failure.retryAfter })
+          : f.rateLimitedSoon;
+      break;
+    case "unreachable":
+    case "busy":
+      reason = f.unreachable;
+      break;
+    case "unavailable":
+      reason = f.unavailable;
+      break;
+    default:
+      reason = f.unknown;
+  }
+  return joinSentences([lead, reason], locale);
+}
+
 /** What an undo did (no mark): "Undid the keep. M-0430 is back in Review." */
 export function undoneText(
   copy: RecordsCopy,
@@ -364,7 +466,15 @@ export function undoneText(
 ): string {
   const d = copy.undo.done;
   const template =
-    command === "edit" ? (kept ? d.editKeep : d.edit) : d[command];
+    command === "edit"
+      ? kept
+        ? d.editKeep
+        : d.edit
+      : command === "verify"
+        ? kept
+          ? d.verifyUpdate
+          : d.verify
+        : d[command];
   return interpolate(template, { ref });
 }
 

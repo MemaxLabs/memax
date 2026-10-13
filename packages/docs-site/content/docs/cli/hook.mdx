@@ -63,13 +63,56 @@ nothing was printed and how long it took.
   session here hears about the last week's.
 - **Decisions waiting.** Each decision an agent asked a person for (a gate,
   `G-`) that still waits, once.
+- **Being verified.** Each memory marked stale since the last session,
+  once, with why: a file it names moved or went, a dependency left, a date
+  to check again passed. The agent checks the code before relying on it,
+  and you answer it with [`memax verify`](/cli/verify) or in the app.
+- **On this branch.** When the daemon finds that the branch you're on
+  breaks something a memory relies on (a file it cites is gone here, say)
+  while the default branch still holds it, it says so, once. These hints
+  are this machine's alone: neither they nor the branch's name are sent
+  anywhere, and nothing is marked stale until the change reaches the
+  default branch.
 - **Compiles not here yet.** When the space compiled something this
   machine doesn't have yet (the daemon isn't running, or a hand edit waits
   in Review).
 
+## Your Personal space
+
+On a machine whose home is [linked](/concepts/personal-layer), Claude
+Code, Codex and Copilot CLI also load your Personal space's own file in
+every session, and so does Gemini CLI once
+[`memax connect gemini --agents-md`](/cli/connect) has it read
+`~/.gemini/AGENTS.md`.
+The hook then adds a Personal section after the repository's, the same
+way: what changed in that file since the agent's last session on this
+machine, wherever it ran, and what a person forgot or waits to decide in
+Personal. Outside any repository it is the whole block.
+
+```text
+Your Personal space (personal): what changed in your own file on this machine since your last session. It is already loaded too.
+~/.claude/rules/memax-personal.md is now C-1207 (your last session saw C-1201).
+New:
+- Prefer small pull requests. [M-0102]
+```
+
+Cursor loads no file of your Personal space (its User Rules live in its
+settings, not a file), so its hook prints the kept lines of
+`~/.memax/personal/AGENTS.md` in full at every session start, under their
+headings, instead of what changed. They're held to about 1,500 tokens, and
+the block says how many it left out: those stay live over MCP.
+
+```text
+Your Personal space (personal). You load no file of it, so its kept lines are here at every session start. Where a project's own files disagree, follow the project.
+Preferences:
+- Answer in British English. [M-0101]
+```
+
 The block stays under 3,000 tokens (2,400 for Codex, whose default limit
 is about 2,500) and under Claude Code's 10,000-character limit. When it
-runs long, the changed lines go first: they're in the file anyway.
+runs long, the changed lines go first, Personal's before the repository's:
+they're in the files anyway. Cursor's printed lines are cut before the
+repository's too.
 
 ## How it stays fast
 
@@ -77,20 +120,25 @@ The hook runs every time a session starts, so it reads only local files
 and never touches the network:
 
 - `~/.memax/daemon/warm.json`: what the [daemon](/cli/daemon) knows about
-  each linked space (each file's latest compile, recent forgets and
-  waiting gates), kept current as the space changes. It holds IDs, never
+  each linked space (each file's latest compile, recent forgets, waiting
+  gates, what's being verified and this machine's branch hints), kept
+  current as the space changes. It holds IDs, paths and names, never
   memory text.
 - The compiled files in the repository.
 - What this agent's last session here was told, as hashes.
+- With a home link, `~/.memax/daemon/home.json` and the agent's own home
+  file.
 
 It exits within 100 ms of starting, Node's own start-up included (on a
 4-core machine, a median of about 50 ms against 30 ms for an empty Node
-process).
+process; a home link adds about a millisecond).
 
 Reading a compiled file at session start counts as reading every memory
 in it, which keeps the memories your agents use from fading. The hook
 queues that report on disk after it prints; the daemon sends it, or
-`memax hook flush` does in the background when no daemon runs.
+`memax hook flush` does in the background when no daemon runs. In a
+linked repository it also asks the daemon to check the repository soon,
+so a memory's page can say it was checked when that agent started.
 
 ## Agents with a session-start hook
 

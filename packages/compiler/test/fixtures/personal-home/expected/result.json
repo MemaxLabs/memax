@@ -1,0 +1,405 @@
+{
+  "version": 1,
+  "compile_id": "C-1204",
+  "compiled_at": "2026-10-11T09:00:00Z",
+  "brief_id": "B-0051",
+  "space": "ana",
+  "files": [
+    {
+      "path": ".claude/CLAUDE.md",
+      "target": "claude_user",
+      "bytes": 1180,
+      "lines": 29,
+      "sha256": "f758f6cd36dd5d6adc11d15470a98c9637b12decaa8aa7c90d89384916aa27a1",
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0105",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "cites": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0105",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "1edee5509a5e5ae4904b5abbd022a189d4fb18a2e254108459eb083cf124e952",
+      "user_owned": true
+    },
+    {
+      "path": ".claude/rules/memax-personal.md",
+      "target": "claude_user",
+      "bytes": 1082,
+      "lines": 24,
+      "sha256": "7e5a6942e843bf9b81c56dc1354ab2a42975c2a94221ba49f38d4f208698f472",
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0105",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "cites": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0105",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "7e5a6942e843bf9b81c56dc1354ab2a42975c2a94221ba49f38d4f208698f472",
+      "user_owned": false
+    },
+    {
+      "path": ".codeium/windsurf/memories/global_rules.md",
+      "target": "windsurf_user",
+      "bytes": 1071,
+      "lines": 26,
+      "sha256": "e4b8b8b59331c7347244a2c1e594967469724ed869ea8c763383b2685129f9f0",
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "cites": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "8bcd883685f947879937a86dc6ef8734c742f593e6984ac4ffcd8c29788d4928",
+      "user_owned": true
+    },
+    {
+      "path": ".codex/AGENTS.md",
+      "target": "codex_user",
+      "bytes": 1094,
+      "lines": 26,
+      "sha256": "533c75dcfb36fb5045dc58aa84c52e47b286fbbb471c2a56be98c8c69df98102",
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "cites": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0104",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "533c75dcfb36fb5045dc58aa84c52e47b286fbbb471c2a56be98c8c69df98102",
+      "user_owned": true
+    },
+    {
+      "path": ".codex/AGENTS.override.md",
+      "target": "codex_user",
+      "bytes": 1159,
+      "lines": 32,
+      "sha256": "3413915356ca9f7141adde3137bf396e31b2f5b02d7789a4517b16b1211d3df1",
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "cites": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0104",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "533c75dcfb36fb5045dc58aa84c52e47b286fbbb471c2a56be98c8c69df98102",
+      "user_owned": true
+    },
+    {
+      "path": ".copilot/copilot-instructions.md",
+      "target": "copilot_user",
+      "bytes": 1053,
+      "lines": 25,
+      "sha256": "8bcd883685f947879937a86dc6ef8734c742f593e6984ac4ffcd8c29788d4928",
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "cites": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "8bcd883685f947879937a86dc6ef8734c742f593e6984ac4ffcd8c29788d4928",
+      "user_owned": true
+    },
+    {
+      "path": ".gemini/AGENTS.md",
+      "target": "gemini_user",
+      "bytes": 1119,
+      "lines": 29,
+      "sha256": "97e6f2b143322a9bcb8e7209bbe32138cf899ccae405f1392348d432c86418f1",
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "cites": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "8bcd883685f947879937a86dc6ef8734c742f593e6984ac4ffcd8c29788d4928",
+      "user_owned": true
+    },
+    {
+      "path": ".memax/personal/AGENTS.md",
+      "target": "agents_md",
+      "bytes": 1040,
+      "lines": 25,
+      "sha256": "45f298cd52326827ab593f3493a10221858cebb01355f3507f0287155a9bcac2",
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "cites": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "45f298cd52326827ab593f3493a10221858cebb01355f3507f0287155a9bcac2",
+      "user_owned": false
+    }
+  ],
+  "copies": [],
+  "targets": [
+    {
+      "kind": "agents_md",
+      "path": ".memax/personal/AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": [".memax/personal/AGENTS.md"],
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "claude_user",
+      "path": ".claude/CLAUDE.md",
+      "delivery": "file",
+      "reads": null,
+      "files": [".claude/CLAUDE.md"],
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0105",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "claude_user",
+      "path": ".claude/rules/memax-personal.md",
+      "delivery": "file",
+      "reads": null,
+      "files": [".claude/rules/memax-personal.md"],
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0105",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "codex_user",
+      "path": ".codex/AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": [".codex/AGENTS.md"],
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "codex_user",
+      "path": ".codex/AGENTS.override.md",
+      "delivery": "file",
+      "reads": null,
+      "files": [".codex/AGENTS.override.md"],
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "gemini_user",
+      "path": ".gemini/AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": [".gemini/AGENTS.md"],
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "copilot_user",
+      "path": ".copilot/copilot-instructions.md",
+      "delivery": "file",
+      "reads": null,
+      "files": [".copilot/copilot-instructions.md"],
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "windsurf_user",
+      "path": ".codeium/windsurf/memories/global_rules.md",
+      "delivery": "file",
+      "reads": null,
+      "files": [".codeium/windsurf/memories/global_rules.md"],
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": []
+    }
+  ],
+  "warnings": []
+}

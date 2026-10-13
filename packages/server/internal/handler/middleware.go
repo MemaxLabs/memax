@@ -6,8 +6,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
@@ -37,6 +43,19 @@ type APIKeyResult struct {
 	// OAuthScope is an OAuth grant's granted scope ("memax:read
 	// memax:propose"), empty for API keys and older grants.
 	OAuthScope string
+
+	// lastUsed is when the credential was last used, as its lookup read
+	// it: the lookup writes it again only once it is lastUsedEvery old.
+	lastUsed *time.Time
+}
+
+// lastUsedEvery is how fresh a credential's last_used is kept: an agent
+// making many calls a minute writes it once a minute, not once a call.
+const lastUsedEvery = time.Minute
+
+// usedRecently reports whether last_used is fresh enough to leave alone.
+func usedRecently(at *time.Time) bool {
+	return at != nil && time.Since(*at) < lastUsedEvery
 }
 
 // APIKeyResolver resolves an API key string to a user ID and optional hub scope.
@@ -45,10 +64,90 @@ type APIKeyResolver func(key string) APIKeyResult
 // GrantResolver resolves a server-side delegated auth grant.
 type GrantResolver func(userID string, grantID string) APIKeyResult
 
+// StartKeyResolver resolves an API key on the cloud start's route with its
+// person's V2 scope, in one round trip (AuthHandler.ResolveStartKey).
+type StartKeyResolver func(ctx context.Context, key string) (APIKeyResult, ledger.Scope)
+
+// AuthOption configures RequireAuth.
+type AuthOption func(*authOptions)
+
+type authOptions struct {
+	startKeys StartKeyResolver
+	prefetch  CredentialPrefetcher
+}
+
+// Prefetched is what RequireAuth read with a credential, in the
+// credential's own round trip, for HubContext to use instead of reading it
+// again: the person's hub list (store.QueueRequestHubs) and, for a request
+// that builds a V2 principal, their V2 scope.
+type Prefetched struct {
+	UserID string
+	Hubs   []model.HubWithRole
+	// Listed says the hub list was read; HubContext reads it when not.
+	Listed bool
+	// Scope is the person's V2 scope, when it was asked for and read.
+	Scope *ledger.Scope
+}
+
+// CredentialPrefetcher resolves an API key or an OAuth grant together with
+// what HubContext reads next, in one round trip to Postgres where it would
+// be two one after the other (AuthHandler). scope asks for the person's V2
+// scope as well (a /v2 or /mcp request).
+type CredentialPrefetcher interface {
+	PrefetchAPIKey(ctx context.Context, key string, scope bool) (APIKeyResult, *Prefetched)
+	PrefetchGrant(ctx context.Context, userID, grantID string, scope bool) (APIKeyResult, *Prefetched)
+}
+
+// WithCredentialPrefetch resolves API keys (but start keys on the cloud
+// start's route, WithStartKeys) and OAuth grants through p, so a request
+// made with one reaches its handler after one round trip, as a person's
+// session does.
+func WithCredentialPrefetch(p CredentialPrefetcher) AuthOption {
+	return func(o *authOptions) { o.prefetch = p }
+}
+
+const prefetchedKey contextKey = "prefetched"
+
+// WithStartKeys resolves API keys on the cloud start's route (POST
+// /v2/spaces/{space}/session-starts) with r, which reads the key and its
+// person's scope together; /v2 then reuses the scope (ResolvedScope).
+func WithStartKeys(r StartKeyResolver) AuthOption {
+	return func(o *authOptions) { o.startKeys = r }
+}
+
+// IsSessionStartRoute reports whether r is a cloud session start, the one
+// request a start key may make.
+func IsSessionStartRoute(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	rest, ok := strings.CutPrefix(r.URL.Path, "/v2/spaces/")
+	space, tail, _ := strings.Cut(rest, "/")
+	return ok && space != "" && tail == "session-starts"
+}
+
+const resolvedScopeKey contextKey = "resolved_scope"
+
+// ResolvedScope is the V2 scope RequireAuth read with the credential, when
+// it did (a key on the cloud start's route): /v2 uses it instead of
+// reading the person's spaces again.
+func ResolvedScope(r *http.Request) (ledger.Scope, bool) {
+	s, ok := r.Context().Value(resolvedScopeKey).(ledger.Scope)
+	return s, ok
+}
+
 // RequireAuth returns middleware that rejects requests without valid auth.
 // Supports both JWT tokens and API keys (mxk_ prefix).
 // Pass jwtSecret=nil to disable auth (local dev / memory mode).
-func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver GrantResolver) func(http.Handler) http.Handler {
+//
+// A start key (IsStartKey: compile:read, no memory:read) is refused on
+// every request but a cloud session start, here, before any handler: it
+// reaches nothing else of /v1, /v2 or /mcp, its own key list included.
+func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver GrantResolver, opts ...AuthOption) func(http.Handler) http.Handler {
+	var o authOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// No secret configured → auth disabled (memory mode)
@@ -77,9 +176,29 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 			var impersonatorID string // set when JWT carries impersonator_id claim
 			var grant GrantContext
 			var audienceMismatch bool // an audience-bound token sent to another resource
+			var scope *ledger.Scope   // the person's V2 scope, when read with the key
+			var pf *Prefetched        // the hub list (and scope) read with the credential
 			if strings.HasPrefix(token, "mxk_") && keyResolver != nil {
 				// API key auth — resolves user, hub scope, and agent identity
-				result := keyResolver(token)
+				var result APIKeyResult
+				if o.startKeys != nil && IsSessionStartRoute(r) {
+					var s ledger.Scope
+					result, s = o.startKeys(r.Context(), token)
+					if result.UserID != "" {
+						scope = &s
+					}
+				} else if o.prefetch != nil {
+					result, pf = o.prefetch.PrefetchAPIKey(r.Context(), token, readsV2Scope(r))
+				} else {
+					result = keyResolver(token)
+				}
+				if result.UserID != "" && IsStartKey(result.DefaultPermissions) && !IsSessionStartRoute(r) {
+					writeJSON(w, http.StatusForbidden, model.ApiResponse{
+						Error: &model.Error{Code: "permission_denied", Message: "This is a start key: it only starts cloud agents' sessions " +
+							"(POST /v2/spaces/{space}/session-starts). Use a key with read access, or your own sign-in, for anything else."},
+					})
+					return
+				}
 				userID = result.UserID
 				tokenHubID = result.HubID
 				agentName = result.AgentName
@@ -110,7 +229,12 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 				if claims != nil {
 					impersonatorID = claims.ImpersonatorID
 					if claims.GrantID != "" && grantResolver != nil {
-						result := grantResolver(claims.Sub, claims.GrantID)
+						var result APIKeyResult
+						if o.prefetch != nil {
+							result, pf = o.prefetch.PrefetchGrant(r.Context(), claims.Sub, claims.GrantID, readsV2Scope(r))
+						} else {
+							result = grantResolver(claims.Sub, claims.GrantID)
+						}
 						userID = result.UserID
 						agentName = result.AgentName
 						if userID != "" {
@@ -183,6 +307,15 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 
 			ctx := context.WithValue(r.Context(), userIDKey, userID)
 			ctx = context.WithValue(ctx, grantContextKey, grant)
+			if pf != nil && pf.UserID == userID {
+				ctx = context.WithValue(ctx, prefetchedKey, pf)
+				if scope == nil && pf.Scope != nil {
+					scope = pf.Scope
+				}
+			}
+			if scope != nil {
+				ctx = context.WithValue(ctx, resolvedScopeKey, *scope)
+			}
 			if tokenHubID != "" {
 				ctx = context.WithValue(ctx, tokenHubIDKey, tokenHubID)
 			}
@@ -264,6 +397,12 @@ func InjectUserIDForTest(r *http.Request, userID string) *http.Request {
 	return r
 }
 
+// InjectGrantForTest is the test-only sibling of InjectUserIDForTest for
+// the credential RequireAuth resolved (GetGrant).
+func InjectGrantForTest(r *http.Request, g GrantContext) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), grantContextKey, g))
+}
+
 // InjectHubIDForTest is the test-only sibling of InjectUserIDForTest
 // for the active hub context slot. Handlers that call GetHubID(r)
 // read from this value. Used to drive handler tests without running
@@ -316,6 +455,7 @@ func GetImpersonatorID(r *http.Request) string {
 }
 
 // Hub context keys
+const userHubsKey contextKey = "user_hubs"
 const hubIDKey contextKey = "hub_id"
 const hubIDsKey contextKey = "hub_ids"
 const retrievalBoostHubIDKey contextKey = "retrieval_boost_hub_id"
@@ -331,6 +471,37 @@ func GetHubID(r *http.Request) string {
 }
 
 // GetAccessibleHubIDs returns all hub IDs the user has access to.
+// hubsWithBatch is a store that sends the hub list with more statements in
+// its round trip (store.PostgresStore.ListUserHubsWith).
+type hubsWithBatch interface {
+	ListUserHubsWith(ctx context.Context, userID string, extra func(*pgx.Batch)) ([]model.HubWithRole, error)
+}
+
+// readsV2Scope reports whether a request builds a V2 principal, which
+// needs the person's V2 scope: every /v2 route and the MCP endpoints.
+func readsV2Scope(r *http.Request) bool {
+	return strings.HasPrefix(r.URL.Path, "/v2/") || strings.HasPrefix(r.URL.Path, "/mcp")
+}
+
+// userHubs is the person's hub list HubContext read (ListUserHubs).
+type userHubs struct {
+	userID string
+	hubs   []model.HubWithRole
+}
+
+// RequestHubs returns every hub the person is a member of, with their
+// role and whether it is on the V2 record, as HubContext read them for
+// this request; ok is false when it didn't (no HubContext, or the list
+// failed). It is the person's list, not the credential's: filter it by
+// GetAccessibleHubIDs.
+func RequestHubs(r *http.Request, userID string) ([]model.HubWithRole, bool) {
+	v, ok := r.Context().Value(userHubsKey).(userHubs)
+	if !ok || v.userID != userID {
+		return nil, false
+	}
+	return slices.Clone(v.hubs), true
+}
+
 func GetAccessibleHubIDs(r *http.Request) []string {
 	if v, ok := r.Context().Value(hubIDsKey).([]string); ok {
 		return v
@@ -381,12 +552,50 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 
 			grant := grantFromRequest(r)
 
+			// A start key reaches only the cloud start (RequireAuth), which
+			// reads its spaces on /v2's own terms: no hub here grants it
+			// anything, so nothing is read for it.
+			if grant.PrincipalType == "api_key" && IsStartKey(grant.DefaultPermissions) {
+				ctx := context.WithValue(r.Context(), authContextKey, &AuthContext{
+					UserID: userID, PrincipalType: grant.PrincipalType, GrantID: grant.GrantID,
+					AgentName: grant.AgentName, SourceAgent: grant.AgentName, TrustLevel: grant.TrustLevel,
+					HubScopeMode: grant.HubScopeMode, ScopedHubIDs: grant.ScopedHubIDs,
+					PermissionsByHub: map[string]PermissionSet{},
+				})
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
 			var hubID string
 			var retrievalBoostHubID string
 			var writeHubID string
 			permsByHub := map[string]PermissionSet{}
 
-			allHubs, listErr := s.ListUserHubs(userID)
+			// A request that builds a V2 principal (/v2, /mcp) reads the
+			// person's V2 scope in the hub list's round trip, and leaves it on
+			// the request for principalFor (ResolvedScope): one round trip
+			// to Postgres here, not two one after the other.
+			var allHubs []model.HubWithRole
+			var listErr error
+			var scope ledger.Scope
+			var scopeErr error
+			person, personErr := uuid.Parse(userID)
+			if pf, ok := r.Context().Value(prefetchedKey).(*Prefetched); ok && pf.UserID == userID && pf.Listed {
+				// Read with the credential, in its round trip (RequireAuth),
+				// and the scope with it when the request needs one.
+				allHubs = pf.Hubs
+			} else if ls, ok := s.(hubsWithBatch); ok {
+				// The request's list has no memory counts (memax_hubs reads
+				// its own), and the scope rides with it for /v2 and /mcp.
+				var extra func(*pgx.Batch)
+				if personErr == nil && readsV2Scope(r) {
+					extra = func(b *pgx.Batch) { ledger.QueueUserScope(b, person, &scope, &scopeErr) }
+				}
+				allHubs, listErr = ls.ListUserHubsWith(r.Context(), userID, extra)
+			} else {
+				allHubs, listErr = s.ListUserHubs(userID)
+			}
+			scopeRead := personErr == nil && scopeErr == nil && scope.PersonID == person
 			// The personal hub and the write hub's role come from allHubs,
 			// which ListUserHubs read from the same hubs and hub_members
 			// rows, so a request makes one round trip to Postgres here,
@@ -530,6 +739,12 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), hubIDKey, hubID)
+			if _, already := ResolvedScope(r); scopeRead && !already {
+				ctx = context.WithValue(ctx, resolvedScopeKey, scope)
+			}
+			if listErr == nil {
+				ctx = context.WithValue(ctx, userHubsKey, userHubs{userID: userID, hubs: allHubs})
+			}
 			ctx = context.WithValue(ctx, hubIDsKey, readHubIDs)
 			ctx = context.WithValue(ctx, retrievalBoostHubIDKey, retrievalBoostHubID)
 			ctx = context.WithValue(ctx, writeHubIDKey, writeHubID)

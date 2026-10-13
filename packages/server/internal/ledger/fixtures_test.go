@@ -24,6 +24,8 @@ type fixture struct {
 	pool *pgxpool.Pool
 	l    *ledger.Ledger
 	logs *syncBuffer
+	// inserter is the River client l enqueues with, if any.
+	inserter ledger.Jobs
 }
 
 type syncBuffer struct {
@@ -80,8 +82,18 @@ func (f *fixture) user(name string) uuid.UUID {
 }
 
 // space creates a hub of the given V2 kind owned by owner, with the
-// owner's membership row, as V1 does.
+// owner's membership row, as V1 does, on the V2 record
+// (hubs.v2_enabled_at), as CreateSpace makes one.
 func (f *fixture) space(owner uuid.UUID, kind policy.SpaceKind, name string) uuid.UUID {
+	f.t.Helper()
+	id := f.v1Space(owner, kind, name)
+	f.exec(`UPDATE hubs SET v2_enabled_at = now() WHERE id = $1`, id)
+	return id
+}
+
+// v1Space is space still on V1: its V2 record takes nothing new
+// (policy.CodeSpaceOnV1) until its owner switches it.
+func (f *fixture) v1Space(owner uuid.UUID, kind policy.SpaceKind, name string) uuid.UUID {
 	f.t.Helper()
 	id := uuid.New()
 	hubType := "team"

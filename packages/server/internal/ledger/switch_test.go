@@ -62,8 +62,8 @@ func truncate(s string, n int) string {
 func newV1World(f *fixture) *v1World {
 	f.t.Helper()
 	w := &v1World{owner: f.user("zz"), admin: f.user("ad"), contributor: f.user("co"), viewer: f.user("vi")}
-	w.team = f.space(w.owner, policy.SpaceTeam, "acme-web")
-	w.personal = f.space(w.owner, policy.SpacePersonal, "Personal")
+	w.team = f.v1Space(w.owner, policy.SpaceTeam, "acme-web")
+	w.personal = f.v1Space(w.owner, policy.SpacePersonal, "Personal")
 	f.join(w.team, w.admin, "admin")
 	f.join(w.team, w.contributor, "contributor")
 	f.join(w.team, w.viewer, "viewer")
@@ -327,7 +327,7 @@ func TestSwitchMovesEverythingAndLosesNothing(t *testing.T) {
 		kinds = append(kinds, k)
 	}
 	rows.Close()
-	if !slices.Equal(kinds, []string{"agents_md", "claude_md", "cursor_mdc"}) {
+	if !slices.Equal(kinds, []string{"agents_md", "claude_md"}) {
 		t.Errorf("targets = %v", kinds)
 	}
 	// The members' keys are connected at Propose (Read when they can't

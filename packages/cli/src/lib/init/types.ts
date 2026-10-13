@@ -23,6 +23,11 @@ export interface InitOptions {
   wait?: string;
   /** Sign in with a code confirmed in any browser (RFC 8628). */
   device?: boolean;
+  /**
+   * --home: link this machine's home too, without asking under --yes;
+   * --no-home: don't offer it. Unset, init asks at a terminal.
+   */
+  home?: boolean;
 }
 
 /** The answers a person gives; tests script them. */
@@ -71,6 +76,18 @@ export interface InitDeps {
     timeoutSeconds: number,
     opts?: { pending?: boolean },
   ) => Promise<CompileOutcome | null>;
+  /**
+   * memax link --home, with init's output and questions; its exit code.
+   * Absent where a home link can't be offered.
+   */
+  homeLink?: (
+    o: { yes: boolean },
+    io: {
+      out: (line: string) => void;
+      interactive: boolean;
+      confirm: (question: string, def: boolean) => Promise<boolean>;
+    },
+  ) => Promise<number>;
   /** The web app's origin, for links ("" when unknown). */
   appUrl: string;
   version: string;
@@ -124,6 +141,12 @@ export interface InitReport {
     skipped: number;
     hidden: number;
     compiled: boolean;
+    /**
+     * This repository's own notes (CLAUDE.local.md, Claude Code's auto
+     * memory) left on the machine: the repository has no owner/name to
+     * tie them to, and in Personal they would apply in every project.
+     */
+    noRepository?: boolean;
   }>;
   imports: Array<{
     space: string;
@@ -144,6 +167,8 @@ export interface InitReport {
   review: string | null;
   timings: StepTiming[];
   done: string[];
+  /** This machine's home link: null when it wasn't offered. */
+  home: { linked: boolean } | null;
 }
 
 export function emptyReport(): InitReport {
@@ -163,5 +188,6 @@ export function emptyReport(): InitReport {
     review: null,
     timings: [],
     done: [],
+    home: null,
   };
 }

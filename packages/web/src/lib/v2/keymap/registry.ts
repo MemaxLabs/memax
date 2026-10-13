@@ -105,10 +105,24 @@ export const KEYMAP = [
   { id: "today.review", keys: ["R"], group: "pages" },
   // An edition of Dream's (DreamEdition.png): C compares the conflict it found.
   { id: "dream.resolve", keys: ["C"], group: "pages" },
+  // VerifyStale (V on a stale fact, from Review too): 1–3 choose what's
+  // true now, ↵ answers. Listed under Review: like a gate's keys they
+  // share chords with page keys, and only the layer handles them.
+  {
+    id: "verify.choose",
+    keys: ["1", "2", "3"],
+    group: "review",
+    display: "range",
+  },
+  { id: "verify.answer", keys: ["Enter"], group: "review" },
   { id: "memories.remember", keys: ["N"], group: "pages" },
   // Keeps what's in front of you: Ask's answer, or the Brief's edits
   // when you press Done.
   { id: "command.keep", keys: ["Mod+Enter"], group: "pages", inInput: true },
+  // Search (Search.png): ⌘↵ asks the words instead, from the field too.
+  // Listed under Review: like a gate's keys it shares its chord with a
+  // page key (Ask's ⌘↵ keep), and only Search handles it.
+  { id: "search.ask", keys: ["Mod+Enter"], group: "review", inInput: true },
   // A Keep waiting for the judge (plan §5.8): Esc stops waiting.
   { id: "review.stopWaiting", keys: ["Escape"], group: "pages" },
   // Editing the Brief: the focused fact moves down or up, across

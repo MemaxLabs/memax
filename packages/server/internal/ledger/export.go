@@ -104,7 +104,9 @@ type ExportSink interface {
 	Space(ExportSpaceInfo) error
 	Briefs([]Brief) error
 	Gates([]Gate) error
-	Targets([]Target) error
+	// Targets is every target, and the machines its home files are on
+	// (none in a space without a home link).
+	Targets([]Target, []Machine) error
 	Agents([]ExportAgent) error
 	Tombstones([]Tombstone) error
 	Reads(ReadSummary) error
@@ -247,7 +249,7 @@ func (l *Ledger) ReadExport(ctx context.Context, scope Scope, spaceID uuid.UUID,
 		if err := attachWith(ctx, tx, h.tombs); err != nil {
 			return err
 		}
-		targets, err := exportTargets(ctx, tx, scope, spaceID)
+		targets, machines, err := exportTargets(ctx, tx, scope, spaceID)
 		if err != nil {
 			return err
 		}
@@ -255,7 +257,7 @@ func (l *Ledger) ReadExport(ctx context.Context, scope Scope, spaceID uuid.UUID,
 			func() error { return sink.Space(h.info) },
 			func() error { return sink.Briefs(h.briefs) },
 			func() error { return sink.Gates(h.gates) },
-			func() error { return sink.Targets(targets) },
+			func() error { return sink.Targets(targets, machines) },
 			func() error { return sink.Agents(h.agents) },
 			func() error { return sink.Tombstones(h.tombs) },
 			func() error { return sink.Reads(h.reads) },
@@ -419,25 +421,43 @@ func queueReads(b *pgx.Batch, spaceID uuid.UUID, out *ReadSummary) {
 		})
 }
 
-func exportTargets(ctx context.Context, tx pgx.Tx, scope Scope, spaceID uuid.UUID) ([]Target, error) {
+func exportTargets(ctx context.Context, tx pgx.Tx, scope Scope, spaceID uuid.UUID) ([]Target, []Machine, error) {
 	rows, err := tx.Query(ctx, targetSelect+`
 		 WHERE t.space_id = $1
 		 ORDER BY array_position($2::text[], t.kind), t.path NULLS LAST, t.id`, spaceID, kindsOrder())
 	if err != nil {
-		return nil, fmt.Errorf("ledger: export: targets: %w", err)
+		return nil, nil, fmt.Errorf("ledger: export: targets: %w", err)
 	}
 	targets, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (*Target, error) { return scanTarget(r) })
 	if err != nil {
-		return nil, fmt.Errorf("ledger: export: targets: %w", err)
+		return nil, nil, fmt.Errorf("ledger: export: targets: %w", err)
 	}
 	if err := fillTargets(ctx, tx, scope, targets); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := make([]Target, len(targets))
+	home := false
 	for i, t := range targets {
 		out[i] = *t
+		home = home || t.Machine != nil
 	}
-	return out, nil
+	// The machines a home file is on: one more read, only for a space with
+	// a home link, so every other space's export reads as it did.
+	var machines []Machine
+	if home {
+		rows, err := tx.Query(ctx, machineSelect+` WHERE m.space_id = $1 ORDER BY m.seq`, spaceID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("ledger: export: machines: %w", err)
+		}
+		ms, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (*Machine, error) { return scanMachine(r) })
+		if err != nil {
+			return nil, nil, fmt.Errorf("ledger: export: machines: %w", err)
+		}
+		for _, m := range ms {
+			machines = append(machines, *m)
+		}
+	}
+	return out, machines, nil
 }
 
 // exportMemories hands every memory to the sink, in batches by display ID,

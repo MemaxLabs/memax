@@ -3,12 +3,14 @@
 import { useRef, type KeyboardEvent, type RefObject } from "react";
 import {
   AgentStamp,
+  formatNodes,
   Icon,
   SyncTarget,
   useLedger,
   type AgentSurface,
 } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
+import { linkHomeCommand } from "../../_components/link-home";
 import type {
   AgentConnectionView,
   AgentTarget,
@@ -141,6 +143,8 @@ export function ReadsStep({
   chosen,
   onToggle,
   target,
+  homeFile = null,
+  homePrinted = false,
 }: {
   agent: string;
   autonomy: Autonomy;
@@ -148,11 +152,16 @@ export function ReadsStep({
   chosen: string[];
   onToggle: (slug: string) => void;
   target: AgentTarget | null | undefined;
+  /** The agent's own file Personal is written into, when Personal is chosen. */
+  homeFile?: string | null;
+  /** Its session-start hook prints Personal instead (Cursor), when chosen. */
+  homePrinted?: boolean;
 }) {
   const { t } = useLocale();
   const { strings, agents } = useLedger();
   const copy = t.ledger.agents;
   const kinds = t.ledger.app.frame.spaceKind;
+  const setup = t.ledger.machines.setup;
   return (
     <div className={styles.box}>
       <fieldset className={styles.spaces}>
@@ -197,6 +206,25 @@ export function ReadsStep({
           }
           status={target.status}
         />
+      ) : null}
+      {homeFile || homePrinted ? (
+        <div className={styles.live}>
+          <span className={styles.liveIcon}>
+            <Icon name="file" />
+          </span>
+          <span>
+            {homeFile
+              ? formatNodes(setup.reads, {
+                  file: <code className="mx-code">{homeFile}</code>,
+                })
+              : setup.printed}{" "}
+            <span className={`mx-meta ${styles.plain}`}>
+              {formatNodes(setup.readsHint, {
+                command: <code className="mx-code">{linkHomeCommand()}</code>,
+              })}
+            </span>
+          </span>
+        </div>
       ) : null}
       <div className={styles.live}>
         <span className={styles.liveIcon}>

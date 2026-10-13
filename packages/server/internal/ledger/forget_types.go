@@ -262,6 +262,9 @@ const (
 	StepCaches    = "caches"
 	StepLedger    = "ledger"
 	StepAgent     = "agent"
+	// StepChecks: the check results members' machines kept (migration
+	// 065), dropped by each machine's daemon when it hears of the Forget.
+	StepChecks = "checks"
 
 	StepDone        = "done"
 	StepWaiting     = "waiting"
@@ -280,7 +283,20 @@ const (
 	StepReasonPaused       = "paused"
 	StepReasonDisconnected = "disconnected"
 	StepReasonNotYet       = "next_read"
+	// StepReasonOffline: a home file whose machine's daemon hasn't read its
+	// files within MachineOfflineAfter. The file holds it until the machine
+	// connects, and is rewritten then.
+	StepReasonOffline = "offline"
+	// StepReasonNextCheck: a machine that checked the space hasn't checked
+	// it since the Forget (a checks step); its daemon drops what it kept
+	// when it hears, within seconds while it runs.
+	StepReasonNextCheck = "next_check"
 )
+
+// MachineOfflineAfter is how long a machine's daemon may go without
+// reading its files before a tombstone calls the machine offline: three of
+// the five-minute marks last_seen_at is kept to (SeenEvery).
+const MachineOfflineAfter = 3 * SeenEvery
 
 // TombstoneStep is one step of how it was forgotten.
 type TombstoneStep struct {
@@ -303,6 +319,19 @@ type TombstoneTarget struct {
 	Kind     TargetKind `json:"kind"`
 	Label    string     `json:"label"`
 	Delivery Delivery   `json:"delivery"`
+	// Machine is a home file's machine.
+	Machine *TombstoneMachine `json:"machine,omitempty"`
+}
+
+// TombstoneMachine names a home file's machine: in a tombstone, also
+// whether it is still linked and when its daemon was last seen, so the
+// page can say "work-mbp was last online Oct 9".
+type TombstoneMachine struct {
+	ID         uuid.UUID  `json:"id"`
+	Label      string     `json:"label"`
+	Name       string     `json:"name"`
+	Linked     *bool      `json:"linked,omitempty"`
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
 }
 
 // The kinds of copy Memax can't reach (the Tombstone page says so).
@@ -313,6 +342,10 @@ const (
 	UnreachableLLM         = "llm"
 	UnreachableHandEdits   = "hand_edits"
 	UnreachableCopies      = "copies"
+	// UnreachableSourceFiles: the person's own files on their machines that
+	// Memax imported it from (a Personal memory's file sources), which
+	// Memax never edits. Counted only: their paths went with the words.
+	UnreachableSourceFiles = "source_files"
 )
 
 // UnreachableCopy is a copy Memax can't reach, as data the Tombstone page
@@ -331,6 +364,10 @@ type UnreachableCopy struct {
 	Processors []Processor `json:"processors,omitempty"`
 	// Targets are copy-out targets a person pasted somewhere (ChatGPT).
 	Targets []string `json:"targets,omitempty"`
+	// Machines, with hand_edits: the machines whose home files have them.
+	Machines []string `json:"machines,omitempty"`
+	// Count, with source_files: how many of the person's files.
+	Count int `json:"count,omitempty"`
 }
 
 // Processor is an outside model provider that processed a memory's words.

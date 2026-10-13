@@ -240,7 +240,10 @@ export const DEMO_CARDS: Record<string, ReviewCardData> = {
       memories: [],
       basis: "section",
       replacesOnKeep: false,
-      targets: [...(DEMO_TARGETS.personal ?? [])],
+      // Personal's home files on both machines, not the stopped one.
+      targets: (DEMO_TARGETS.personal ?? []).filter(
+        (t) => t.syncState !== "off",
+      ),
     },
   },
   "M-0187": {

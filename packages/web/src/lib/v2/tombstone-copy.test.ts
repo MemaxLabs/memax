@@ -135,6 +135,128 @@ describe("Tombstone.png in words", () => {
     expect(lines[3]!.state).toBe("proposed");
   });
 
+  it("says the check results machines kept while one hasn't checked since, and nothing once all have", () => {
+    const step = (
+      status: "waiting" | "done",
+      n: number,
+    ): TombstoneView["steps"][number] => ({
+      ...board.steps[8]!,
+      key: `checks-${status}-${n}`,
+      kind: "checks",
+      status,
+      reason: status === "waiting" ? "next_check" : null,
+      agent: null,
+      at: null,
+      count: n,
+    });
+    const view = (s: TombstoneView["steps"][number]): TombstoneView => ({
+      ...board,
+      steps: [board.steps[0]!, s],
+    });
+    const two = tombstoneLines(EN, view(step("waiting", 2)), ctx("en")).at(-1)!;
+    expect([two.title, two.time, two.state]).toEqual([
+      "Check results on 2 machines",
+      "waiting",
+      "working",
+    ]);
+    expect(two.detail).toBe(
+      "The paths its conditions named, never its words. Each machine's daemon drops them as soon as it hears of the Forget, and Memax hears back at its next check.",
+    );
+    expect(
+      tombstoneLines(EN, view(step("waiting", 1)), ctx("en")).at(-1)!.title,
+    ).toBe("Check results on 1 machine");
+    expect(
+      tombstoneLines(ZH, view(step("waiting", 2)), ctx("zh")).at(-1)!.title,
+    ).toBe("2 台机器上的检查结果");
+    const done = tombstoneLines(EN, view(step("done", 0)), ctx("en"));
+    expect(done.map((l) => l.title)).not.toContain(
+      "Check results on 0 machines",
+    );
+    expect(done.some((l) => l.key.startsWith("checks"))).toBe(false);
+  });
+
+  it("names each machine of a Personal memory's home files, an offline one with its last day online", () => {
+    const home = (
+      name: string,
+      lastSeenAt: string | null,
+      label = "~/.claude/rules/memax-personal.md",
+    ) => ({
+      label,
+      kind: "claude_user",
+      delivery: "local",
+      machine: { name, lastSeenAt },
+    });
+    const personal: TombstoneView = {
+      ...board,
+      status: "done",
+      steps: [
+        { ...board.steps[0]!, at: board.at },
+        {
+          ...board.steps[2]!,
+          target: home("work-mbp", "2026-10-03T17:10:00Z"),
+        },
+        {
+          ...board.steps[2]!,
+          key: "offline",
+          status: "waiting",
+          reason: "offline",
+          at: null,
+          target: home("home-linux", "2026-10-01T09:00:00Z"),
+        },
+        {
+          ...board.steps[2]!,
+          key: "held",
+          status: "held",
+          reason: "hand_edit",
+          at: null,
+          target: home("home-linux", null, "~/.codex/AGENTS.md"),
+        },
+      ],
+      unreachable: [
+        {
+          kind: "hand_edits",
+          files: ["~/.codex/AGENTS.md"],
+          machines: ["home-linux"],
+          repositories: [],
+          agents: [],
+          days: null,
+          processors: [],
+          targets: [],
+        },
+        {
+          kind: "source_files",
+          count: 2,
+          files: [],
+          repositories: [],
+          agents: [],
+          days: null,
+          processors: [],
+          targets: [],
+        },
+      ],
+    };
+    const lines = tombstoneLines(EN, personal, ctx("en"));
+    expect(lines.map((l) => l.title)).toEqual([
+      "You asked to forget it",
+      "Removed from Memax",
+      "~/.claude/rules/memax-personal.md on work-mbp rewritten",
+      "~/.claude/rules/memax-personal.md on home-linux holds it until home-linux connects",
+      "~/.codex/AGENTS.md on home-linux has a hand edit",
+    ]);
+    expect(lines[3]!.detail).toBe(
+      "home-linux was last online Oct 1. Its files are rewritten when it connects.",
+    );
+    expect(reachLines(EN, personal, ctx("en"))).toEqual([
+      "~/.codex/AGENTS.md on home-linux, until you take out the line",
+      "The two files of yours Memax imported it from, on your machines. Memax never edits them, so take the line out there yourself.",
+    ]);
+    // Every line has its Chinese.
+    expect(tombstoneLines(ZH, personal, ctx("zh"))[3]!.title).toContain(
+      "home-linux",
+    );
+    expect(reachLines(ZH, personal, ctx("zh"))[1]).toContain("2");
+  });
+
   it("says why a carried memory went", () => {
     const carried: TombstoneView = {
       ...board,

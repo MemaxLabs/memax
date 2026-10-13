@@ -27,15 +27,15 @@ import (
 // words, gap between chunks. With block it waits for the context instead
 // of finishing, as a model mid-answer does when the person closes Ask.
 type fakeModel struct {
-	mu        sync.Mutex
-	answer    func(c ask.Call) []string
-	delay     time.Duration
-	gap       time.Duration
-	block     bool
-	failAt    int // fail before chunk failAt-1 (0: never)
-	calls     []ask.Call
-	started   chan struct{}
-	ended     chan error // the call's end: nil, or the context's error
+	mu      sync.Mutex
+	answer  func(c ask.Call) []string
+	delay   time.Duration
+	gap     time.Duration
+	block   bool
+	failAt  int // fail before chunk failAt-1 (0: never)
+	calls   []ask.Call
+	started chan struct{}
+	ended   chan error // the call's end: nil, or the context's error
 }
 
 func newFake(answer func(ask.Call) []string) *fakeModel {
@@ -219,7 +219,6 @@ func mustJSON(t *testing.T, s string, v any) {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
-
 
 func (e askEnv) ask(token string, sp space, question string) *resp {
 	e.t.Helper()

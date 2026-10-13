@@ -157,6 +157,23 @@
   text-decoration: none;
 }
 
+/* A finger's hit area around a one-line link, without moving the line. */
+@media (pointer: coarse) {
+  a.sourceLabel {
+    position: relative;
+  }
+
+  a.sourceLabel::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 44px;
+    transform: translateY(-50%);
+  }
+}
+
 a.sourceLabel:hover {
   text-decoration: underline;
 }
@@ -179,8 +196,17 @@ a.sourceLabel:hover {
   color: var(--ink-2);
 }
 
+.conditions > span {
+  overflow-wrap: anywhere;
+}
+
 .checked {
   margin-top: 4px;
+}
+
+/* Apply everywhere, under the repositories a memory applies in. */
+.scopeAction {
+  padding: 0 16px 16px;
 }
 
 .tombstone {
@@ -297,23 +323,86 @@ a.sourceLabel:hover {
   }
 }
 
+/* MobileMemory.png: the page's header names the memory, so the eyebrow
+ * keeps only a state that isn't plain kept; the seal sits beside the
+ * statement; Edit, Cite and Forget share a row. */
 @media (max-width: 639px) {
   .page:global(.mx-page) {
     padding: 20px 16px 24px;
   }
 
   .top {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
+    position: relative;
+    display: block;
+    margin-bottom: 24px;
+    padding-bottom: 24px;
+  }
+
+  .lead {
+    gap: 18px;
+  }
+
+  .eyebrow :global(.mx-page-eyebrow) {
+    display: none;
+  }
+
+  .eyebrow:not(:has(:global(.mx-state))) {
+    display: none;
   }
 
   .seal {
-    order: -1;
+    position: absolute;
+    top: 0;
+    right: 0;
     padding: 0;
   }
 
+  .seal :global(svg) {
+    width: 72px;
+    height: 72px;
+  }
+
   .title {
-    font-size: 28px;
-    line-height: 35px;
+    font-size: 25px;
+    line-height: 32px;
+    letter-spacing: -0.012em;
+  }
+
+  /* Room beside the seal, and enough height that what follows clears it. */
+  .top:has(.seal) .eyebrow,
+  .top:has(.seal) .title {
+    padding-right: 84px;
+  }
+
+  .top:has(.seal) .title {
+    min-height: 72px;
+  }
+
+  .meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .actions:global(.mx-inline) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 0;
+  }
+
+  .actions :global(.mx-btn) {
+    --_h: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--line-strong);
+    background: var(--card);
+    font-size: 14px;
+  }
+
+  .actions :global(.mx-btn .mx-icon),
+  .actions :global(.mx-btn-kbd),
+  .spacer,
+  .notYet {
+    display: none;
   }
 }

@@ -147,7 +147,12 @@ export type AdapterKind =
   | "gemini_md"
   | "copilot"
   | "windsurf"
-  | "claude_rules";
+  | "claude_rules"
+  | "claude_user"
+  | "codex_user"
+  | "gemini_user"
+  | "copilot_user"
+  | "windsurf_user";
 
 export type IncludeMode = "kept_only" | "kept_and_open";
 export type StaleMode = "mark" | "omit";
@@ -156,16 +161,24 @@ export type ScopedMode = "inline" | "omit";
 export interface TargetSettings {
   kind: AdapterKind;
   /**
-   * Where the target writes, relative to the repository root. A file for
-   * `agents_md` and the shims, a directory for the scoped adapters; ignored
-   * by `chatgpt`. Each adapter has a default.
+   * Where the target writes, relative to its root: the repository, or the
+   * person's home folder for the home adapters (`claude_user`,
+   * `codex_user`, `gemini_user`, `copilot_user`, `windsurf_user`) and a
+   * personal space's `.memax/personal/AGENTS.md`. A file for `agents_md`,
+   * the shims and the home adapters, a directory for the scoped adapters;
+   * ignored by `chatgpt`. Each adapter has a default.
    */
   path?: string;
   /** Whether open questions compile. Default `kept_and_open`. */
   include?: IncludeMode;
   /** Mark stale memories `(Being verified)`, or leave them out. Default `mark`. */
   stale?: StaleMode;
-  /** Size budget per file, in bytes. Capped by the tool's own limit. */
+  /**
+   * Size budget per file, in bytes. Capped by the tool's own limit. Default
+   * 32 KiB, or 6 KiB for the home adapters and a personal space's AGENTS.md,
+   * which load in every session of every project (4,000 bytes for
+   * Windsurf's, whose 6,000-character limit the person's rules share).
+   */
   size_budget?: number;
   /** Section keys to compile. Default: every section except `overview`. */
   sections?: string[];
@@ -178,11 +191,18 @@ export interface TargetSettings {
   /** Shims and scoped adapters: the canonical file. Default `AGENTS.md`. */
   canonical_path?: string;
   /**
-   * Shims only: the person owns this file. Memax then manages one marked
-   * block inside `current` and leaves every other byte alone.
+   * Shims and home adapters: the person owns this file. Memax then manages
+   * one marked block inside `current` and leaves every other byte alone. A
+   * home adapter's path decides it (`~/.codex/AGENTS.md` is the person's,
+   * `~/.claude/rules/memax-personal.md` is Memax's), so it may be left out
+   * there, and a value that disagrees with the path is refused.
    */
   user_owned?: boolean;
-  /** Shims with `user_owned`: the file's content right now (`""` if absent). */
+  /**
+   * Shims and home adapters with `user_owned`: the file's content right now
+   * (`""` if absent). For a home file the caller passes `""`, or the block
+   * alone: the person's own lines never leave their machine.
+   */
   current?: string;
 }
 

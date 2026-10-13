@@ -364,6 +364,27 @@
   padding: 16px 20px;
 }
 
+/* "Or start a project space": one line, then FirstRun's button, inset
+ * like "Switch as" above it. */
+.switchStart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.switchStart :global(.mx-btn) {
+  width: 100%;
+}
+
+.startDetail {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
 @media (max-width: 1023px) {
   .grid,
   .emptyGrid {
@@ -493,6 +514,13 @@
   .waiting :global(.mx-row-note),
   .waiting :global(.mx-panel-head .mx-meta),
   .more {
+    display: none;
+  }
+
+  /* MobileToday.png: the top bar names the space, so a receipt names
+   * only another one; and the first two rows, then Start review. */
+  .waiting :global(.mx-row):not(.elsewhere) :global(.mx-row-rail-rest),
+  .waiting :global(.mx-list > li:nth-child(n + 3)) {
     display: none;
   }
 

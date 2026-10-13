@@ -40,6 +40,7 @@
 package export
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -274,13 +275,80 @@ func (w *Writer) Gates(gs []ledger.Gate) error {
 	}{GatesFormat, "A waiting gate keeps its stored status; it has expired once expires_at is past.", nonNil(gs)})
 }
 
+// ExportMachine is the machine a home target is on, in targets.json
+// (personal-layer design §5.5): its label (receipts name it so), its name,
+// platform, and when it was linked and unlinked.
+type ExportMachine struct {
+	ID         uuid.UUID  `json:"id"`
+	Label      string     `json:"label"`
+	Name       string     `json:"name"`
+	Platform   string     `json:"platform"`
+	LinkedAt   time.Time  `json:"linked_at"`
+	UnlinkedAt *time.Time `json:"unlinked_at,omitempty"`
+}
+
+// exportTarget is a target as targets.json writes it: as the API serves
+// it (ledger.Target's own encoding), with a home target's machine in full.
+type exportTarget struct {
+	ledger.Target
+	Machine *ExportMachine
+}
+
+// MarshalJSON writes the target as the API does, byte for byte, and for a
+// home target puts its full machine where the API's short one is.
+func (t exportTarget) MarshalJSON() ([]byte, error) {
+	b, err := t.Target.MarshalJSON()
+	if err != nil || t.Machine == nil || t.Target.Machine == nil {
+		return b, err
+	}
+	short, err := json.Marshal(t.Target.Machine)
+	if err != nil {
+		return nil, err
+	}
+	full, err := json.Marshal(t.Machine)
+	if err != nil {
+		return nil, err
+	}
+	key := []byte(`"machine":`)
+	from := append(append([]byte{}, key...), short...)
+	if !bytes.Contains(b, from) {
+		return nil, fmt.Errorf("export: target %s: its machine isn't where it was expected", t.ID)
+	}
+	return bytes.Replace(b, from, append(append([]byte{}, key...), full...), 1), nil
+}
+
 // Targets implements ledger.ExportSink.
-func (w *Writer) Targets(ts []ledger.Target) error {
+func (w *Writer) Targets(ts []ledger.Target, machines []ledger.Machine) error {
 	w.counts.Targets = len(ts)
+	byID := make(map[uuid.UUID]ledger.Machine, len(machines))
+	for _, m := range machines {
+		byID[m.ID] = m
+	}
+	out := make([]exportTarget, len(ts))
+	for i, t := range ts {
+		// A repository target is written as it always was; root and its
+		// machine appear only for a home target (rule 14: an export of an
+		// existing space doesn't change).
+		if t.Root == ledger.RootRepo {
+			t.Root = ""
+		}
+		out[i] = exportTarget{Target: t}
+		if t.Machine != nil {
+			m, ok := byID[t.Machine.ID]
+			out[i].Machine = &ExportMachine{ID: t.Machine.ID, Label: t.Machine.Label, Name: t.Machine.Name}
+			if ok {
+				out[i].Machine.Platform, out[i].Machine.LinkedAt = m.Platform, m.LinkedAt.UTC()
+				if m.UnlinkedAt != nil {
+					u := m.UnlinkedAt.UTC()
+					out[i].Machine.UnlinkedAt = &u
+				}
+			}
+		}
+	}
 	return w.writeJSON(TargetsFile, struct {
-		Format  string          `json:"format"`
-		Targets []ledger.Target `json:"targets"`
-	}{TargetsFormat, nonNil(ts)})
+		Format  string         `json:"format"`
+		Targets []exportTarget `json:"targets"`
+	}{TargetsFormat, out})
 }
 
 // Agents implements ledger.ExportSink.

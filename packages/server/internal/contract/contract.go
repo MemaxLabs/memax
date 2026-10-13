@@ -500,7 +500,7 @@ func (s *Spec) ValidateRequest(r *http.Request, body []byte) (*Operation, error)
 			case len(vals) > 1:
 				errs = append(errs, fmt.Errorf("query parameter %s is not repeatable", p.name))
 			default:
-				errs = append(errs, check(p.schema, scalar(vals[0]), "query parameter "+p.name))
+				errs = append(errs, checkScalar(p.schema, vals[0], "query parameter "+p.name))
 			}
 		case "header":
 			v := r.Header.Get(p.name)
@@ -855,15 +855,24 @@ func checkJSON(sch *jsonschema.Schema, body []byte, what string) error {
 	return check(sch, v, what)
 }
 
-// scalar converts a query value to a JSON number when it looks like one,
-// so integer parameters validate; anything else stays a string.
-func scalar(v string) any {
+// checkScalar checks one query value against its parameter's schema. A
+// query value is text, so it is read as the schema reads it: as a string
+// first, then as an integer or a boolean when it is one ("20", "true").
+// A string parameter keeps "20" a string; an integer one takes it as 20.
+func checkScalar(sch *jsonschema.Schema, v string, what string) error {
+	first := check(sch, v, what)
+	if first == nil {
+		return nil
+	}
 	if n := json.Number(v); v != "" {
-		if _, err := n.Int64(); err == nil {
-			return n
+		if _, err := n.Int64(); err == nil && check(sch, n, what) == nil {
+			return nil
 		}
 	}
-	return v
+	if b, ok := map[string]bool{"true": true, "false": false}[v]; ok && check(sch, b, what) == nil {
+		return nil
+	}
+	return first
 }
 
 func isJSON(contentType string) bool {

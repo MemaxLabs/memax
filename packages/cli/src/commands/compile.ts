@@ -1,15 +1,18 @@
 // memax compile: compile every target of the space now, then wait for the
 // files to reach this machine and say where each stands (CompileDone).
 // The running daemon writes them; without one, this command does, for a
-// linked repository.
+// linked repository and for this machine's home files (memax link
+// --home). Outside a repository, it compiles the Personal space a home
+// link names.
 import { randomUUID } from "node:crypto";
 import chalk from "chalk";
 import type { Command } from "commander";
 import type { Memax, V2 } from "memax-sdk";
-import { getClient } from "../lib/client.js";
+import { getClient, onSignedOut } from "../lib/client.js";
 import { getOrCreateDeviceID, loadConfig } from "../lib/config.js";
-import { sdkDaemonApi } from "../lib/daemon/api.js";
+import { homeTargets, repoTargets, sdkDaemonApi } from "../lib/daemon/api.js";
 import { controlRequest } from "../lib/daemon/control.js";
+import { readHomeLink } from "../lib/daemon/home-link.js";
 import { fileLogger } from "../lib/daemon/log.js";
 import { OneShotDelivery } from "../lib/daemon/oneshot.js";
 import {
@@ -20,7 +23,7 @@ import {
 import { findLinkedRepo } from "../lib/daemon/registry.js";
 import { resolveSpace, SpaceChoiceError } from "../lib/v2-space.js";
 import { cliVersion } from "../lib/version.js";
-import { apiFailureMessage, MARK, targetRows } from "./v2-output.js";
+import { apiFailureMessage, MARK, onV1Line, targetRows } from "./v2-output.js";
 
 export interface CompileOptions {
   space?: string;
@@ -45,12 +48,19 @@ export interface CompileDeps {
   oneShot?: () => Promise<OneShotDelivery | null>;
   /** A fixed wait between checks (tests); else 250 ms, doubling to 1 s. */
   pollMs?: number;
+  /**
+   * Only this machine's home files (memax link --home, waiting for its
+   * first delivery): the machine's id, as home.json has it.
+   */
+  onlyHome?: string;
 }
 
 export interface CompileReport {
   space: string;
   requested: string[];
   writer: "daemon" | "compile" | null;
+  /** This machine's home files are among the targets (memax link --home). */
+  home: boolean;
   timed_out: boolean;
   targets: Array<{
     id: string;
@@ -101,12 +111,36 @@ export async function compile(
     return 2;
   }
   const timeoutMs = Math.max(1, Number(o.timeout ?? 30)) * 1000;
+  const homeLink = readHomeLink(d.paths);
   const { space, root } = await resolveSpace(d.memax, {
     space: o.space,
     cwd: d.cwd,
     paths: d.paths,
+  }).catch((err) => {
+    // Outside a repository, the Personal space this machine's home is linked to.
+    if (!(err instanceof SpaceChoiceError) || o.space || !homeLink) throw err;
+    return resolveSpace(d.memax, { space: homeLink.space_id, paths: d.paths });
   });
-  let targets = (await d.memax.v2.targets.list(space.id)).items;
+  const homeHere = homeLink?.space_id === space.id;
+  // The repository's targets, and this machine's home files: never
+  // another machine's.
+  const list = async () => {
+    const all = await d.memax.v2.targets.list(space.id);
+    return {
+      onV2: all.on_v2 !== false,
+      targets: [
+        ...(d.onlyHome ? [] : repoTargets(all.items)),
+        ...(homeHere ? homeTargets(all.items, homeLink.machine_id) : []),
+      ],
+    };
+  };
+  const first = await list();
+  // V1's sync writes its files, and the space takes no compile.
+  if (!first.onV2) {
+    d.out(onV1Line(space));
+    return 1;
+  }
+  let targets = first.targets;
   if (targets.length === 0) {
     d.out(
       chalk.yellow(
@@ -151,7 +185,7 @@ export async function compile(
     !!root && findLinkedRepo(d.paths, root)?.space_id === space.id;
   let writer: CompileReport["writer"] = daemon ? "daemon" : null;
   let local: OneShotDelivery | null = null;
-  if (!daemon && linkedHere && !daemonUnsupported()) {
+  if (!daemon && (linkedHere || homeHere) && !daemonUnsupported()) {
     local = await (d.oneShot ?? (() => openOneShot(d)))();
     writer = local ? "compile" : "daemon";
   }
@@ -162,11 +196,12 @@ export async function compile(
   try {
     for (;;) {
       if (local) await local.sync(space.id);
-      targets = (await d.memax.v2.targets.list(space.id)).items;
-      const delivering = writer !== null && linkedHere;
+      targets = (await list()).targets;
+      const delivering = (t: V2.Target) =>
+        writer !== null && (t.root === "home" ? homeHere : linkedHere);
       if (
         targets.every(
-          (t) => !want.has(t.id) || settled(t, want.get(t.id)!, delivering),
+          (t) => !want.has(t.id) || settled(t, want.get(t.id)!, delivering(t)),
         )
       )
         break;
@@ -184,7 +219,8 @@ export async function compile(
   const report: CompileReport = {
     space: space.slug,
     requested: [...want.keys()],
-    writer: linkedHere ? writer : null,
+    writer: linkedHere || homeHere ? writer : null,
+    home: homeHere,
     timed_out: timedOut,
     targets: targets.map((t) => ({
       id: t.id,
@@ -255,10 +291,19 @@ export function renderCompile(
     );
   }
   const local = targets.some(
-    (t) => t.delivery === "local" && t.sync_state !== "off",
+    (t) =>
+      t.root !== "home" && t.delivery === "local" && t.sync_state !== "off",
   );
   lines.push("");
-  if (local && !linkedHere) {
+  if (!local && r.home) {
+    lines.push(
+      chalk.gray(
+        r.writer === "compile"
+          ? "  Written into this machine's home by memax compile. Start the daemon so each Keep reaches them on its own: memax daemon start"
+          : "  Written into this machine's home by the daemon, which keeps them current.",
+      ),
+    );
+  } else if (local && !linkedHere) {
     lines.push(
       `  ${chalk.yellow(MARK.waiting)} Nothing was written here: this repository isn't linked. Link it: ${chalk.bold("memax link")}`,
     );
@@ -286,8 +331,16 @@ export function compileFailureMessage(err: unknown): string {
     : apiFailureMessage(err, "memax compile");
 }
 
-function openOneShot(d: CompileDeps): Promise<OneShotDelivery | null> {
-  return OneShotDelivery.open({
+/**
+ * Delivery in this process while no daemon runs (null when one does). A
+ * refresh refused for good meanwhile takes the Personal layer off, as the
+ * daemon would.
+ */
+export async function openOneShot(d: {
+  memax: Memax;
+  paths: DaemonPaths;
+}): Promise<OneShotDelivery | null> {
+  const local = await OneShotDelivery.open({
     paths: d.paths,
     api: sdkDaemonApi(d.memax),
     deviceId: getOrCreateDeviceID(),
@@ -295,6 +348,8 @@ function openOneShot(d: CompileDeps): Promise<OneShotDelivery | null> {
     version: cliVersion(),
     apiUrl: loadConfig().api_url,
   });
+  if (local) onSignedOut(() => local.signedOut());
+  return local;
 }
 
 export function registerCompileCommand(program: Command): void {

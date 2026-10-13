@@ -536,10 +536,11 @@ func TestConsentScopes(t *testing.T) {
 // allow, for each role, space rule, agent and scope.
 func TestConsentLevelMatchesTheLedger(t *testing.T) {
 	t.Parallel()
-	team := policy.Space{Name: "Memax team", Kind: policy.SpaceTeam}
-	readFirst := policy.Space{Name: "acme", Kind: policy.SpaceProject, Rules: policy.Rules{NewAgentAutonomy: policy.AutonomyRead}}
-	writeFirst := policy.Space{Name: "acme", Kind: policy.SpaceProject, Rules: policy.Rules{NewAgentAutonomy: policy.AutonomyWrite}}
-	ownersKeep := policy.Space{Name: "acme", Kind: policy.SpaceTeam, Rules: policy.Rules{Keep: policy.WhoOwners}}
+	// The page asks policy about spaces on the V2 record only (describeSpaces).
+	team := policy.Space{Name: "Memax team", Kind: policy.SpaceTeam, OnV2: true}
+	readFirst := policy.Space{Name: "acme", Kind: policy.SpaceProject, Rules: policy.Rules{NewAgentAutonomy: policy.AutonomyRead}, OnV2: true}
+	writeFirst := policy.Space{Name: "acme", Kind: policy.SpaceProject, Rules: policy.Rules{NewAgentAutonomy: policy.AutonomyWrite}, OnV2: true}
+	ownersKeep := policy.Space{Name: "acme", Kind: policy.SpaceTeam, Rules: policy.Rules{Keep: policy.WhoOwners}, OnV2: true}
 	const write, propose, read = "memax:read memax:write", "memax:read memax:propose", "memax:read"
 	for _, c := range []struct {
 		agent          ledger.AgentKind

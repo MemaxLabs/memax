@@ -63,6 +63,32 @@ describe("nothing changed", () => {
   });
 });
 
+describe("a space switched back to V1", () => {
+  it("says nothing and counts no load while V1 writes its files, then picks up again", () => {
+    m.compiled("C-0881", lines881);
+    m.warm({ targets: [m.target("C-0881", ["M-0219", "M-0098", "M-0102"])] });
+    m.run();
+    // Back on V1: the file on disk isn't Memax's to speak for, even with a
+    // compile header still in it.
+    m.compiled("C-0882", lines882);
+    m.warm({
+      targets: [m.target("C-0882", ["M-0219", "M-0098", "M-0071"])],
+      on_v1: true,
+    });
+    const quiet = m.run();
+    expect(quiet.output).toBe("");
+    expect(quiet.loads).toEqual([]);
+    expect(quiet.skipped).toBe("the space is on V1 again");
+    // On V2 again: the news since the last session it spoke in.
+    m.warm({ targets: [m.target("C-0882", ["M-0219", "M-0098", "M-0071"])] });
+    const back = m.run();
+    expect(back.output).toContain(
+      "AGENTS.md is now C-0882 (your last session saw C-0881).",
+    );
+    expect(back.loads.map((l) => l.compile)).toEqual(["C-0882"]);
+  });
+});
+
 describe("a new compile", () => {
   it("prints the lines added and changed, and the memories gone", () => {
     m.compiled("C-0881", lines881);
@@ -412,7 +438,15 @@ describe("pieces", () => {
     const dir = join(m.home, ".memax", "daemon");
     const d = daemonPaths(dir);
     const h = hookPaths(dir);
-    for (const k of ["dir", "repos", "pid", "warm", "loads", "seen"] as const)
+    for (const k of [
+      "dir",
+      "repos",
+      "home",
+      "pid",
+      "warm",
+      "loads",
+      "seen",
+    ] as const)
       expect(h[k]).toBe(d[k]);
   });
 
@@ -439,5 +473,172 @@ describe("pieces", () => {
     expect(
       parseCompiled("AGENTS.md", "# A person's own file\n- [M-0001]\n"),
     ).toBeNull();
+  });
+});
+
+describe("what's being verified", () => {
+  const renamed = {
+    ref: "M-0187",
+    since: "2026-10-11T14:02:00Z",
+    causes: [
+      {
+        kind: "check" as const,
+        condition: {
+          id: "c1",
+          kind: "path_exists" as const,
+          path: "packages/server/internal/ask/config.go",
+        },
+        evidence: {
+          change: "renamed" as const,
+          path: "packages/server/internal/ask/config.go",
+          renamed_to: "packages/server/internal/ask/tiers.go",
+        },
+        branch: "main",
+        commit: "a".repeat(40),
+        commit_at: "2026-10-11T13:00:00Z",
+        observer: "device" as const,
+      },
+    ],
+  };
+  const dated = {
+    ref: "M-0098",
+    since: "2026-10-10T03:00:00Z",
+    causes: [{ kind: "date" as const, stale_after: "2026-10-01T00:00:00Z" }],
+  };
+  const hint = {
+    branch: "feat/tiers",
+    commit: "b".repeat(40),
+    checked_at: new Date().toISOString(),
+    items: [
+      {
+        memory: "M-0219",
+        condition: {
+          id: "c2",
+          kind: "dep_present" as const,
+          manifest: "go.mod",
+          name: "github.com/riverqueue/river",
+        },
+        evidence: { change: "dependency_removed" as const, path: "go.mod" },
+      },
+    ],
+  };
+  /** The warm cache with a stale list, and branch hints for this repository. */
+  const warmWith = (over: Record<string, unknown> = {}, branches?: unknown) =>
+    writeFileSync(
+      m.paths.warm,
+      JSON.stringify({
+        version: 1,
+        spaces: {
+          [SPACE_ID]: {
+            slug: "acme-web",
+            updated_at: new Date().toISOString(),
+            targets: [m.target("C-0881", ["M-0219", "M-0098", "M-0102"])],
+            forgotten: [],
+            gates: [],
+            stale: [renamed, dated],
+            ...over,
+          },
+        },
+        ...(branches ? { branches } : {}),
+      }),
+    );
+  const onBranch = (name: string) =>
+    writeFileSync(join(m.repo, ".git", "HEAD"), `ref: refs/heads/${name}\n`);
+
+  it("says each stale memory once, with why, and asks the daemon to check", () => {
+    m.compiled("C-0881", lines881);
+    warmWith();
+    const first = m.run();
+    expect(first.output).toContain(
+      [
+        "Being verified (something these rely on changed; check the code before relying on them, and tell the person):",
+        "- M-0187: packages/server/internal/ask/config.go was renamed to packages/server/internal/ask/tiers.go on main.",
+        "- M-0098: its date to check again, 2026-10-01, has passed.",
+      ].join("\n"),
+    );
+    expect(first.checkRequest).toMatchObject({
+      root: m.repo,
+      agent: "claude-code",
+    });
+    // Told: the next session hears nothing of them.
+    const second = m.run();
+    expect(second.output).toBe("");
+    // Flagged again later (a new flag): said again.
+    warmWith({ stale: [{ ...renamed, since: "2026-10-12T09:00:00Z" }, dated] });
+    expect(m.run().output).toContain("- M-0187: ");
+  });
+
+  it("never says a forgotten memory is being verified", () => {
+    m.compiled("C-0881", lines881);
+    warmWith({ forgotten: [forget("M-0187", new Date())] });
+    const out = m.run().output;
+    expect(out).not.toContain("- M-0187: packages");
+    expect(out).toContain("- M-0098: its date");
+  });
+
+  it("says this branch's hints, only on that branch, and only from the last day", () => {
+    m.compiled("C-0881", lines881);
+    const branches = { [m.repo]: hint };
+    warmWith({ stale: [] }, branches);
+    onBranch("main");
+    expect(m.run().output).toBe("");
+    onBranch("feat/tiers");
+    const out = m.run().output;
+    expect(out).toContain(
+      "On this branch (feat/tiers), as this machine checked it at",
+    );
+    expect(out).toContain(
+      "- M-0219: go.mod no longer lists github.com/riverqueue/river on this branch.",
+    );
+    expect(m.run().output).toBe(""); // told
+    // A day old: the daemon hasn't looked since, so it isn't said.
+    const fresh = machine();
+    try {
+      fresh.compiled("C-0881", lines881);
+      writeFileSync(
+        join(fresh.repo, ".git", "HEAD"),
+        "ref: refs/heads/feat/tiers\n",
+      );
+      writeFileSync(
+        fresh.paths.warm,
+        JSON.stringify({
+          version: 1,
+          spaces: {
+            [SPACE_ID]: {
+              slug: "acme-web",
+              updated_at: new Date().toISOString(),
+              targets: [fresh.target("C-0881", ["M-0219"])],
+              forgotten: [],
+              gates: [],
+            },
+          },
+          branches: {
+            [fresh.repo]: {
+              ...hint,
+              checked_at: new Date(Date.now() - 2 * DAY).toISOString(),
+            },
+          },
+        }),
+      );
+      fresh.run();
+      expect(fresh.run().output).not.toContain("On this branch");
+    } finally {
+      fresh.cleanup();
+    }
+  });
+
+  it("asks for no check outside a linked repository, nor on a compaction", () => {
+    m.compiled("C-0881", lines881);
+    warmWith();
+    expect(
+      m.run("claude-code", { source: "compact" }).checkRequest,
+    ).toBeUndefined();
+    const bare = machine({ linked: false });
+    try {
+      bare.compiled("C-0881", lines881);
+      expect(bare.run().checkRequest).toBeUndefined();
+    } finally {
+      bare.cleanup();
+    }
   });
 });

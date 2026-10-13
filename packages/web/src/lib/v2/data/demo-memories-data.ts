@@ -2,6 +2,7 @@ import type {
   ForgetRequestLine,
   MemoryListItem,
   MemoryRecord,
+  StaleWhy,
   TombstoneStepLine,
   TombstoneView,
   UnreachableLine,
@@ -43,6 +44,46 @@ const row = (
 const kept = (by: Actor, when: string) => ({
   receipt: { by, action: "kept" as const, at: when },
 });
+
+/**
+ * VerifyStale.png: why M-0187 is stale. PR #198 switched Ask to the Sonnet
+ * tier on Sep 11, and Dream suggested the update from it.
+ */
+export const DEMO_STALE: Record<string, StaleWhy> = {
+  "memax-v2/M-0187": {
+    ref: "M-0187",
+    version: 1,
+    statement: "Ask memax answers with the Haiku tier.",
+    kind: "fact",
+    stale: true,
+    since: at("16:00", "2026-09-11"),
+    flaggedBy: DREAM,
+    kept: { by: ZZ, at: at("11:20", "2026-07-14"), action: "kept" },
+    readsSince: 88,
+    causes: [
+      {
+        kind: "source",
+        ref: "PR #198",
+        title: "Switch Ask to the Sonnet tier for cited answers",
+        by: JY,
+        at: at("16:00", "2026-09-11"),
+        hunk: {
+          path: "packages/server/internal/ask/config.go",
+          lines: [
+            { op: "del", text: "\tTier:      TierHaiku," },
+            { op: "add", text: "\tTier:      TierSonnet," },
+            { op: "eq", text: "\tMaxTokens: 1024," },
+          ],
+        },
+      },
+    ],
+    suggestion: {
+      statement: "Ask memax answers with the Sonnet tier.",
+      by: DREAM,
+      from: "PR #198",
+    },
+  },
+};
 
 /** Memories.png's rows, newest-first pages as the demo serves them. */
 export const DEMO_MEMORY_PAGES: Record<string, MemoryListItem[][]> = {
@@ -109,6 +150,7 @@ export const DEMO_MEMORY_PAGES: Record<string, MemoryListItem[][]> = {
         receipt: { by: DREAM, action: "flagged", at: at("03:12") },
         note: {
           kind: "stale",
+          cause: "source",
           changedAt: at("16:00", "2026-09-11"),
           source: "PR #198",
         },
@@ -456,10 +498,16 @@ export const DEMO_RECORDS: Record<string, Partial<MemoryRecord>> = {
     ],
     reaches: V2_REACHES,
     conditions: [
-      { key: "c1", code: "github.com/riverqueue/river", text: "is in go.mod" },
-      { key: "c2", code: null, text: "ADR 004 is unchanged" },
+      {
+        key: "c1",
+        kind: "dep_present",
+        manifest: "go.mod",
+        name: "github.com/riverqueue/river",
+        range: null,
+      },
+      { key: "c2", kind: "file_unchanged", path: "docs/adr/004-queues.md" },
     ],
-    checked: { at: at("14:31"), by: agent("claude-code") },
+    checked: { at: at("14:31"), branch: "main", agent: agent("claude-code") },
   },
 };
 

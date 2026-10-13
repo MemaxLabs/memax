@@ -45,6 +45,7 @@ func (m *AnthropicModel) Complete(ctx context.Context, c judge.Call) (string, er
 		Model: c.Tier.Model, MaxTokens: c.Tier.MaxTokens, System: c.System, Prompt: c.Prompt,
 		Purpose: "dream." + purposeOf(ctx) + "." + c.Tier.Name, ZeroDataRetention: m.ZeroDataRetention,
 		Providers: c.Tier.Routing.Providers, Quantizations: c.Tier.Routing.Quantizations, Temperature: c.Tier.Temperature,
+		Thinking: c.Tier.Thinking,
 	}
 	if c.Tier.Strict {
 		req.OutputSchema = c.Schema
@@ -79,12 +80,15 @@ func (u *usage) add(tier string, in, out int) {
 	u.u.Tiers[tier]++
 }
 
-func (u *usage) call(failed bool) {
+func (u *usage) call(err error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.u.Calls++
-	if failed {
+	if err != nil {
 		u.u.Failures++
+	}
+	if errors.Is(err, anthropic.ErrRefusal) {
+		u.u.Refusals++
 	}
 }
 
@@ -150,7 +154,7 @@ func (m *countingModel) Complete(ctx context.Context, c judge.Call) (string, err
 	m.mu.Unlock()
 	text, err := m.inner.Complete(ctx, c)
 	if u := usageOf(ctx); u != nil {
-		u.call(err != nil)
+		u.call(err)
 	}
 	return text, err
 }
@@ -163,7 +167,8 @@ func (m *countingModel) spent() bool {
 
 // structured makes one of Dream's own calls: the tiers in order, each
 // twice (the second time with what was wrong), the answer validated
-// against the schema. It returns the decoded answer and the tier.
+// against the schema. A tier that declines (anthropic.ErrRefusal) goes
+// straight to the next. It returns the decoded answer and the tier.
 func (e *Engine) structured(ctx context.Context, m Model, purpose, system, prompt string, schema *compiledSchema, out any) (string, error) {
 	ctx = withPurpose(ctx, purpose)
 	var last error
@@ -190,6 +195,9 @@ func (e *Engine) structured(ctx context.Context, m Model, purpose, system, promp
 			last = err
 			if ctx.Err() != nil {
 				return "", ctx.Err()
+			}
+			if errors.Is(err, anthropic.ErrRefusal) {
+				break
 			}
 			p = prompt + "\n\nYour previous answer was not usable (" + firstLine(err.Error()) + "). Answer again with only the JSON object."
 			if !t.Strict {

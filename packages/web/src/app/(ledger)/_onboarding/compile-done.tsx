@@ -5,14 +5,17 @@ import Link from "next/link";
 import { Icon, Seal, Terminal, type TerminalLine } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
 import { count, formatShortDate } from "@/lib/v2/copy";
-import { targetStatus, type TargetView } from "@/lib/v2/data/targets";
+import { groupTargets } from "@/lib/v2/data/home-files";
+import { isHome, targetStatus, type TargetView } from "@/lib/v2/data/targets";
 import type { ImportView } from "@/lib/v2/data/imports";
 import type { SpaceSummary } from "@/lib/v2/data/types";
 import { gitStatusLines } from "./transcript";
 import { useSource, useViewer } from "../(app)/_lib/data";
 import { useTargets } from "../(app)/_lib/compile";
+import { HomeFileRow } from "../(app)/_components/home-file-row";
 import { TargetStatus } from "../(app)/_components/target-row";
 import { OnboardingPage } from "./frame";
+import { PersonalLine } from "./personal-line";
 import { useSetupImport, useSetupSpace } from "./queries";
 import styles from "./compile-done.module.css";
 import { useFunnelStep } from "./funnel";
@@ -88,7 +91,8 @@ function Done({ space }: { space: SpaceSummary }) {
     const s = targetStatus(x).kind;
     return s === "in_sync" || s === "reads" || s === "live";
   });
-  const files = list.filter((x) => x.kind !== "chatgpt").length;
+  // A home file counts once, whatever the number of machines it's on.
+  const files = groupTargets(list.filter((x) => x.kind !== "chatgpt")).length;
   useFunnelStep("compile_done_reached", targets.data !== undefined, {
     written: written.length,
   });
@@ -111,7 +115,11 @@ function Done({ space }: { space: SpaceSummary }) {
         : copy.ledeNone;
 
   const readBefore = (view.data?.summary.files ?? []).map((f) => f.path);
-  const status = gitStatusLines(list, readBefore);
+  // Home files aren't in the repository, so git never shows them.
+  const status = gitStatusLines(
+    list.filter((x) => !isHome(x)),
+    readBefore,
+  );
   const lines: TerminalLine[] = [{ kind: "cmd", text: copy.gitStatus }];
   for (const line of status) lines.push({ kind: "out", text: line });
   lines.push({ kind: "blank" }, { kind: "dim", text: copy.commit });
@@ -139,8 +147,20 @@ function Done({ space }: { space: SpaceSummary }) {
           {list.length === 0 ? (
             <p className={styles.empty}>{copy.noTargets}</p>
           ) : (
-            list.map((target) => <FileRow key={target.id} target={target} />)
+            groupTargets(list).map((entry) =>
+              entry.kind === "repo" ? (
+                <FileRow key={entry.target.id} target={entry.target} />
+              ) : (
+                <HomeFileRow
+                  key={entry.group.key}
+                  space={space.slug}
+                  group={entry.group}
+                  machines={null}
+                />
+              ),
+            )
           )}
+          <PersonalLine space={space} />
         </section>
         {status.length > 0 ? (
           <Terminal

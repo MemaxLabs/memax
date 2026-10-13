@@ -9,6 +9,65 @@ JUDGE_EVAL_LIVE=1 JUDGE_EVAL_SET=holdout.json JUDGE_EVAL_TIERS=pipeline,primary 
 V2_EVAL_LIVE=1 go test ./eval/judge/ -run Candidates -v
 ```
 
+## Oct 11: Claude Haiku 5.5 as the fallback
+
+**The fallback stays Claude Haiku 4.5.** The Phase 3 rescan (D14) found that Haiku 5.5, released Oct 7, costs a tenth of Haiku 4.5 per token. It is zero-retention on Bedrock and Vertex, and Anthropic lists Haiku 4.5 as legacy (retiring no sooner than Oct 15, with 60 days' notice). The bar for switching was: at least as accurate on every set, no lower recall on planted conflicts, and no slower at p95. On the judge's sets, Haiku 5.5 at effort medium meets the accuracy bar, and its p95 is level on `pairs.json` but slower on the held-out set. It fails on the import check at every thinking setting (`eval/imports/RESULTS.md`): its largest import takes 10–24 s against Haiku 4.5's 6.5 s, and at low and medium it finds fewer planted conflicts. The client now supports Haiku 5.5, so a tier can name it (`JUDGE_FALLBACK_MODEL=anthropic/claude-haiku-5.5`).
+
+```bash
+cd packages/server
+JUDGE_EVAL_LIVE=1 JUDGE_EVAL_TIERS=fallback JUDGE_FALLBACK_MODEL=anthropic/claude-haiku-5.5 \
+  JUDGE_FALLBACK_THINKING=off|low|medium go test ./eval/judge/ -run Live -v     # pairs.json, then JUDGE_EVAL_SET=holdout.json
+JUDGE_EVAL_LIVE=1 JUDGE_EVAL_TIERS=fallback go test ./eval/judge/ -run Live -v  # Haiku 4.5 as it ships, the same hour
+```
+
+Each run used the fallback tier alone, the current prompt (the conflict's words, `e3089d1`) and the same hour of the day. The Oct 7 row for Haiku 4.5 below came before that prompt, so Haiku 4.5 was run again. Raw verdicts (ids, relations, confidences, outcomes, timings; no words) are in `results-2026-10-11.json`.
+
+**What the client does for Haiku 5.5** (`internal/anthropic`):
+
+- **No temperature or top_p.** Haiku 5.5 takes neither, except temperature 1 and top_p 0.99, and a request with both is a 400. Sonnet 5.5 is the same. The rule is per model, by exact slug (`anthropic.DefaultModelParams`, beside `DefaultProviders`), so a tier on either model sends none whatever `*_TEMPERATURE` says.
+  - **OpenRouter drops the value; it doesn't pass the 400 on.** A probe with `temperature: 0` on Vertex succeeded. The same request with `provider.require_parameters: true` was refused at "Filter by Parameters", because no Haiku 5.5 endpoint lists `temperature`.
+  - Anthropic's own API would refuse it, so the client doesn't send it.
+- **Thinking is tier configuration**: `JUDGE_THINKING`, `JUDGE_FALLBACK_THINKING` and `JUDGE_STRONG_THINKING` (and `DREAM_*`) take `off`, `adaptive`, an effort level or `default`. Unset, a tier gets its slug's rule, and Haiku 5.5's is adaptive at effort medium.
+  - OpenRouter honours `output_config.effort`: at low, Haiku 5.5 used a tenth of medium's thinking tokens.
+- **Vertex only** (`DefaultProviders`). Only Vertex lists structured outputs for Haiku 5.5. OpenRouter leaves out the regional endpoints (10% dearer) unless asked, so every call went to `google-vertex/global`, served by "Google".
+- **A refusal is a failed call** that goes straight to the tier's next tier, without the retry a malformed answer gets.
+  - `stop_reason: "refusal"` comes back as a `*anthropic.RefusalError`, counted on `memax.llm.refusals` by model, purpose and category, and logged as `llm_refusal`.
+  - The judge counts it in `Metrics.Refused` and logs `judge_refusal`; Dream adds it to the edition's `refusals`.
+  - A refusal by the strong tier leaves the verdict unconfirmed, like any failure of that tier. Haiku 5.5 has no server-side fallback.
+  - **None of the 1,171 Haiku 5.5 calls in these runs was refused.**
+
+**The fallback tier alone.** These are verdict times with four in flight, from a dev machine. Off, low and medium are Haiku 5.5's thinking settings; its runs at "medium" 1 and 2 omitted `thinking`, which is the same as medium. Haiku 4.5 ran at t=0.
+
+| Model, thinking    | Set     | Runs | `contradicts` P / R          | Flag P / R at 0.6                | updates R      | Verdict p50 / p95             | Cost a call |
+| ------------------ | ------- | ---- | ---------------------------- | -------------------------------- | -------------- | ----------------------------- | ----------- |
+| Haiku 4.5          | pairs   | 2    | 0.90 / 0.96 (both)           | 0.97 / 1.00 (both)               | 0.96           | 2.15–2.20 / **2.96–5.89 s**   | $0.00233    |
+| Haiku 5.5, off     | pairs   | 2    | 0.85 / 1.00, 0.88 / 1.00     | 0.93 / 1.00 (both)               | 0.96, 1.00     | 1.00–1.02 / 1.40–2.62 s       | $0.00031    |
+| Haiku 5.5, low     | pairs   | 3    | 0.90 / 1.00 (all three)      | 0.97 / 1.00, 0.96 / **0.96**, 0.97 / 1.00 | 1.00  | 0.97–1.00 / 1.45–2.72 s       | $0.00031    |
+| Haiku 5.5, medium  | pairs   | 3    | 0.93 / 0.96, 1.00 / 0.96, 0.96 / 0.96 | 0.97 / 1.00, 1.00 / 1.00, 1.00 / 1.00 | 1.00 | 1.05–1.14 / 3.00–4.20 s | $0.00036    |
+| Haiku 4.5          | holdout | 1    | 0.86 / 1.00                  | 1.00 / 1.00                      | 0.83           | 2.26 / **2.99 s**             | $0.00233    |
+| Haiku 5.5, low     | holdout | 2    | 0.86 / 1.00 (both)           | **0.86** / 1.00 (both)           | 1.00           | 1.03–1.04 / 1.24–1.26 s       | $0.00031    |
+| Haiku 5.5, medium  | holdout | 1    | 1.00 / 1.00                  | 1.00 / 1.00                      | 1.00           | 1.15 / **4.93 s**             | $0.00038    |
+
+- **Thinking off** made two false flags on decisions in force in each run: ext-06 and ext-22, both at exactly 0.6. Haiku 4.5 makes one, ext-06 at 0.85.
+- **Low** thinks on only a few calls (1,200–1,700 thinking tokens over 124).
+  - Once it put con-04 at 0.55, under the bar, so a planted conflict went unflagged.
+  - On the held-out set it flagged hold-ext-06 in both runs.
+- **Medium** flagged every planted conflict in every run, with at most one false flag (ext-06 at 0.6, once).
+  - Its `contradicts` recall of 0.96 is con-28 read as `updates`, which is still flagged (as the primary reads it).
+  - It thinks 105–120 tokens a verdict, 660–1,000 at most, well inside the tier's 2,500.
+  - It is quicker than Haiku 4.5 at p50 everywhere. At p95 it is level on `pairs.json` (Haiku 4.5's two runs gave 2.96 and 5.89 s) and slower on the held-out set (4.93 s against 2.99 s; with 30 verdicts, p95 is the second slowest).
+- **Haiku 4.5** answered at temperature 0 and gave the same relation to every pair in both runs. Its p95 moved from 5.89 to 2.96 s between two runs the same morning, so Bedrock's tail varies by the hour, as Vertex's does.
+- **Tokens:** Haiku 5.5 read 26% more input tokens for the same prompts (2,194 against 1,746 a call), as Anthropic says it would. A call still costs 15% of Haiku 4.5's at medium and 13% at low or off.
+- **Thinking for Haiku 5.5: medium** (`anthropic.DefaultModelParams`). It is the only setting that kept every flag on both sets. The fallback runs only after the primary has failed twice, when being right matters more than half a second. Off and low cost 14% less on the judge and 17–22% less on imports, and are quicker, but each lost a flag or added one.
+- **Cost:** $1.14 of OpenRouter spend for every probe and run here, both evals included ($9.0675 → $10.2106 used on the key; the meter's sum agrees). Haiku 4.5's runs were $0.73 of it.
+
+**Haiku 5.5 as the primary:** not worth an eval for the default deployment. V4.1 Flash alone scores `contradicts` 1.00 / 1.00 at p50 0.38 s, p95 0.62 s and $0.00013 a call (Oct 7). Haiku 5.5's best setting here is about three times slower at p50, five to seven times at p95, about three times the cost a call, and no more accurate. It is worth an eval as the primary for EU data residency (plan 25 §5.17): it is zero-retention on Vertex europe and Bedrock eu-west-1, and V4.1 Flash has no EU host. That eval would pin `google-vertex/europe` and score the pipeline, with its own latency budget.
+
+**Follow-ups:**
+
+- Re-run this when Anthropic or the hosts announce Haiku 4.5's retirement, and before the notice runs out. Look at the import check's tail first.
+- On imports, Haiku 5.5 with little thinking names many groups below the bar, against the prompt. Telling it to leave out groups under 0.8 might cut its output and its tail. Any such change to `importSystem` would have to be scored on the primary too.
+
 ## Oct 7, later: the strong tier confirms
 
 The judge now writes the words a person settles a conflict with: a question, four labels and a suggestion (`e3089d1`). On the first live run with them, Sonnet wrote them again for every verdict on a decision in force, and verdict p95 went from about 2 s to **5.56 s**, past the 5 s target. Sonnet now only confirms the relation (`strongNote`, `internal/judge/prompt.go`) and leaves the words empty. `Classify` keeps the primary's words, which it writes for contradicts and updates alike, since both are flagged on a decision in force. A conflict that only the strong tier found has no words, so Review words it generically. Raw verdicts are in `results-2026-10-07-confirm.json`.
@@ -75,6 +134,8 @@ Chosen on Oct 7 from OpenRouter's endpoints API (`/api/v1/models/<slug>/endpoint
 | DekaLLM, Fireworks (two)                | undeclared | $0.12–0.45 in  | 2.1–5.6 s p50         | 67–123           | 72–97%     | No: degraded or down                                            |
 | Decart, Sail Research                   | **fp4**   | $0.08–0.09 in   | 2.8–13.5 s p50        | 16–64            | 96–99%     | **No: fp4** (D14). The floor refuses them even if named         |
 | DeepSeek, Alibaba, Baidu, AtlasCloud, StreamLake, GMICloud | fp8 or undeclared | | | |        | **No: not zero-retention** (DeepSeek's own API also processes in China) |
+
+On Oct 11, 2026 Baseten listed a third endpoint, `baseten/fast` (fp32, $0.60 / $2.40). The pin narrowed from the base slug `baseten`, which admits every Baseten endpoint, to `baseten/fp8` (the two measured above).
 
 - **Undeclared precision.** Together doesn't say what precision it runs, so OpenRouter lists it as `unknown`. The floor admits `unknown` (every Claude endpoint is `unknown` too), so such a host gets in only by being named. A probe with Decart pinned behind the floor was refused: "No endpoints found for the request with quantization: int8,fp8,mxfp8,fp16,bf16,fp32,unknown".
 - **Order, not price weighting.** With `order` set, OpenRouter tries the hosts in turn and stops load-balancing, so all traffic goes to Together until it fails. `only` keeps every fallback inside the list.

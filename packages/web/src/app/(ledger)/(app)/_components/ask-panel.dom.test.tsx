@@ -140,8 +140,33 @@ describe("Ask's panel", () => {
       question: "Why?",
       limit: 50,
       resetAt: "2026-11-01T00:00:00Z",
+      upgrade: null,
     });
     expect(screen.getByText(/asked 50 questions this month/)).toBeTruthy();
     expect(screen.getByText(/start again on Nov 1/)).toBeTruthy();
+    expect(screen.queryByText(/Pro answers/)).toBeNull();
+  });
+
+  it("says what Pro answers when Pro lifts the limit", () => {
+    renderPanel({
+      status: "limit",
+      question: "Why?",
+      limit: 50,
+      resetAt: "2026-11-01T00:00:00Z",
+      upgrade: "pro",
+    });
+    expect(screen.getByText(/Pro answers 1,000 a month/)).toBeTruthy();
+  });
+
+  it("says a space that went back to V1 has nothing to answer from, and opens its Today", () => {
+    const { onOpen } = renderPanel({ status: "onV1", question: "Why?" });
+    expect(screen.getByRole("status").textContent).toContain(
+      "memax-v2 is still on V1",
+    );
+    expect(screen.queryByRole("button", { name: /Keep as memory/ })).toBeNull();
+    const today = screen.getByRole("link", { name: "Open Today" });
+    expect(today.getAttribute("href")).toBe("/memax-v2/today");
+    fireEvent.click(today);
+    expect(onOpen).toHaveBeenCalled();
   });
 });

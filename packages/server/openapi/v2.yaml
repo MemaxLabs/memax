@@ -118,6 +118,18 @@ info:
     or stops compiling the file. A pulled file is held, as it is, until
     each of its proposals is kept or rejected.
 
+    ## Machines and home files
+
+    Your Personal space also compiles into your agents' own user-level files
+    (`~/.claude/rules/memax-personal.md`, a block in `~/.codex/AGENTS.md`,
+    the canonical `~/.memax/personal/AGENTS.md`) on every machine you link.
+    Each linked machine has its own targets (`root: home`, with `machine`),
+    so a hand edit on one laptop holds only that laptop's file. Linking,
+    changing and unlinking a machine is yours alone, as a person on a
+    session (`machines_by_person`); its daemon reads its targets with
+    `?machine=`. A machine's name is never in a receipt: receipts call it by
+    its label (`machine-2`).
+
     ## The judge
 
     Every proposal is judged within seconds of being written: a repeat of a
@@ -179,6 +191,14 @@ info:
     (`POST /v2/spaces/{space}/compile-loads`), which counts as a read of
     every fact in it. A memory's `reads` say how often it was read and by
     which agents, and whether it is in a file whose loads Memax can't see.
+
+    A cloud agent's sandbox has no daemon and no cache, so its start asks
+    instead (`POST /v2/spaces/{space}/session-starts`): it names the
+    compile each committed file holds, and the answer is what changed in
+    the record since, with forgets, waiting decisions and the agent's
+    notices. It counts as a compile load too. Its credential is a start key
+    (`POST /v2/cloud-agents`): a cloud agent's connection at Read in one
+    space, whose key starts sessions there and does nothing else.
 
     ## Imports
 
@@ -293,14 +313,20 @@ tags:
     description: The Brief every agent reads, in versions.
   - name: targets
     description: Where a space compiles to, its compile runs, deliveries and hand edits.
+  - name: machines
+    description: The computers your Personal space is written to, each with its own home files.
   - name: gates
     description: Decisions agents ask people to make, and the answers, kept as decisions.
   - name: reads
     description: What agents read (R-). Reads are not receipts.
+  - name: checks
+    description: What a space's repository says about its memories' conditions, checked on members' machines, and the stale flags Memax sets from it.
   - name: devices
     description: Signing the memax CLI in on a machine with no browser, with a code you confirm on the web.
   - name: sessions
     description: Everywhere you are signed in, and signing any of it out.
+  - name: search
+    description: Memories that match some words, across the spaces you belong to.
   - name: ask
     description: Cited answers from a space's kept memories, for people.
   - name: dream
@@ -317,7 +343,10 @@ paths:
       operationId: listSpaces
       tags: [spaces]
       summary: List your spaces
-      description: Every space you belong to, with your role in it. Not paginated.
+      description: |
+        Every space you belong to, with your role in it and, for a space on
+        the V2 record, its counts: what is kept, what waits on a person and
+        the agents connected. Not paginated.
       responses:
         '200':
           description: Your spaces.
@@ -346,7 +375,8 @@ paths:
         the name's slug is used, with a number added when it is taken; a
         slug you name must be free (409 `slug_taken`). Only a signed-in
         person creates spaces, and here only project spaces: your personal
-        space exists already, and team spaces come with Team. A space isn't
+        space exists already (403 `refused`, policy `personal_exists`),
+        and team spaces come with Team (`space_kind`). A space isn't
         part of its own record, so creating one writes no receipt; its
         Activity starts with its first change. The same `Idempotency-Key`
         finds the space the first call created.
@@ -379,6 +409,99 @@ paths:
           $ref: '#/components/responses/SpaceConflict'
         '422':
           $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/search:
+    get:
+      operationId: search
+      tags: [search]
+      summary: Search your spaces
+      description: |
+        The memories that match `q`, best first, across every space you
+        belong to that is on the V2 record (or the ones `space` names;
+        one you can't read is 404). It is the search agents' `memax_search`
+        and recall run: full-text and trigram matching on the words, the
+        meaning of the words when this server embeds them (within 120 ms of
+        the request, else by the words alone, and `lexical_only` says so),
+        fused and reranked. A space still on V1 has nothing here: its
+        memories are V1's until it switches.
+
+        A person finds what was kept and the proposals waiting in Review;
+        an agent finds what was kept, in the spaces its connection is
+        connected to. Superseded decisions, and rejected, merged, faded and
+        forgotten memories, never come back (a forgotten memory has no
+        words left to match). Each item is the memory without its sources
+        or links (read one memory for those), with the receipts that say
+        who wrote it and who changed it last.
+
+        With `include_notes`, the first page also carries your notes (N-)
+        that match, by their words: yours, and every note in a space you
+        own. Notes are raw material and never kept context.
+
+        A person's search changes nothing and records no read; an agent's
+        is recorded as a read of what it found, like `memax_search`. A
+        search ranks its 50 best matches; `limit` and `cursor` page through
+        them, and each page runs the search again, so a page can differ
+        slightly from the one before it if the record changed in between.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: The words to search for.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 500
+        - name: space
+          in: query
+          description: Only these spaces, by id or slug. Repeat for more than one; none searches them all.
+          style: form
+          explode: true
+          schema:
+            type: array
+            maxItems: 20
+            items:
+              $ref: '#/components/schemas/SpaceKey'
+        - name: kind
+          in: query
+          description: Only facts or only decisions.
+          schema:
+            $ref: '#/components/schemas/MemoryKind'
+        - name: include_notes
+          in: query
+          description: Also search your notes (the first page carries them).
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Cursor'
+        - name: limit
+          in: query
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: One page of matches.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -1213,6 +1336,103 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/spaces/{space}/conditions:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listConditions
+      tags: [checks]
+      summary: The conditions a space's machines check
+      description: |
+        Every kept memory's "stays true while" conditions, for a member's
+        machine to check against the repository's committed tree on its
+        default branch: each typed, with its hash (send it back with a
+        result, so a result about an older definition is ignored) and
+        whether it is armed (it held once on the default branch; only an
+        armed condition can mark its memory stale), with the commit of its
+        latest hold, where a machine looks for a rename. No statements. A
+        condition that hasn't held in 30 days is left out, since Memax stops
+        asking, and so is `pr_state`, which only the GitHub App checks.
+        Beside them, the space's memories marked stale now and why, typed,
+        for a machine's session-start hook to say what's being verified.
+      responses:
+        '200':
+          description: The space's conditions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpaceConditionsEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/check-runs:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: reportChecks
+      tags: [checks]
+      summary: Report a check run
+      description: |
+        A member's machine (the CLI's daemon) reports what it found when it
+        checked the space's conditions against the committed tree of the
+        repository's default branch at `commit`: results, never a file's
+        contents. Report only from the default branch as pushed, from a
+        clone whose origin is the space's repository (`repository` must
+        match, so a fork's clone never reports). Only the results that
+        changed need be sent. Results are check state beside the record,
+        with no receipt. A condition that held once (armed) and now fails,
+        at a commit later than its last hold, marks its memory stale in the
+        same transaction, as Memax: a `flagged` receipt whose source is the
+        run (`{kind: check, ref: <run id>}`) and whose reason, which Forget
+        redacts, says what changed. Unknown never marks anything, nor does a
+        failure a person kept, edited or verified the memory after Memax
+        first saw. A run that would mark more than 10 memories, or more than
+        20% of the armed ones (and at least 5), marks none (`capped`).
+        Only a member's or owner's own session reports: agents, API keys and
+        OAuth grants are refused `checks_by_person`, viewers `viewer`. The
+        same `Idempotency-Key` records a run once; a queued report keeps its
+        `checked_at`, within a week.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckRunRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/CheckRunRecorded'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
   /v2/spaces/{space}/reads:
     parameters:
       - $ref: '#/components/parameters/SpacePath'
@@ -1328,6 +1548,67 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/session-starts:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: startSession
+      tags: [reads]
+      summary: What changed since the compile a repository holds
+      description: |
+        A cloud agent's session start (`memax hook cloud-start`, in a
+        sandbox with no daemon and no cache): the compiled files it found
+        in the repository, each by the compile (`C-`) its header names and
+        its drift hash, and nothing of their words. The answer is what
+        changed in the record since: for each file, the cited lines the
+        space's latest compile of that file added or changed (their words
+        from the latest compile only) and the memories that left it (refs
+        only); what a person forgot that the files still hold, or forgot
+        since (refs and dates, never words); decisions waiting for a
+        person; and the agent's own notices, each told once (here or over
+        MCP, whichever comes first).
+
+        A file whose compile isn't one of this space's repository files is
+        left out of the answer. A file whose drift hash differs from what
+        its compile wrote is `hand_edited`: its Memax lines may not be the
+        record's. The commit and branch select nothing; they are not
+        stored.
+
+        Each compile named counts as a compile load (a read of every fact
+        in it, `compile_load`), under the agent's connection or naming the
+        agent for a person, once per `Idempotency-Key` (a retry, or a
+        second hook in the same session, counts nothing more); the lines
+        it returns count as a `digest` read. A credential with no
+        connection here gets its answer, and nothing is counted. A
+        `compact` start counts nothing either: the files didn't load
+        again.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionStartRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/SessionStarted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -1681,6 +1962,67 @@ paths:
           $ref: '#/components/responses/IdempotencyKeyReused'
         '428':
           $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:scope:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: scopeMemory
+      tags: [memories]
+      summary: Change which repositories a memory applies in
+      description: |
+        Sets the memory's `scope.repos`: the repositories it applies in, as
+        `owner/name` keys (any spelling of a repository's URL reads as its
+        key; stored lowercase, sorted, once each). An empty list is
+        everywhere, which is how a person widens a personal fact that
+        `memax init` tied to one repository (its Claude Code auto memory
+        and `CLAUDE.local.md`): a home file leaves out every memory with
+        `scope.repos`, since it loads in every project. The words, the
+        paths and the agents don't change. It follows Keep's rules for who
+        may: a member or owner who keeps in the space (a decision in a team
+        space needs a person on the web); agents and API keys are refused.
+        One `scoped` receipt; a kept memory's files recompile. A person's
+        change is undoable by them for 10 minutes (`POST
+        /v2/receipts/{receipt}:undo` with the `scoped` receipt). Only a
+        proposal, a kept memory or a faded one can change (409
+        `invalid_transition` otherwise). Asking for the repositories it
+        already names is 400 `invalid_request`, as an edit to the same
+        words is; a retry with the same `Idempotency-Key` replays.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchOptional'
+        - $ref: '#/components/parameters/Via'
+        - $ref: '#/components/parameters/PasskeyAssertion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScopeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/CommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -2105,6 +2447,121 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/memories/{ref}/stale:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    get:
+      operationId: getStaleReport
+      tags: [memories]
+      summary: Why a memory is stale
+      description: |
+        What VerifyStale shows before a person answers: the words and the
+        version to send as `If-Match`, whether it is flagged now (`stale`),
+        the receipt that flagged it, its latest keep or verification and
+        how often agents read it since that day, and the causes, each typed
+        so it can be said in any language (a date that passed, for now). It
+        never holds file contents. What a Forget would do is
+        `/forget-preview`. A memory nobody flagged, or that someone verified
+        since, answers `stale: false` with no causes.
+      responses:
+        '200':
+          description: Why it is stale.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaleReportEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:verify:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: verifyMemory
+      tags: [memories]
+      summary: Answer a stale flag
+      description: |
+        A person's answer to a stale flag (rule 10: stale is a state, and
+        Verify clears it). `still_true` writes `verified`, whose source names
+        what flagged it (`{kind: date | check | commit | pr}`), and the flag
+        clears. `update` writes `edited` with the new `statement` and then
+        `verified`. Either way a date to check again that has passed moves to
+        `stale_after`, or goes when none is sent: memories don't expire, and
+        a compiled file marks anything past its date as being verified. Every
+        target recompiles. Both are undoable as one command, by the same
+        person, within 10 minutes (`:undo` on either receipt). `forget` is
+        Forget itself, with every one of its rules (send `carries` and
+        `note` as for `:forget`); its result has the tombstone.
+
+        It follows Keep's rules: a person who may keep in the space; agents
+        and API keys are refused (`verify_by_person`), and so are viewers. A
+        decision in a space whose decisions need a person on the web, and a
+        quarantined memory, need the web (D15) and the passkey re-check.
+        `If-Match` is required: the version you checked. A memory that isn't
+        stale is 409 `invalid_transition` for `still_true` and `update`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/Via'
+        - $ref: '#/components/parameters/PasskeyAssertion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyRequest'
+      responses:
+        '200':
+          description: Verified, updated or forgotten.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ForgetConflict'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
   /v2/receipts/{receipt}:undo:
     parameters:
       - $ref: '#/components/parameters/ReceiptPath'
@@ -2114,8 +2571,9 @@ paths:
       summary: Undo a decision
       description: |
         Undoes the command that wrote this receipt (any of its receipts):
-        Review's ⌘Z. A person undoes their own keep, reject, edit or
-        conflict resolution within 10 minutes, and their own Remember
+        Review's ⌘Z. A person undoes their own keep, reject, edit,
+        conflict resolution, Verify or change to where a memory applies
+        (`:scope`) within 10 minutes, and their own Remember
         (undoing it withdraws the memory: it ends rejected, and leaves the
         compiled files); any person who may keep undoes one of the judge's
         folds within 14 days. Each memory gets an
@@ -2230,7 +2688,8 @@ paths:
       description: |
         One agent connection with what it did this week, its latest writes
         (receipts, which never hold the words) and its latest sessions, in
-        your spaces. Disconnected agents can still be read.
+        your spaces, and for a cloud agent its latest session start.
+        Disconnected agents can still be read.
       responses:
         '200':
           description: The agent.
@@ -2422,6 +2881,106 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/agents/{agent}:rekey:
+    parameters:
+      - $ref: '#/components/parameters/AgentPath'
+    post:
+      operationId: rekeyAgent
+      tags: [agents]
+      summary: Give a cloud agent a new start key
+      description: |
+        Replaces a cloud agent's start key with a new one under the same
+        connection, in one transaction: the old key stops working at once,
+        the new one lasts 180 days, and the connection, its history and its
+        reads stay as they were (a `rekeyed` receipt). The new key's secret
+        is in the answer, once; a retry with the same `Idempotency-Key`
+        answers without it. Only the person the agent works for rekeys it,
+        and only a cloud agent's start key (`surface: cloud`) is replaced
+        here.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCommandRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/AgentRekeyed'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/cloud-agents:
+    post:
+      operationId: createCloudAgent
+      tags: [agents]
+      summary: Connect a cloud agent with a start key
+      description: |
+        Connects a cloud agent (Claude Code's cloud sessions, Copilot's
+        cloud agent, Codex Cloud) to one project or team space and makes
+        its start key, in one transaction: a connection on the `cloud`
+        surface (`connected` receipt) bound to a new API key whose one
+        permission is `compile:read`. A start key starts the agent's
+        sessions in that space (`POST /v2/spaces/{space}/session-starts`)
+        and nothing else: every other request with it is 403
+        `permission_denied`, so a key that leaks shows what the next commit
+        of the compiled files would. It lasts 180 days; rekey it under the
+        same connection (`/v2/agents/{agent}:rekey`) or disconnect it.
+
+        The secret is in the answer once, and never stored: keep it as the
+        agent's secret (`MEMAX_START_KEY`, or a network secret for the API's
+        host), never in the repository. A retry with the same
+        `Idempotency-Key` answers the connection without it. The connection
+        is Read by default; `propose` needs a person on the web (policy
+        `cloud_propose_needs_web`), and a cloud key never keeps. Only a
+        person creates one, for themselves: the reads it counts are theirs.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCloudAgentRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/CloudAgentCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/IdempotencyKeyReused'
         '429':
@@ -2633,7 +3192,18 @@ paths:
       description: |
         The space's targets (AGENTS.md, the CLAUDE.md shim, scoped Cursor
         rules, the ChatGPT copy-out, …), each with its sync state, its latest
-        compile run and what is on disk. Not paginated.
+        compile run and what is on disk. A personal space's home files are
+        here too, every machine's. Not paginated.
+
+        With `machine`, only that machine's home files: what its daemon
+        polls. That also notes the machine as seen (`last_seen_at`, to five
+        minutes). A machine that isn't the space's is 404.
+      parameters:
+        - name: machine
+          in: query
+          description: A machine of the space, by id.
+          schema:
+            $ref: '#/components/schemas/Id'
       responses:
         '200':
           description: The targets.
@@ -2663,6 +3233,12 @@ paths:
         Adds a compile target to the space, with the kind's defaults for
         whatever you leave out (path, settings, delivery), and compiles it.
         The space needs a Brief first. People who may keep add targets.
+
+        In a personal space, `root: home` adds one home file to a linked
+        `machine` (`memax connect codex` on a linked machine), by the
+        machine's person only. A machine that isn't linked any more is 409.
+        The compile service must have the kind's adapter; until it does, the
+        kind is 400.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/Via'
@@ -2686,6 +3262,192 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TargetResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/machines:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listMachines
+      tags: [machines]
+      summary: List the machines your Personal space is written to
+      description: |
+        Every machine linked to the personal space, linked now or not, by
+        number, with when its daemon was last seen. Only the space's owner
+        reads them (`machines_by_person`, `machines_personal`); a machine's
+        name is personal data.
+      responses:
+        '200':
+          description: The machines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MachineListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    post:
+      operationId: linkMachine
+      tags: [machines]
+      summary: Link a machine
+      description: |
+        Links this machine (by the CLI's device id) to the personal space,
+        with the files you approved on it, in one command: the machine with
+        its `linked` receipt, the space's first Brief when it has none, and
+        one home target per file, each with its `configured` receipt and
+        its compile. Linking the same device again links it again (a new
+        name, platform or session), turns approved files that were stopped
+        back on, adds new ones, and stops another file of the same agent at
+        a different path, so each agent reads one copy; when nothing
+        changes it writes nothing and answers 200.
+
+        Only you, on a session, in your personal space: agents and API keys
+        are refused `machines_by_person`, other spaces `machines_personal`.
+        The compile service must have each file's adapter; until it does,
+        the kind is 400.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkMachineRequest'
+      responses:
+        '201':
+          description: The machine, linked, with its targets compiling.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MachineResultEnvelope'
+        '200':
+          description: Linked already, with every approved file compiling; nothing was written.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MachineResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/machines/{machine}:
+    parameters:
+      - $ref: '#/components/parameters/MachinePath'
+    patch:
+      operationId: renameMachine
+      tags: [machines]
+      summary: Rename a machine
+      description: |
+        Changes what the machine is called. Send `If-Match` with its
+        version. Its receipt names it by its label, never the name. A name
+        that is the same writes nothing.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchMachine'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameMachineRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/MachineResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/machines/{machine}:unlink:
+    parameters:
+      - $ref: '#/components/parameters/MachinePath'
+    post:
+      operationId: unlinkMachine
+      tags: [machines]
+      summary: Take your Personal space off a machine
+      description: |
+        Unlinks the machine: an `unlinked` receipt, and every file of it
+        stopped, each with its `stopped` receipt. The machine's daemon then
+        takes the layer off: it removes the files Memax owns there that hold
+        exactly what it wrote, and the blocks nobody edited, and leaves
+        anything edited by hand. A machine unlinked already writes nothing.
+        `memax link --home` on it links it again.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/MachineResult'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2736,6 +3498,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
         '412':
           $ref: '#/components/responses/EditClash'
         '422':
@@ -3108,7 +3872,9 @@ paths:
         Stops compiling the target (`off`) and closes its open hand edits;
         the file stays as it is, and agents keep reading the space over MCP.
         Turn it back on with `enabled: true`. People who may keep stop
-        targets.
+        targets. A space switched back to V1 takes it too (pulling and
+        overwriting it are refused there): V1's sync writes such a space's
+        agent files again, and stopping is how Memax lets go of one.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/Via'
@@ -4860,6 +5626,19 @@ components:
       description: The target's id.
       schema:
         $ref: '#/components/schemas/Id'
+    MachinePath:
+      name: machine
+      in: path
+      required: true
+      description: The machine's id.
+      schema:
+        $ref: '#/components/schemas/Id'
+    IfMatchMachine:
+      name: If-Match
+      in: header
+      description: The machine's `ETag` (its version) you started from, e.g. `"2"`.
+      schema:
+        $ref: '#/components/schemas/VersionTag'
     IfMatchVersion:
       name: If-Match
       in: header
@@ -4962,6 +5741,24 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/AgentCommandResultEnvelope'
+    CloudAgentCreated:
+      description: The cloud agent's connection, and its start key's secret (shown once).
+      headers:
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CloudAgentResultEnvelope'
+    AgentRekeyed:
+      description: The connection, and its new start key's secret (shown once).
+      headers:
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CloudAgentResultEnvelope'
     BadRequest:
       description: |
         `invalid_request`, `idempotency_key_required`, `space_required` or
@@ -5065,6 +5862,18 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
 
+    MachineResult:
+      description: The machine and its targets after the command (nothing written when it changed nothing).
+      headers:
+        ETag:
+          $ref: '#/components/headers/VersionETag'
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MachineResultEnvelope'
+
     TargetResult:
       description: The target after the command.
       headers:
@@ -5076,6 +5885,15 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/TargetResultEnvelope'
+    CheckRunRecorded:
+      description: The run, recorded (or already recorded under this key), and the memories it marked stale.
+      headers:
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CheckRunResultEnvelope'
     CompileLoadRecorded:
       description: The load, recorded as a read (or already recorded under this key).
       headers:
@@ -5085,6 +5903,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/CompileLoadResultEnvelope'
+    SessionStarted:
+      description: What changed since the compiles the repository holds.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SessionStartEnvelope'
     GateResult:
       description: The gate after the command (and, for an answer, the decision it became).
       headers:
@@ -5267,10 +6091,24 @@ components:
         merged (a duplicate proposal), flagged (a conflict or a stale fact),
         faded and revised (the Brief), each citing the edition (`source: {kind:
         dream, ref: D-0214}`); undoing one writes undid; restoring a faded
-        memory writes restored. Switching to V2 writes noted on the space (its
+        memory writes restored. A person's Verify of a stale memory writes
+        verified (after edited, for an update), its source naming what
+        flagged it (`{kind: date, ref: 2026-10-01}`). Switching to V2 writes noted on the space (its
         V1 content numbered as notes) and switched once it is on the V2
         record; switching back writes switched_back. A note's Forget writes
-        forgot on the note (`object_kind: note`).
+        forgot on the note (`object_kind: note`). A machine's (`machine`,
+        named by its label, machine-2) are linked, configured (renamed) and
+        unlinked. A change to which repositories a memory applies in
+        (`:scope`) writes scoped: a person widening it, or Memax (via
+        system) tying a personal fact an earlier `memax init` imported to
+        its repository. A change to a memory's conditions that writes no
+        version is conditions_changed (Memax, via system, typing what was
+        written before they were typed). Memax's derived conditions ride on
+        the command that wrote the version, with no receipt of their own.
+        A cloud agent's new start key, under the same connection, is
+        rekeyed (`object_kind: agent`). Memax clearing its own stale flag,
+        when a check finds what failed holding again (a revert), is
+        unflagged (via system, its source the run).
       type: string
       enum:
         - proposed
@@ -5318,9 +6156,14 @@ components:
         - noted
         - switched
         - switched_back
+        - unlinked
+        - scoped
+        - conditions_changed
+        - rekeyed
+        - unflagged
     ObjectKind:
       type: string
-      enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space]
+      enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space, machine]
     Outcome:
       description: |
         What a command did. `applied`: it took effect as asked. `proposed`:
@@ -5341,7 +6184,13 @@ components:
         agent has no connection, or none to this space, so it only reads),
         agent_paused, brief_by_person (agents propose; people edit the
         Brief), targets_by_person, compile_by_memax, judge_by_memax,
-        undo_by_decider (only the person who decided can undo it). Refused
+        undo_by_decider (only the person who decided can undo it),
+        space_on_v1 (the space is still on V1, so its V2 record takes no new
+        words or decisions: its owner switches it to V2 first, with
+        `POST /v2/spaces/{space}:switch`; on V1 the record still takes reads,
+        Forget, export, compile loads, deliveries and hand edits, and agent
+        connections change as anywhere; Ask is refused too, since it answers
+        only from the V2 record). Refused
         decision gates: gate_by_agent (agents ask; people decide directly),
         person_must_answer (agents ask; people answer), gate_limit (the agent
         already has 3 decisions waiting in the space), not_your_gate (only the
@@ -5351,10 +6200,17 @@ components:
         MCP; Ask answers people), ask_limit (the plan's asks this month are
         used up; `details.limit` and `details.resets_at` say how many and
         when they start again). A refused export: export_by_person (only a
-        signed-in person exports a space). Refused changes to
+        signed-in person exports a space). Verify: verify_by_person (agents
+        and API keys don't verify: refused on `:verify`, and an agent's edit
+        of a stale memory is sent to Review with it). Refused checks:
+        checks_by_person (only a member's own machine reports check runs),
+        flag_by_memax (only Memax marks a memory stale from a check).
+        Refused changes to
         agents: person_must_manage (only a person changes what an agent may
         do), not_your_agent, autonomy_not_allowed, key_max_propose,
-        autonomy_needs_web (raising an agent needs a person on the web).
+        autonomy_needs_web (raising an agent needs a person on the web),
+        cloud_propose_needs_web (a cloud agent above Read needs a person on
+        the web, even when it connects).
         Refused or sent to Review:
         viewer, owners_keep, decision_needs_web. Sent to Review: api_key,
         external_source, contradicts_decision, touches_decision (a
@@ -5368,14 +6224,28 @@ components:
         they are saved, and the same resolution waits for the judge).
         Confirmation: confirm_in_agent.
         Refused changes to spaces: space_by_person (only a signed-in person
-        creates or switches a space), space_kind (only project spaces are
-        created here), space_limit (the most project spaces one person owns
-        during the alpha), switch_by_owner (only the owner switches a space).
+        creates or switches a space), personal_exists (each person has one
+        personal space, made with their account), space_kind (only project
+        spaces are created here; team spaces come with Team), space_limit
+        (the person owns as many project spaces as their plan has, or the
+        most one person owns on any plan; `limit` says which),
+        switch_by_owner (only the owner switches a space).
+        Plan limits, only when enforced, each with `limit`: space_limit and
+        ask_limit as above, agent_kind_limit (the person has connected as
+        many kinds of agent as their plan has; another machine or key for a
+        kind they have isn't a new one), seat_needed (refused, or sent to
+        Review: on a plan that doesn't bill seats, Free and Pro, only the
+        owner keeps, and a member acts as a viewer does), dream_cadence (Dream
+        has run now as often as the space's plan allows this week or day).
         Refused device codes: device_by_person (only a person signs a device
         in), device_needs_web (confirming or declining a code needs a person
         on the web app). Refused sessions: session_by_person (only a person
         lists or signs out their sessions), session_needs_web (signing out a
         session other than this one needs a person on the web app).
+        Refused machines: machines_by_person (only you, on a session, link a
+        machine, change its files or report what it wrote; never an agent or
+        an API key), machines_personal (only a personal space is written to
+        machines), machines_by_owner (only the personal space's owner).
         The passkey re-check: needs_passkey (you have a passkey, so this
         decision asks for it; on the web the error is 403 `needs_passkey`
         with a challenge, elsewhere a refusal that says to do it on the web).
@@ -5405,11 +6275,13 @@ components:
         - autonomy_not_allowed
         - key_max_propose
         - autonomy_needs_web
+        - cloud_propose_needs_web
         - brief_by_person
         - targets_by_person
         - compile_by_memax
         - judge_by_memax
         - undo_by_decider
+        - space_on_v1
         - gate_by_agent
         - person_must_answer
         - gate_limit
@@ -5418,6 +6290,9 @@ components:
         - ask_by_person
         - ask_limit
         - export_by_person
+        - verify_by_person
+        - checks_by_person
+        - flag_by_memax
         - viewer
         - owners_keep
         - decision_needs_web
@@ -5435,15 +6310,22 @@ components:
         - judge_pending
         - confirm_in_agent
         - space_by_person
+        - personal_exists
         - space_kind
         - space_limit
         - switch_by_owner
+        - agent_kind_limit
+        - seat_needed
+        - dream_cadence
         - dream_by_dream
         - dream_run_by_owner
         - device_by_person
         - device_needs_web
         - session_by_person
         - session_needs_web
+        - machines_by_person
+        - machines_personal
+        - machines_by_owner
         - needs_passkey
         - account_by_person
         - account_needs_web
@@ -5570,18 +6452,78 @@ components:
       minLength: 1
       maxLength: 300
       pattern: '^[A-Za-z0-9._/-]+$'
+    RepoKey:
+      description: |
+        A repository as `owner/name`, such as `acme/web`. Memax stores it
+        lowercase; a request may send any case.
+      type: string
+      minLength: 3
+      maxLength: 200
+      pattern: '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'
+    MemoryScope:
+      description: |
+        Where a memory applies. `paths`: globs relative to the repository
+        root (a scoped rule's), which compile into scoped files. `agents`:
+        the agents it is for. `repos`: the repositories it applies in, which
+        `memax init` sets on a personal fact from one repository's files
+        (its Claude Code auto memory and `CLAUDE.local.md`); a home file
+        leaves out a memory with `repos` or `paths`, and it stays live over
+        MCP. Absent fields apply everywhere: `{}` applies everywhere.
+      type: object
+      additionalProperties: false
+      properties:
+        paths:
+          type: array
+          items:
+            type: string
+        agents:
+          type: array
+          items:
+            type: string
+        repos:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/RepoKey'
     Sha256:
       description: A lowercase hex sha256.
       type: string
       pattern: '^[0-9a-f]{64}$'
     TargetKind:
       description: |
-        The compiler's adapter. agents_md is the canonical AGENTS.md;
-        claude_md and gemini_md are shims that import it; cursor_mdc,
-        copilot, windsurf and claude_rules hold path-scoped facts only;
-        chatgpt is copied out.
+        The compiler's adapter. agents_md is the canonical AGENTS.md (in a
+        personal space, also the canonical copy at home,
+        `.memax/personal/AGENTS.md`); claude_md and gemini_md are shims that
+        import it; cursor_mdc, copilot, windsurf and claude_rules hold
+        path-scoped facts only; chatgpt is copied out. claude_user,
+        codex_user, gemini_user, copilot_user and windsurf_user are home
+        files: a personal space in Claude Code's user rules
+        (`.claude/rules/memax-personal.md`, or a block in
+        `.claude/CLAUDE.md`), in a block of Codex's `.codex/AGENTS.md`, in a
+        block of `.gemini/AGENTS.md`, which Antigravity reads (and Gemini
+        CLI, once its `context.fileName` lists AGENTS.md), in a block of
+        Copilot's `.copilot/copilot-instructions.md`, and in a block of
+        Windsurf's `.codeium/windsurf/memories/global_rules.md`.
       type: string
-      enum: [agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules]
+      enum: [agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules, claude_user, codex_user, gemini_user, copilot_user, windsurf_user]
+    TargetRoot:
+      description: |
+        What a target's path is relative to: `repo`, a repository linked on
+        some machine, or `home`, one linked machine's home folder (a
+        personal space only).
+      type: string
+      enum: [repo, home]
+    HomePath:
+      description: A path relative to the home folder, in a dot folder of it (`.claude/rules/memax-personal.md`), with no `..` and no leading `/`.
+      type: string
+      minLength: 1
+      maxLength: 300
+      pattern: '^\.[A-Za-z0-9._-]*/[A-Za-z0-9._/-]+$'
+    AgentSlug:
+      description: An agent's id, such as `claude-code` or `codex`.
+      type: string
+      pattern: '^[a-z][a-z0-9-]{0,39}$'
     Delivery:
       description: |
         How the output reaches its readers: `local` (the daemon writes it),
@@ -5662,6 +6604,37 @@ components:
             behaviour applies to every surface.
           type: string
           format: date-time
+        created_at:
+          description: When the space was made, in the list of your spaces and when you create one.
+          $ref: '#/components/schemas/Timestamp'
+        counts:
+          description: >-
+            In the list of your spaces, for a space on the V2 record: what
+            the space switcher says about it. Absent for a space on V1,
+            whose memories are V1's.
+          $ref: '#/components/schemas/SpaceCounts'
+
+    SpaceCounts:
+      description: A space's numbers, as the space switcher shows them.
+      type: object
+      additionalProperties: false
+      required: [kept, waiting, agents]
+      properties:
+        kept:
+          description: Its kept memories.
+          type: integer
+          minimum: 0
+        waiting:
+          description: >-
+            What waits on a person: Review's queue (every proposal, and every
+            kept memory flagged as a conflict or stale) and the decision
+            gates waiting for an answer.
+          type: integer
+          minimum: 0
+        agents:
+          description: The agents connected to it and not paused.
+          type: integer
+          minimum: 0
 
     DecisionOption:
       type: object
@@ -5790,15 +6763,19 @@ components:
         stale_after:
           $ref: '#/components/schemas/Timestamp'
         conditions:
-          description: '"Stays true while" conditions.'
+          description: |
+            "Stays true while" conditions, at most 8: what Memax derived from
+            the paths the memory names (origin derived), and what a person,
+            the judge or Dream attached. The date to check again is
+            `stale_after`.
           type: array
-          items: true
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/Condition'
         decision:
           $ref: '#/components/schemas/Decision'
         scope:
-          description: 'Where it applies, e.g. {"paths": ["packages/web/**"]}.'
-          type: object
-          additionalProperties: true
+          $ref: '#/components/schemas/MemoryScope'
         valid_from:
           $ref: '#/components/schemas/Timestamp'
         valid_to:
@@ -6043,6 +7020,34 @@ components:
             one (then the same change asks for it).
           type: string
           enum: [passkey]
+        limit:
+          $ref: '#/components/schemas/PlanLimit'
+
+    PlanLimit:
+      description: |
+        The plan limit a decision met (D9), for the plan-limit dialog: the
+        plan the limit is the person's or the space's, how much it allows
+        and how much is used (absent for seats), and the plan that lifts it
+        (absent when none does). Only when plan limits are enforced.
+      type: object
+      additionalProperties: false
+      required: [plan]
+      properties:
+        plan:
+          $ref: '#/components/schemas/PlanTier'
+        allowed:
+          type: integer
+          minimum: 1
+        used:
+          type: integer
+          minimum: 1
+        upgrade:
+          $ref: '#/components/schemas/PlanTier'
+
+    PlanTier:
+      description: A V2 plan (D9).
+      type: string
+      enum: [free, pro, team, enterprise]
 
     CommandResult:
       type: object
@@ -6192,6 +7197,38 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ForgetRequestRecord'
+        checked:
+          description: |
+            When its conditions were last checked: the space's latest check
+            run since one first reported on them (every run reads every
+            condition, so one with nothing new still checked them). Absent
+            until one has, and for a forgotten memory.
+          $ref: '#/components/schemas/MemoryChecked'
+
+    MemoryChecked:
+      description: A check of a memory's conditions, where, by what and for whom. No words.
+      type: object
+      additionalProperties: false
+      required: [at, branch, commit, observer, trigger]
+      properties:
+        at:
+          description: When it ran (the machine's clock).
+          $ref: '#/components/schemas/Timestamp'
+        branch:
+          description: The default branch it read.
+          type: string
+        commit:
+          description: The commit it read.
+          type: string
+        observer:
+          description: A member's machine (`device`), the GitHub App (`github`) or Memax.
+          type: string
+          enum: [device, github, memax]
+        trigger:
+          $ref: '#/components/schemas/CheckTrigger'
+        agent:
+          description: The agent whose session start asked for it, if one did.
+          $ref: '#/components/schemas/AgentKind'
 
     MemoryReads:
       description: |
@@ -6513,6 +7550,13 @@ components:
           description: The space's reads in the last 7 days.
           type: integer
           minimum: 0
+        retention_days:
+          description: |
+            How far back the space's plan lists reads, in days (D9: Free 30,
+            Pro 90, Team a year), when plan limits are enforced; absent, they
+            go as far back as they are kept. Older ones are kept, not listed.
+          type: integer
+          minimum: 1
 
     CompileLoadRequest:
       type: object
@@ -6540,6 +7584,200 @@ components:
         read:
           $ref: '#/components/schemas/Read'
 
+    SessionStartRequest:
+      type: object
+      additionalProperties: false
+      required: [files]
+      properties:
+        agent:
+          description: The agent whose session starts. Ignored for an agent's own credential, which is always its agent.
+          $ref: '#/components/schemas/AgentKind'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+        source:
+          description: How the session started, as the agent says; `compact` counts no load.
+          type: string
+          enum: [startup, resume, clear, compact]
+        files:
+          description: The compiled files the session loaded, each with the compile its header names.
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/SessionStartFileInput'
+        commit:
+          description: The commit the files are at. It selects nothing and isn't stored.
+          type: string
+          pattern: '^[0-9a-f]{7,64}$'
+        branch:
+          description: The branch checked out. It selects nothing and isn't stored.
+          type: string
+          minLength: 1
+          maxLength: 255
+        loaded_at:
+          description: When the session loaded the files; defaults to now, and must be within the last day.
+          $ref: '#/components/schemas/Timestamp'
+
+    SessionStartFileInput:
+      type: object
+      additionalProperties: false
+      required: [path, compile]
+      properties:
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        compile:
+          description: The compile its header names.
+          type: string
+          pattern: '^[Cc]-[0-9]{1,18}$'
+        drift_sha256:
+          description: The file's drift hash (its managed block's, or the whole file's), to tell a hand edit.
+          $ref: '#/components/schemas/Sha256'
+
+    SessionStart:
+      type: object
+      additionalProperties: false
+      required: [space, files, forgotten, gates, notices, handoffs]
+      properties:
+        space:
+          $ref: '#/components/schemas/SessionStartSpace'
+        files:
+          description: The files the request named that are this space's, in the order named.
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionStartFile'
+        forgotten:
+          description: |
+            Memories a person forgot that a named compile holds (`in_files`,
+            at most 50), then the latest others forgotten since the oldest
+            named compile, at most 20. One entry a Forget, with what it took
+            in `with`. Refs and dates only.
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionStartForget'
+        gates:
+          description: Decisions waiting for a person in the space, newest first, at most 10.
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/SessionStartGate'
+        notices:
+          description: The agent's notices in this space, each told once (here or over MCP).
+          type: array
+          items:
+            $ref: '#/components/schemas/Notice'
+        handoffs:
+          description: Handoffs addressed to this session's branch. Always empty until handoffs ship.
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionStartHandoff'
+
+    SessionStartSpace:
+      type: object
+      additionalProperties: false
+      required: [id, slug]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        slug:
+          type: string
+
+    SessionStartFile:
+      type: object
+      additionalProperties: false
+      required: [path, here, latest, hand_edited, added, changed, gone, more]
+      properties:
+        path:
+          description: The file's path in the repository, as the space compiles it.
+          $ref: '#/components/schemas/RepoPath'
+        here:
+          description: The compile the repository holds.
+          $ref: '#/components/schemas/CompileRef'
+        latest:
+          description: The space's latest compile of the file; the same as `here` when nothing changed.
+          $ref: '#/components/schemas/CompileRef'
+        hand_edited:
+          description: The file differs from what its compile wrote, so its Memax lines may not be the record's.
+          type: boolean
+        added:
+          description: Cited lines `latest` has that `here` didn't, in the file's order.
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionStartLine'
+        changed:
+          description: Cited lines whose words changed since `here`, with their words in `latest`.
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionStartLine'
+        gone:
+          description: Memories `here` cites that `latest` doesn't (superseded or excluded); not forgotten ones.
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        more:
+          description: Added and changed lines left out (at most 60 are sent a file).
+          type: integer
+          minimum: 0
+
+    SessionStartLine:
+      type: object
+      additionalProperties: false
+      required: [refs, text]
+      properties:
+        refs:
+          description: The memories the line cites.
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        text:
+          description: The line as the latest compile wrote it, its cites included.
+          type: string
+
+    SessionStartForget:
+      type: object
+      additionalProperties: false
+      required: [ref, with, at, in_files]
+      properties:
+        ref:
+          $ref: '#/components/schemas/DisplayRef'
+        with:
+          description: Memories forgotten with it.
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        in_files:
+          description: A named compile holds it, so the files the session loaded still say it.
+          type: boolean
+
+    SessionStartGate:
+      type: object
+      additionalProperties: false
+      required: [ref, question, expires_at]
+      properties:
+        ref:
+          $ref: '#/components/schemas/GateDisplayRef'
+        question:
+          description: The asking agent's question, cut to 200 characters.
+          type: string
+          maxLength: 200
+        agent:
+          description: The agent that asked.
+          type: string
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    SessionStartHandoff:
+      description: A handoff addressed to the session's branch (not yet served).
+      type: object
+      additionalProperties: false
+      required: [ref]
+      properties:
+        ref:
+          type: string
+          pattern: '^H-[0-9]{4,18}$'
+
     SpaceList:
       type: object
       additionalProperties: false
@@ -6563,6 +7801,48 @@ components:
           type: boolean
         next_cursor:
           $ref: '#/components/schemas/Cursor'
+
+    SearchHit:
+      description: One memory a search found.
+      type: object
+      additionalProperties: false
+      required: [memory, receipts]
+      properties:
+        memory:
+          description: The memory, without its sources, links, the memory it updates or the judge's verdict.
+          $ref: '#/components/schemas/Memory'
+        receipts:
+          description: |
+            The receipts the memory names: the one that wrote it
+            (`created_receipt_id`) and the latest (`last_receipt_id`),
+            oldest first; one when they are the same.
+          type: array
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    SearchPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more, lexical_only]
+      properties:
+        items:
+          description: The matches, best first.
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchHit'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+        notes:
+          description: With `include_notes`, on the first page, your notes that match, best first.
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+        lexical_only:
+          description: Nothing matched by meaning, only by the words (no embeddings here, or the query's missed its deadline).
+          type: boolean
 
     ReviewPage:
       type: object
@@ -6802,6 +8082,41 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AgentSession'
+        last_start:
+          description: For a cloud agent, its latest session start that Memax counted; absent before its first.
+          $ref: '#/components/schemas/AgentStart'
+
+    AgentStart:
+      description: |
+        A cloud agent's latest counted session start
+        (`POST /v2/spaces/{space}/session-starts`): when, the compiles its
+        repository's files held, and the memories whose lines it was told
+        about because they were added or changed since. Read from the
+        start's compile loads and its digest read, so it holds refs, never
+        words. A start that found nothing new has an empty `told`.
+      type: object
+      additionalProperties: false
+      required: [at, space_id, compiles, told]
+      properties:
+        at:
+          description: When the session loaded the files.
+          $ref: '#/components/schemas/Timestamp'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+        compiles:
+          description: The compiles the session's files held, oldest first.
+          type: array
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/CompileRef'
+        told:
+          description: The memories whose lines the start sent, in display order (at most 200).
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/DisplayRef'
 
     AgentCommandResult:
       type: object
@@ -7003,16 +8318,25 @@ components:
         stale:
           $ref: '#/components/schemas/StaleMode'
         size_budget:
-          description: Bytes per file; the tool's own limit caps it.
+          description: Bytes per file; the tool's own limit caps it. A home file's is 6,144 by default and at most 16,384.
           type: integer
           minimum: 1024
           maximum: 32768
         scoped:
-          description: agents_md and chatgpt only.
+          description: A repository's agents_md and chatgpt only.
           $ref: '#/components/schemas/ScopedMode'
         user_owned:
-          description: Shims only. The person owns the file; Memax manages one marked block in it.
+          description: |
+            Shims and home files. The person owns the file; Memax manages one
+            marked block in it. A home file's path decides it: Codex's
+            AGENTS.md and a `.claude/CLAUDE.md` are the person's.
           type: boolean
+        read_by:
+          description: Home files only. The agents that load this file on its machine.
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AgentSlug'
 
     DeliveredFile:
       type: object
@@ -7226,6 +8550,7 @@ components:
         - space_id
         - tenant_id
         - kind
+        - root
         - label
         - settings
         - delivery
@@ -7248,11 +8573,16 @@ components:
           $ref: '#/components/schemas/Id'
         kind:
           $ref: '#/components/schemas/TargetKind'
+        root:
+          $ref: '#/components/schemas/TargetRoot'
+        machine:
+          description: A home file's machine.
+          $ref: '#/components/schemas/TargetMachine'
         path:
-          description: A file, or a rules directory for scoped kinds. Absent for ChatGPT.
+          description: A file, or a rules directory for scoped kinds, relative to `root`. Absent for ChatGPT.
           $ref: '#/components/schemas/RepoPath'
         label:
-          description: What people see, e.g. `AGENTS.md` or `ChatGPT project`.
+          description: What people see, e.g. `AGENTS.md`, `~/.codex/AGENTS.md` or `ChatGPT project`.
           type: string
         settings:
           $ref: '#/components/schemas/TargetSettings'
@@ -7299,7 +8629,87 @@ components:
         updated_at:
           $ref: '#/components/schemas/Timestamp'
 
-    TargetList:
+    TargetMachine:
+      description: The machine a home file is on.
+      type: object
+      additionalProperties: false
+      required: [id, label, name]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        label:
+          $ref: '#/components/schemas/MachineLabel'
+        name:
+          type: string
+
+    MachineLabel:
+      description: What receipts call a machine, `machine-<n>`, numbered per space; never its name.
+      type: string
+      pattern: '^machine-[0-9]{1,9}$'
+
+    Machine:
+      description: A computer your Personal space is written to.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - space_id
+        - label
+        - name
+        - platform
+        - device_id
+        - linked
+        - linked_at
+        - version
+        - created_receipt_id
+        - last_receipt_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        label:
+          $ref: '#/components/schemas/MachineLabel'
+        name:
+          description: What you call it; the short host name by default.
+          type: string
+          minLength: 1
+          maxLength: 80
+        platform:
+          description: darwin, linux, …
+          type: string
+        device_id:
+          description: The memax CLI's device id on that machine.
+          $ref: '#/components/schemas/Id'
+        session_id:
+          description: The CLI session that linked it last.
+          $ref: '#/components/schemas/Id'
+        linked:
+          description: Whether it is linked now; an unlinked machine's files are stopped.
+          type: boolean
+        linked_at:
+          $ref: '#/components/schemas/Timestamp'
+        unlinked_at:
+          $ref: '#/components/schemas/Timestamp'
+        last_seen_at:
+          description: When its daemon last read its targets (to five minutes).
+          $ref: '#/components/schemas/Timestamp'
+        version:
+          description: The machine's version; also the `ETag`.
+          type: integer
+          minimum: 1
+        created_receipt_id:
+          $ref: '#/components/schemas/Id'
+        last_receipt_id:
+          $ref: '#/components/schemas/Id'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    MachineList:
       type: object
       additionalProperties: false
       required: [items]
@@ -7307,7 +8717,113 @@ components:
         items:
           type: array
           items:
+            $ref: '#/components/schemas/Machine'
+
+    MachineResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, machine, targets, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        machine:
+          $ref: '#/components/schemas/Machine'
+        targets:
+          description: The machine's home files, in the compiler's order.
+          type: array
+          items:
             $ref: '#/components/schemas/Target'
+        receipts:
+          description: The receipts the command wrote; none when it changed nothing.
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    MachineFileInput:
+      description: A file you approve on the machine.
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          description: claude_user, codex_user, gemini_user, copilot_user, windsurf_user, or agents_md (the canonical copy).
+          $ref: '#/components/schemas/TargetKind'
+        path:
+          description: Relative to the home folder; defaults to the kind's own.
+          $ref: '#/components/schemas/HomePath'
+        user_owned:
+          description: When sent, it must agree with the path.
+          type: boolean
+        read_by:
+          description: The agents that load it on this machine; defaults to the kind's own agent.
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AgentSlug'
+
+    LinkMachineRequest:
+      type: object
+      additionalProperties: false
+      required: [device_id, name, platform, files]
+      properties:
+        device_id:
+          description: The memax CLI's device id on this machine.
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        platform:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9_-]{0,31}$'
+        files:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/MachineFileInput'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    RenameMachineRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    TargetList:
+      type: object
+      additionalProperties: false
+      required: [items, on_v2]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Target'
+        on_v2:
+          type: boolean
+          description: |
+            Whether the V2 record serves the space. A space switched back to
+            V1 still lists its targets, but its agent files are V1's again
+            (its two-way sync writes them): a daemon leaves them as they are
+            and reports nothing for them (no deliveries, hand edits or
+            checks) until the space is on V2 again.
 
     TargetResult:
       type: object
@@ -7399,6 +8915,13 @@ components:
           type: boolean
         next_cursor:
           $ref: '#/components/schemas/Cursor'
+        retention_days:
+          description: |
+            How far back the space's plan lists compile runs, in days (D9: Free 30,
+            Pro 90, Team a year), when plan limits are enforced; absent, they
+            go as far back as they are kept. Older ones are kept, not listed.
+          type: integer
+          minimum: 1
 
     DriftChange:
       description: |
@@ -7957,13 +9480,18 @@ components:
           description: When it should be verified again.
           $ref: '#/components/schemas/Timestamp'
         conditions:
-          description: '"Stays true while" conditions.'
+          description: |
+            Conditions a person attaches, typed; `id` and `origin` are Memax's
+            to set and are ignored here. Memax derives path conditions from
+            the words on its own (in a project space with a repository), and
+            only people send these: an agent's are refused. A
+            file_contains' text that looks like a credential is refused.
           type: array
-          items: true
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/Condition'
         scope:
-          description: 'Where it applies, e.g. {"paths": ["packages/web/**"]}.'
-          type: object
-          additionalProperties: true
+          $ref: '#/components/schemas/MemoryScope'
         valid_from:
           $ref: '#/components/schemas/Timestamp'
         valid_to:
@@ -8080,6 +9608,61 @@ components:
           description: When it happened on the client; offline queues keep the original time.
           $ref: '#/components/schemas/Timestamp'
 
+    CreateCloudAgentRequest:
+      type: object
+      additionalProperties: false
+      required: [agent, space]
+      properties:
+        agent:
+          description: The cloud agent.
+          type: string
+          enum: [claude-code, copilot, codex]
+        space:
+          description: The project or team space it starts in, by id or slug.
+          $ref: '#/components/schemas/SpaceKey'
+        autonomy:
+          description: What it may do there; read by default, and propose only from the web.
+          type: string
+          enum: [read, propose]
+        reason:
+          $ref: '#/components/schemas/Reason'
+
+    CloudAgentResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, agent, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        agent:
+          description: The cloud agent's connection.
+          $ref: '#/components/schemas/AgentConnection'
+        key:
+          description: The start key; absent on a retry, and on a refusal.
+          $ref: '#/components/schemas/StartKey'
+        receipts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    StartKey:
+      description: A cloud agent's start key. Its secret is shown here once, and never stored.
+      type: object
+      additionalProperties: false
+      required: [secret, prefix, expires_at]
+      properties:
+        secret:
+          description: The key, for the agent's secret (MEMAX_START_KEY). Never commit it.
+          type: string
+          pattern: '^mxk_[0-9a-f]{64}$'
+        prefix:
+          description: The key's first characters, as the key lists show it.
+          type: string
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+
     AgentCommandRequest:
       description: The body of pause, resume and disconnect. Every field is optional.
       type: object
@@ -8090,6 +9673,25 @@ components:
         occurred_at:
           description: When it happened on the client; offline queues keep the original time.
           $ref: '#/components/schemas/Timestamp'
+
+    ScopeRequest:
+      type: object
+      additionalProperties: false
+      required: [repos]
+      properties:
+        repos:
+          description: The repositories it applies in; empty is everywhere.
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/RepoKey'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
 
     EditRequest:
       type: object
@@ -8186,13 +9788,21 @@ components:
         stale:
           $ref: '#/components/schemas/StaleMode'
         size_budget:
+          description: At most 16,384 for a home file.
           type: integer
           minimum: 1024
           maximum: 32768
         scoped:
           $ref: '#/components/schemas/ScopedMode'
         user_owned:
+          description: For a home file it must agree with the path.
           type: boolean
+        read_by:
+          description: Home files only.
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AgentSlug'
 
     CreateTargetRequest:
       type: object
@@ -8201,8 +9811,17 @@ components:
       properties:
         kind:
           $ref: '#/components/schemas/TargetKind'
+        root:
+          description: Default `repo`. `home` adds a home file to `machine` (a personal space only).
+          $ref: '#/components/schemas/TargetRoot'
+        machine:
+          description: With `root` home, the linked machine the file is on.
+          $ref: '#/components/schemas/Id'
         path:
-          description: Defaults to the kind's own (AGENTS.md, CLAUDE.md, .cursor/rules, …). ChatGPT takes none.
+          description: |
+            Defaults to the kind's own (AGENTS.md, CLAUDE.md, .cursor/rules, …;
+            at home `.claude/rules/memax-personal.md`, `.codex/AGENTS.md`,
+            `.memax/personal/AGENTS.md`). ChatGPT takes none.
           $ref: '#/components/schemas/RepoPath'
         settings:
           $ref: '#/components/schemas/TargetSettingsInput'
@@ -8608,6 +10227,624 @@ components:
           items:
             $ref: '#/components/schemas/Memory'
 
+    ConditionOrigin:
+      description: |
+        Who attached a condition. derived: Memax read it off the memory (see
+        `from`). judge, dream or person: they attached it.
+      type: string
+      enum: [derived, judge, dream, person]
+
+    ConditionFrom:
+      description: |
+        Where Memax read a derived condition off: the statement's words, a
+        file a source cites, or the scope's paths.
+      type: string
+      enum: [statement, source, scope]
+
+    ConditionId:
+      description: Stable within the memory.
+      type: string
+      pattern: '^c[1-9][0-9]{0,3}$'
+
+    Condition:
+      description: |
+        A typed "stays true while" predicate on the repository at a commit.
+        Each kind takes its own fields and nothing else. A condition flags a
+        memory stale only after it has held once on the default branch.
+      oneOf:
+        - $ref: '#/components/schemas/PathExistsCondition'
+        - $ref: '#/components/schemas/FileContainsCondition'
+        - $ref: '#/components/schemas/DepPresentCondition'
+        - $ref: '#/components/schemas/FileUnchangedCondition'
+        - $ref: '#/components/schemas/PrStateCondition'
+      discriminator:
+        propertyName: kind
+        mapping:
+          path_exists: '#/components/schemas/PathExistsCondition'
+          file_contains: '#/components/schemas/FileContainsCondition'
+          dep_present: '#/components/schemas/DepPresentCondition'
+          file_unchanged: '#/components/schemas/FileUnchangedCondition'
+          pr_state: '#/components/schemas/PrStateCondition'
+
+    PathExistsCondition:
+      description: |
+        The path is in the tree (`path`), or at least one path matches the
+        glob (`glob`, the scope glob syntax). Exactly one of the two.
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        id:
+          $ref: '#/components/schemas/ConditionId'
+        kind:
+          const: path_exists
+        path:
+          $ref: '#/components/schemas/ConditionPath'
+        glob:
+          type: string
+          minLength: 1
+          maxLength: 300
+        origin:
+          $ref: '#/components/schemas/ConditionOrigin'
+        from:
+          $ref: '#/components/schemas/ConditionFrom'
+
+    FileContainsCondition:
+      description: The file contains the text, literally and case-sensitively; as a whole word when `word`.
+      type: object
+      additionalProperties: false
+      required: [kind, path, text]
+      properties:
+        id:
+          $ref: '#/components/schemas/ConditionId'
+        kind:
+          const: file_contains
+        path:
+          $ref: '#/components/schemas/ConditionPath'
+        text:
+          type: string
+          minLength: 1
+          maxLength: 200
+        word:
+          type: boolean
+        origin:
+          $ref: '#/components/schemas/ConditionOrigin'
+        from:
+          $ref: '#/components/schemas/ConditionFrom'
+
+    DepPresentCondition:
+      description: |
+        The manifest declares the dependency, and its declared constraint
+        satisfies `range` if one is given. `manifest` is a path, or a bare
+        name (go.mod, package.json, pyproject.toml, Cargo.toml,
+        requirements.txt) meaning that manifest anywhere in the repository.
+      type: object
+      additionalProperties: false
+      required: [kind, manifest, name]
+      properties:
+        id:
+          $ref: '#/components/schemas/ConditionId'
+        kind:
+          const: dep_present
+        manifest:
+          $ref: '#/components/schemas/ConditionPath'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 214
+        range:
+          type: string
+          minLength: 1
+          maxLength: 64
+        origin:
+          $ref: '#/components/schemas/ConditionOrigin'
+        from:
+          $ref: '#/components/schemas/ConditionFrom'
+
+    FileUnchangedCondition:
+      description: The file's git blob id is the one it had when the condition was attached.
+      type: object
+      additionalProperties: false
+      required: [kind, path, blob]
+      properties:
+        id:
+          $ref: '#/components/schemas/ConditionId'
+        kind:
+          const: file_unchanged
+        path:
+          $ref: '#/components/schemas/ConditionPath'
+        blob:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+        origin:
+          $ref: '#/components/schemas/ConditionOrigin'
+        from:
+          $ref: '#/components/schemas/ConditionFrom'
+
+    PrStateCondition:
+      description: The pull request is in that state.
+      type: object
+      additionalProperties: false
+      required: [kind, repo, number, state]
+      properties:
+        id:
+          $ref: '#/components/schemas/ConditionId'
+        kind:
+          const: pr_state
+        repo:
+          description: owner/name.
+          type: string
+          minLength: 3
+          maxLength: 200
+        number:
+          type: integer
+          minimum: 1
+        state:
+          type: string
+          enum: [open, merged, closed]
+        origin:
+          $ref: '#/components/schemas/ConditionOrigin'
+        from:
+          $ref: '#/components/schemas/ConditionFrom'
+
+    ConditionPath:
+      description: Relative to the repository root, with no `..`, no leading `/` or `~`, and no spaces.
+      type: string
+      minLength: 1
+      maxLength: 300
+
+    VerifyAnswer:
+      description: |
+        A person's answer to a stale flag. still_true: it is still true, as
+        it is. update: it is true with new words. forget: it isn't true;
+        forget it (Forget's rules).
+      type: string
+      enum: [still_true, update, forget]
+
+    VerifyRequest:
+      description: The body of `:verify`.
+      type: object
+      additionalProperties: false
+      required: [answer]
+      properties:
+        answer:
+          $ref: '#/components/schemas/VerifyAnswer'
+        statement:
+          description: The new words, for `update` (and only for it).
+          type: string
+          minLength: 1
+          maxLength: 2000
+        stale_after:
+          description: |
+            When to check it again, in the future, for `still_true` and
+            `update`. Without it a date that has passed goes.
+          $ref: '#/components/schemas/Timestamp'
+        carries:
+          description: For `forget`, the display IDs that go with it, exactly as `forget_carries` or the preview listed them.
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/MemoryDisplayRef'
+        note:
+          description: For `forget`, your note on the tombstone. It stays, so don't repeat the words.
+          type: string
+          maxLength: 500
+        reason:
+          description: For `still_true` and `update`, why; it goes on the `verified` receipt.
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    VerifyResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, memory, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        memory:
+          description: The memory after the answer (for forget, without words).
+          $ref: '#/components/schemas/Memory'
+        receipts:
+          description: The receipts the answer wrote, oldest first (`edited` then `verified` for an update).
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+        tombstone:
+          description: For forget, what Forget did.
+          $ref: '#/components/schemas/Tombstone'
+        memories:
+          description: For forget, the memories forgotten with it.
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+
+    ConditionHash:
+      description: A condition's hash (what it checks, not its id or origin), as GET …/conditions gives it.
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+
+    CheckedCondition:
+      description: A condition as a machine checks it.
+      type: object
+      additionalProperties: false
+      required: [condition, hash, armed]
+      properties:
+        condition:
+          $ref: '#/components/schemas/Condition'
+        hash:
+          $ref: '#/components/schemas/ConditionHash'
+        armed:
+          description: It held once on the default branch, so a failure can mark its memory stale.
+          type: boolean
+        held_commit:
+          description: |
+            When it is armed, the commit of its latest hold on the default
+            branch that Memax heard of (from any machine). A machine that
+            finds its path gone and has no hold of its own to start from
+            looks for the file's rename from this commit to the one it
+            checks, so a file that moved reads as `renamed`, with where it
+            went, rather than `removed`.
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+
+    MemoryConditions:
+      description: One kept memory's conditions to check, without its words.
+      type: object
+      additionalProperties: false
+      required: [memory, conditions]
+      properties:
+        memory:
+          $ref: '#/components/schemas/DisplayRef'
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckedCondition'
+
+    SpaceConditions:
+      description: What a space's machines check.
+      type: object
+      additionalProperties: false
+      required: [space_id, repository, items, stale]
+      properties:
+        space_id:
+          $ref: '#/components/schemas/Id'
+        repository:
+          description: The repository the space compiles for (owner/name); a clone's origin must name it to report.
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryConditions'
+        stale:
+          description: |
+            The space's kept memories marked stale now, the latest flag
+            first (at most 100), each with why: what a machine's
+            session-start hook says is being verified. Never a statement.
+          type: array
+          items:
+            $ref: '#/components/schemas/StaleMemory'
+
+    StaleMemory:
+      description: A memory marked stale, as a space's machines hear of it.
+      type: object
+      additionalProperties: false
+      required: [memory, since, causes]
+      properties:
+        memory:
+          $ref: '#/components/schemas/DisplayRef'
+        since:
+          description: When it was marked stale (its flag's receipt).
+          $ref: '#/components/schemas/Timestamp'
+        causes:
+          description: Why, as the stale report says it; empty when Memax can't say.
+          type: array
+          items:
+            $ref: '#/components/schemas/StaleCause'
+
+    SpaceConditionsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SpaceConditions'
+
+    CheckOutcome:
+      description: A condition's result at the run's commit. unknown (it couldn't be checked) never marks anything.
+      type: string
+      enum: [holds, fails, unknown]
+
+    CheckChange:
+      description: |
+        What changed when a condition stopped holding. path_exists: removed,
+        renamed, no_match (a glob). file_contains: text_missing, removed,
+        renamed. dep_present: dependency_removed, constraint_changed,
+        removed. file_unchanged: blob_changed, removed, renamed.
+      type: string
+      enum: [removed, renamed, no_match, text_missing, dependency_removed, constraint_changed, blob_changed]
+
+    CheckEvidence:
+      description: Why a condition fails, typed so a screen can say it in any language. Paths and a declared constraint, never a file's contents.
+      type: object
+      additionalProperties: false
+      required: [change]
+      properties:
+        change:
+          $ref: '#/components/schemas/CheckChange'
+        path:
+          description: The path that changed (for a bare manifest name, the manifest that changed).
+          $ref: '#/components/schemas/ConditionPath'
+        renamed_to:
+          description: Where a renamed file went (renamed only).
+          $ref: '#/components/schemas/ConditionPath'
+        constraint:
+          description: The dependency's declared constraint now (constraint_changed only).
+          type: string
+          minLength: 1
+          maxLength: 64
+
+    CheckTrigger:
+      description: |
+        What started a run on a machine: the default branch moved, an
+        agent's session start asked, the six-hourly schedule, new conditions
+        arrived, or `memax verify`.
+      type: string
+      enum: [head_moved, session_start, schedule, conditions, verify]
+
+    CheckResultInput:
+      type: object
+      additionalProperties: false
+      required: [memory, condition, hash, outcome]
+      properties:
+        memory:
+          $ref: '#/components/schemas/DisplayRef'
+        condition:
+          $ref: '#/components/schemas/ConditionId'
+        hash:
+          $ref: '#/components/schemas/ConditionHash'
+        outcome:
+          $ref: '#/components/schemas/CheckOutcome'
+        evidence:
+          description: What changed; required when it fails, and only then.
+          $ref: '#/components/schemas/CheckEvidence'
+
+    CheckRunRequest:
+      type: object
+      additionalProperties: false
+      required: [repository, branch, commit, commit_at, trigger, device, complete, results]
+      properties:
+        repository:
+          description: The owner/name the clone's origin names; it must be the space's.
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$'
+        branch:
+          description: The default branch's name. Feature branches never report.
+          type: string
+          pattern: '^[A-Za-z0-9._/-]{1,100}$'
+        commit:
+          description: The full commit id the run checked (the default branch's, as pushed).
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+        commit_at:
+          description: The commit's time.
+          $ref: '#/components/schemas/Timestamp'
+        checked_at:
+          description: When the run ran, by the machine's clock; defaults to now, at most a week ago.
+          $ref: '#/components/schemas/Timestamp'
+        trigger:
+          $ref: '#/components/schemas/CheckTrigger'
+        agent:
+          description: The agent whose session start asked for the run, if one did.
+          $ref: '#/components/schemas/AgentKind'
+        device:
+          description: The CLI's device id. Never a host name.
+          type: string
+          pattern: '^[A-Za-z0-9._:-]{1,64}$'
+        complete:
+          description: Every condition at that commit was evaluated.
+          type: boolean
+        results:
+          type: array
+          maxItems: 5000
+          items:
+            $ref: '#/components/schemas/CheckResultInput'
+
+    CheckCounts:
+      description: A run's results by outcome, and those Memax ignored (about a memory that isn't kept here, a condition it no longer has or an older definition of one, or older than what Memax has).
+      type: object
+      additionalProperties: false
+      required: [holds, fails, unknown, ignored]
+      properties:
+        holds:
+          type: integer
+          minimum: 0
+        fails:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+        ignored:
+          type: integer
+          minimum: 0
+
+    CheckRun:
+      description: One check run, as recorded. No words.
+      type: object
+      additionalProperties: false
+      required: [id, space_id, observer, repository, branch, commit, commit_at, trigger, checked_at, recorded_at, complete, counts, capped]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        observer:
+          description: Who checked. device is a member's machine.
+          type: string
+          enum: [device, github, memax]
+        person_id:
+          $ref: '#/components/schemas/Id'
+        device:
+          type: string
+        repository:
+          type: string
+        branch:
+          type: string
+        commit:
+          type: string
+        commit_at:
+          $ref: '#/components/schemas/Timestamp'
+        trigger:
+          $ref: '#/components/schemas/CheckTrigger'
+        agent:
+          $ref: '#/components/schemas/AgentKind'
+        checked_at:
+          $ref: '#/components/schemas/Timestamp'
+        recorded_at:
+          $ref: '#/components/schemas/Timestamp'
+        complete:
+          type: boolean
+        counts:
+          $ref: '#/components/schemas/CheckCounts'
+        capped:
+          description: It would have marked more memories than one run may, so it marked none.
+          type: boolean
+
+    CheckRunResult:
+      type: object
+      additionalProperties: false
+      required: [run, flagged, unflagged]
+      properties:
+        run:
+          $ref: '#/components/schemas/CheckRun'
+        flagged:
+          description: The memories this run marked stale.
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        unflagged:
+          description: |
+            The memories whose stale flag this run cleared: Memax's own flag,
+            from a check, now that every condition that stopped holding holds
+            again (a revert). A flag Dream or a date set is never cleared here.
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+
+    CheckRunResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CheckRunResult'
+
+    StaleCause:
+      description: |
+        Why a memory is stale, typed so a screen can say it in any language.
+        It never holds file contents. date: its date to check again passed.
+        check: one of its conditions stopped holding on the default branch.
+      oneOf:
+        - $ref: '#/components/schemas/StaleDateCause'
+        - $ref: '#/components/schemas/StaleCheckCause'
+      discriminator:
+        propertyName: kind
+        mapping:
+          date: '#/components/schemas/StaleDateCause'
+          check: '#/components/schemas/StaleCheckCause'
+
+    StaleCheckCause:
+      description: |
+        One of its conditions stopped holding on the default branch: the
+        condition, what changed, and where and when (the commit the failure
+        began at, and the run that first saw it).
+      type: object
+      additionalProperties: false
+      required: [kind, condition, branch, commit, commit_at, observer]
+      properties:
+        kind:
+          const: check
+        condition:
+          $ref: '#/components/schemas/Condition'
+        evidence:
+          $ref: '#/components/schemas/CheckEvidence'
+        branch:
+          type: string
+        commit:
+          type: string
+        commit_at:
+          $ref: '#/components/schemas/Timestamp'
+        checked_at:
+          $ref: '#/components/schemas/Timestamp'
+        observer:
+          type: string
+          enum: [device, github, memax]
+
+    StaleDateCause:
+      description: Its date to check again passed.
+      type: object
+      additionalProperties: false
+      required: [kind, stale_after]
+      properties:
+        kind:
+          const: date
+        stale_after:
+          description: The date that passed.
+          $ref: '#/components/schemas/Timestamp'
+
+    StaleReport:
+      description: Why a memory is stale, for VerifyStale.
+      type: object
+      additionalProperties: false
+      required: [memory_id, ref, space_id, version, statement, kind, state, stale, reads_since, causes]
+      properties:
+        memory_id:
+          $ref: '#/components/schemas/Id'
+        ref:
+          $ref: '#/components/schemas/DisplayRef'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        version:
+          description: The statement's version; send it as `If-Match`.
+          type: integer
+          minimum: 1
+        statement:
+          description: The words being verified. Empty once forgotten.
+          type: string
+          maxLength: 2000
+        kind:
+          $ref: '#/components/schemas/MemoryKind'
+        state:
+          $ref: '#/components/schemas/State'
+        stale:
+          description: Whether it is flagged now. False when someone answered it since.
+          type: boolean
+        stale_after:
+          description: Its date to check again, if it has one.
+          $ref: '#/components/schemas/Timestamp'
+        flagged:
+          description: The receipt that set the flag (by Dream for a date, by Memax for a check).
+          $ref: '#/components/schemas/Receipt'
+        kept:
+          description: Its latest keep or verification.
+          $ref: '#/components/schemas/Receipt'
+        reads_since:
+          description: Agents' reads of it since the day of `kept` (directly, or in a compile that held it).
+          type: integer
+          minimum: 0
+        causes:
+          description: Why it is stale now; empty when it isn't.
+          type: array
+          items:
+            $ref: '#/components/schemas/StaleCause'
+
     ForgetPreview:
       description: What a Forget of a memory would do, before anyone confirms it.
       type: object
@@ -8659,9 +10896,15 @@ components:
         file (or copy-out) rewritten. artifacts: the stored copies of older
         compiles and hand edits re-rendered. caches: the caches purged.
         ledger: the forget ledger's copy (ids only) written. agent: an agent
-        told on its next read.
+        told on its next read. checks: the check results members' machines
+        kept of its conditions (its refs and the paths they named, never
+        its words), which each machine's daemon drops as soon as it hears
+        of the Forget; there only when it had check results. It is done once
+        every machine that checked the space in the 30 days before has
+        checked it since (a machine reports what changed, and a full set
+        daily), and `count` says how many haven't.
       type: string
-      enum: [asked, removed, target, artifacts, caches, ledger, agent]
+      enum: [asked, removed, target, artifacts, caches, ledger, agent, checks]
     StepStatus:
       type: string
       enum: [done, waiting, held, failed, unreachable]
@@ -8673,8 +10916,13 @@ components:
         request) to write it. compiling: not compiled yet. paused: the agent
         is paused, and is told before it reads anything else. disconnected:
         the agent can't read any more. next_read: told on its next read.
+        offline: a home file whose machine's daemon hasn't been seen in the
+        last 15 minutes (`target.machine.last_seen_at`); its file still
+        holds it until the machine connects, and is rewritten then.
+        next_check: a checks step's machines that haven't checked the space
+        since the Forget; each drops what it kept when its daemon hears.
       type: string
-      enum: [hand_edit, stopped, copy, delivery, compiling, paused, disconnected, next_read]
+      enum: [hand_edit, stopped, copy, delivery, compiling, paused, disconnected, next_read, offline, next_check]
     UnreachableKind:
       description: |
         A copy Memax can't reach. git_history: earlier commits of the
@@ -8683,9 +10931,11 @@ components:
         (the forget ledger is re-applied after any restore). llm: model
         providers that processed the words. hand_edits: files with a hand
         edit Memax won't write over. copies: copy-outs a person pasted
-        elsewhere.
+        elsewhere. source_files: the person's own files on their machines
+        that Memax imported it from (`count` of them; their paths were
+        forgotten with it), which Memax never edits.
       type: string
-      enum: [git_history, agent_memory, backups, llm, hand_edits, copies]
+      enum: [git_history, agent_memory, backups, llm, hand_edits, copies, source_files]
 
     TombstoneActor:
       type: object
@@ -8726,6 +10976,28 @@ components:
           type: string
         delivery:
           $ref: '#/components/schemas/Delivery'
+        machine:
+          description: A home file's machine.
+          $ref: '#/components/schemas/TombstoneMachine'
+
+    TombstoneMachine:
+      description: The machine a home file is on, as a tombstone names it.
+      type: object
+      additionalProperties: false
+      required: [id, label, name]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        label:
+          $ref: '#/components/schemas/MachineLabel'
+        name:
+          type: string
+        linked:
+          description: Whether it is still linked (in a tombstone).
+          type: boolean
+        last_seen_at:
+          description: When its daemon last read its files (in a tombstone).
+          $ref: '#/components/schemas/Timestamp'
 
     TombstoneGone:
       description: What Forget took out of Memax.
@@ -8774,7 +11046,7 @@ components:
         reason:
           $ref: '#/components/schemas/StepReason'
         count:
-          description: How many stored copies were re-rendered.
+          description: How many stored copies were re-rendered (artifacts), or how many machines haven't checked the space since (checks).
           type: integer
         read_it:
           description: The agent read it (else it is connected to the space).
@@ -8822,6 +11094,15 @@ components:
           type: array
           items:
             type: string
+        machines:
+          description: With hand_edits, the machines whose home files have the hand edits.
+          type: array
+          items:
+            type: string
+        count:
+          description: With source_files, how many of the person's files.
+          type: integer
+          minimum: 1
 
     Tombstone:
       description: What Forget did to one memory (or a whole space). Never words.
@@ -9060,9 +11341,13 @@ components:
           type: string
           pattern: '^[a-z0-9][a-z0-9-]{2,48}[a-z0-9]$'
         kind:
-          description: Only project spaces are created here; the default.
+          description: |
+            The kind of space; project, the default, is the one created
+            here. Each person has one personal space, made with their
+            account (403 `refused`, policy `personal_exists`), and team
+            spaces come with Team (policy `space_kind`).
           type: string
-          enum: [project]
+          enum: [personal, project, team]
         repository:
           description: The repository the space compiles for, "owner/name".
           type: string
@@ -9209,9 +11494,13 @@ components:
           items:
             $ref: '#/components/schemas/SourceInput'
         scope:
-          description: 'Where it applies, e.g. {"paths": ["**/*.test.ts"]} from a scoped rule.'
-          type: object
-          additionalProperties: true
+          description: |
+            Where it applies: `paths` from a scoped rule's globs, and `repos`
+            for a statement from a file that belongs to one repository
+            (`memax init` sends it for that repository's Claude Code auto
+            memory and `CLAUDE.local.md`). Repeats folded into one proposal
+            apply wherever any of them does.
+          $ref: '#/components/schemas/MemoryScope'
 
     ImportRequest:
       type: object
@@ -10282,18 +12571,25 @@ components:
         created_at:
           $ref: '#/components/schemas/Timestamp'
     DreamSurfaced:
-      description: Something the edition lists because it needs a person, though Dream didn't do it.
+      description: >-
+        Something the edition lists because it needs a person, though Dream didn't do it: a conflict the judge
+        flagged since the last edition (`conflict`), a memory Memax marked stale since (`stale`: a date that
+        passed, a failing check), or one that has waited 30 days to be verified, said once (`stale_waiting`).
+        Dream flags no date itself.
       type: object
       additionalProperties: false
       required: [kind, memory]
       properties:
         kind:
           type: string
-          enum: [conflict]
+          enum: [conflict, stale, stale_waiting]
         memory:
           $ref: '#/components/schemas/Memory'
         with:
           $ref: '#/components/schemas/Memory'
+        receipt_id:
+          description: For `stale` and `stale_waiting`, the receipt that marked the memory stale.
+          $ref: '#/components/schemas/Id'
     DreamEdition:
       description: 'One edition (D-): what Dream read and what it did.'
       type: object
@@ -10842,6 +13138,22 @@ components:
         data:
           $ref: '#/components/schemas/ForgetResult'
 
+    VerifyResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/VerifyResult'
+
+    StaleReportEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/StaleReport'
+
     TombstoneEnvelope:
       type: object
       additionalProperties: false
@@ -10904,6 +13216,13 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/NotePage'
+    SearchPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SearchPage'
     NoteEnvelope:
       type: object
       additionalProperties: false
@@ -11076,6 +13395,14 @@ components:
         data:
           $ref: '#/components/schemas/AgentCommandResult'
 
+    CloudAgentResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CloudAgentResult'
+
     BriefEnvelope:
       type: object
       additionalProperties: false
@@ -11115,6 +13442,22 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/TargetList'
+
+    MachineListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/MachineList'
+
+    MachineResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/MachineResult'
 
     TargetResultEnvelope:
       type: object
@@ -11211,6 +13554,14 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/CompileLoadResult'
+
+    SessionStartEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SessionStart'
 
     CheckpointPageEnvelope:
       type: object

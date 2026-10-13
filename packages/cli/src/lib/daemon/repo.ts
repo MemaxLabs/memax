@@ -15,10 +15,10 @@ import { readDisk, type FsHooks } from "./fs-atomic.js";
 import { heldPaths, holdDetail } from "./holds.js";
 import { KnownCompiles } from "./known.js";
 import type { Logger } from "./log.js";
-import { settleOff } from "./off.js";
+import { settleOff, type OffTarget } from "./off.js";
+import { repoPlace, type Place } from "./place.js";
 import type { LinkedRepo } from "./registry.js";
 import { HandEditReporter } from "./report.js";
-import { outputRefusal, resolveInRepo } from "./safe-path.js";
 import type { FileSnapshot, RepoSnapshot, TargetSnapshot } from "./snapshot.js";
 import type { DeviceState } from "./state.js";
 
@@ -30,6 +30,8 @@ export interface RepoDeps {
   hooks?: FsHooks;
   /** Called when a file should be checked again later (deferred report). */
   recheck?(path: string): void;
+  /** Where the files go: the repository (the default), or a home link's. */
+  place?: Place;
 }
 
 const isLocal = (t: V2.Target) =>
@@ -37,6 +39,7 @@ const isLocal = (t: V2.Target) =>
 
 export class RepoDelivery {
   readonly link: LinkedRepo;
+  readonly place: Place;
   private readonly d: DeliverDeps;
   private targets = new Map<string, V2.Target>();
   private snaps = new Map<string, TargetSnapshot>();
@@ -49,9 +52,12 @@ export class RepoDelivery {
   private goodOf = new Map<string, { failed: string; good: string }>();
   private polledAt?: string;
   private error?: string;
+  /** On V1 again: nothing written, checked or reported until it is back. */
+  private onV1 = false;
 
   constructor(link: LinkedRepo, deps: RepoDeps) {
     this.link = link;
+    this.place = deps.place ?? repoPlace(link.root);
     const reporter = new HandEditReporter({
       api: deps.api,
       state: deps.state,
@@ -66,6 +72,7 @@ export class RepoDelivery {
       log: deps.log,
       deviceId: deps.deviceId,
       root: link.root,
+      place: this.place,
       known: new KnownCompiles(deps.api),
       reporter,
       hooks: deps.hooks,
@@ -78,11 +85,17 @@ export class RepoDelivery {
     return next;
   }
 
-  /** Handles a fresh list of the space's targets; busy asks to poll soon. */
-  sync(targets: V2.Target[]): Promise<{ busy: boolean }> {
+  /**
+   * Handles a fresh list of the space's targets; busy asks to poll soon.
+   * A space switched back to V1 (`onV2` false) keeps its targets and what
+   * this device delivered, so it picks up where it was once it is on V2
+   * again, and anything V1 wrote meanwhile is a hand edit, never written
+   * over.
+   */
+  sync(targets: V2.Target[], onV2 = true): Promise<{ busy: boolean }> {
     return this.serial(async () => {
       this.polledAt = new Date().toISOString();
-      if (!existsSync(this.link.root)) {
+      if (this.place.kind === "repo" && !existsSync(this.link.root)) {
         this.error = `the repository isn't at ${this.link.root} any more; run memax unlink there, or link it again`;
         return { busy: false };
       }
@@ -91,6 +104,14 @@ export class RepoDelivery {
       this.d.state.retainTargets(this.link.root, new Set(this.targets.keys()));
       for (const id of this.snaps.keys())
         if (!this.targets.has(id)) this.snaps.delete(id);
+      this.onV1 = !onV2;
+      if (this.onV1) {
+        this.fileNotes.clear();
+        this.retryAt.clear();
+        for (const t of targets)
+          this.note(t, isLocal(t) ? { state: "on_v1" } : { state: "remote" });
+        return { busy: false };
+      }
       let busy = false;
       for (const t of targets) {
         try {
@@ -201,14 +222,15 @@ export class RepoDelivery {
   /** Checks one file after a watcher event or a rescan. */
   check(path: string): Promise<void> {
     return this.serial(async () => {
+      if (this.onV1) return;
       const t = [...this.targets.values()].find(
-        (x) => isLocal(x) && !outputRefusal(x, path),
+        (x) => isLocal(x) && !this.place.refusal(x, path),
       );
       if (!t || t.sync_state === "off" || !t.last_compile) return;
       const out = t.last_compile.files.find((f) => f.path === path);
       let abs: string;
       try {
-        abs = await resolveInRepo(this.link.root, path);
+        abs = await this.place.resolve(path);
       } catch {
         return;
       }
@@ -262,6 +284,7 @@ export class RepoDelivery {
 
   /** Every file the watcher should look at. */
   trackedPaths(): string[] {
+    if (this.onV1) return [];
     const out = new Set<string>();
     for (const t of this.targets.values()) {
       if (!isLocal(t) || t.sync_state === "off") continue;
@@ -273,7 +296,7 @@ export class RepoDelivery {
         out.add(p);
     }
     return [...out].filter((p) =>
-      [...this.targets.values()].some((t) => !outputRefusal(t, p)),
+      [...this.targets.values()].some((t) => !this.place.refusal(t, p)),
     );
   }
 
@@ -328,10 +351,45 @@ export class RepoDelivery {
       space_slug: this.link.space_slug,
       polled_at: this.polledAt,
       error: this.error,
+      ...(this.onV1 ? { on_v1: true } : {}),
       targets: [...this.snaps.values()].sort((a, b) =>
         a.label.localeCompare(b.label),
       ),
     };
+  }
+
+  /**
+   * Takes Memax's files out now without asking the server: a signed-out
+   * machine (which can't), or an unlink whose answer is in hand. Each of
+   * `targets` (the last polled one where there is one, since it knows
+   * the delivered run) is settled as stopped, judged only by what this
+   * device wrote and read; hand-edited files stay. The run on disk is
+   * forgotten, so the next delivery writes the files again.
+   */
+  takeOff(targets: OffTarget[]): Promise<TargetSnapshot[]> {
+    return this.serial(async () => {
+      const out: TargetSnapshot[] = [];
+      for (const given of targets) {
+        const t = this.targets.get(given.id) ?? given;
+        const res = await settleOff(this.d, t, { ask: false });
+        this.d.state.unacked(this.link.root, t.id);
+        const snap: TargetSnapshot = {
+          id: t.id,
+          kind: t.kind,
+          label: t.label,
+          path: t.path,
+          delivery: "local",
+          sync_state: "off",
+          open_drift: 0,
+          state: res.state,
+          detail: res.detail,
+          files: t.path ? [{ path: t.path, state: res.state }] : [],
+        };
+        this.snaps.set(t.id, snap);
+        out.push(snap);
+      }
+      return out;
+    });
   }
 
   setError(message: string | undefined): void {

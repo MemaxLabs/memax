@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -96,6 +98,11 @@ func (w *SweepWorker) Work(ctx context.Context, _ *river.Job[SweepArgs]) error {
 	if err != nil {
 		return fmt.Errorf("compile sweep: %w", err)
 	}
+	// In target id order, as a command inserts them: a target's job is
+	// unique, and a command inserting the same jobs waits on these at the
+	// unique index (ledger's locks.go).
+	refs = slices.Clone(refs)
+	slices.SortFunc(refs, func(a, b ledger.TargetRef) int { return strings.Compare(a.TargetID.String(), b.TargetID.String()) })
 	params := make([]river.InsertManyParams, 0, len(refs))
 	for _, r := range refs {
 		params = append(params, river.InsertManyParams{Args: ledger.CompileTargetArgs{TargetID: r.TargetID, SpaceID: r.SpaceID}})

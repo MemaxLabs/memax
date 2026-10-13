@@ -242,6 +242,19 @@ describe("OAuthConsent", () => {
       "That space can't be connected from this account. Choose one of the spaces here.",
     );
     h.decide.mockRejectedValueOnce(
+      new MemaxError("no", "refused", 403, {
+        policy: {
+          effect: "refuse",
+          code: "agent_kind_limit",
+          limit: { plan: "free", allowed: 3, used: 3, upgrade: "pro" },
+        },
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Allow Codex" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "You've connected as many kinds of agent as your plan has, so Codex wasn't connected. Disconnect one you don't use in Agents, or move to Pro for as many as you like.",
+    );
+    h.decide.mockRejectedValueOnce(
       new MemaxError("gone", "consent_request_expired", 410),
     );
     fireEvent.click(screen.getByRole("button", { name: "Allow Codex" }));

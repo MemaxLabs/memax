@@ -40,3 +40,7 @@ packages/sdk/src/v2/testdata/
 
 # Changelog / auto-generated
 CHANGELOG.md
+# Memax cloud's posture for the public Security page, written by
+# packages/server/internal/trust (TestCloudPostureMatchesThePublicPage)
+# and compared byte for byte: never reformatted.
+packages/web/src/lib/v2/cloud-posture.json

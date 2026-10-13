@@ -30,7 +30,7 @@ export const demoConsentRequest: OAuthRequest = {
   request_id: DEMO_CONSENT_REQUEST,
   client_name: "Codex",
   agent_name: "codex",
-  resource: "https://mcp.memax.app/mcp",
+  resource: "https://api.memax.app/mcp",
   scope: "memax:read memax:write",
   expires_at: "2026-10-05T14:12:00Z",
   expires_in: 600,

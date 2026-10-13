@@ -11,8 +11,10 @@ import {
   type AgentDetailView,
   type AgentRefusal,
   type AgentsData,
+  type AgentStartView,
   type AgentWrite,
   type ApiKeyView,
+  type CloudAgentResultView,
 } from "./agents";
 import type { SyncLine, Viewer } from "./types";
 
@@ -78,6 +80,16 @@ export function toConnection(
   };
 }
 
+export function toAgentStart(s: V2.AgentStart): AgentStartView {
+  return {
+    at: s.at,
+    spaceId: s.space_id,
+    sessionRef: s.session_ref ?? null,
+    compiles: s.compiles,
+    told: s.told,
+  };
+}
+
 const MEMORY_STATES = new Set<AgentWrite["state"]>([
   "proposed",
   "kept",
@@ -129,9 +141,12 @@ export function toAgentCommandError(err: unknown): AgentCommandError {
   if (policy) {
     const byCode: Partial<Record<string, AgentRefusal>> = {
       autonomy_needs_web: "needs_web",
+      cloud_propose_needs_web: "needs_web",
       key_max_propose: "key_max_propose",
       not_your_agent: "not_your_agent",
       autonomy_not_allowed: "not_allowed",
+      agent_kind_limit: "agent_kind_limit",
+      seat_needed: "seat_needed",
       person_must_manage: "person_must_manage",
       not_member: "not_member",
     };
@@ -146,6 +161,18 @@ export function toAgentCommandError(err: unknown): AgentCommandError {
     not_found: "not_found",
   };
   return new AgentCommandError(byError[err.code] ?? "failed", err.message);
+}
+
+/**
+ * A cloud agent's start key (its one permission compile:read, no
+ * memory:read; the server's handler.IsStartKey). It belongs to the agent's
+ * connection: its page gives it a new key or disconnects it, so Settings ›
+ * Agents and keys lists the agent and not the key, which would read as a
+ * key that "may read" and, revoked there, would silently stop the agent.
+ */
+export function isStartKey(key: ApiKeyListItem): boolean {
+  const perms = key.default_permissions ?? [];
+  return perms.includes("compile:read") && !perms.includes("memory:read");
 }
 
 export function toApiKey(key: ApiKeyListItem): ApiKeyView {
@@ -216,6 +243,25 @@ export function createSdkAgents({
       throw toAgentCommandError(err);
     }
   };
+  const cloud = async (
+    run: () => Promise<V2.CloudAgentResult>,
+  ): Promise<CloudAgentResultView> => {
+    try {
+      const res = await run();
+      return {
+        connection: toConnection(res.agent, viewer),
+        key: res.key
+          ? {
+              secret: res.key.secret,
+              prefix: res.key.prefix,
+              expiresAt: res.key.expires_at,
+            }
+          : null,
+      };
+    } catch (err) {
+      throw toAgentCommandError(err);
+    }
+  };
 
   return {
     async spaceAgents(space, signal) {
@@ -275,6 +321,11 @@ export function createSdkAgents({
           lastAt: s.last_at,
         })),
       };
+      if (connection.surface === "cloud") {
+        view.lastStart = detail.last_start
+          ? toAgentStart(detail.last_start)
+          : null;
+      }
       return view;
     },
     setAutonomy({ agent, space, autonomy, idempotencyKey }) {
@@ -304,13 +355,25 @@ export function createSdkAgents({
         client.v2.agents.disconnect(agent, {}, { idempotencyKey }),
       );
     },
+    // No X-Memax-Via, as for autonomy: the proxy's signature says it's the web.
+    connectCloudAgent({ agent, space, idempotencyKey }) {
+      return cloud(() =>
+        client.v2.agents.connectCloud(
+          { agent, space: space.slug },
+          { idempotencyKey },
+        ),
+      );
+    },
+    rekeyAgent({ agent, idempotencyKey }) {
+      return cloud(() => client.v2.agents.rekey(agent, {}, { idempotencyKey }));
+    },
     // PLACEHOLDER: /v2 spaces don't carry their rules yet; Propose is the default.
     newAgentAutonomy: () => "propose",
     // PLACEHOLDER: compile targets are built on another branch.
     targetFor: () => undefined,
     async apiKeys() {
       const keys = await client.auth.listKeys();
-      return keys.map(toApiKey);
+      return keys.filter((key) => !isStartKey(key)).map(toApiKey);
     },
     async createApiKey({ name, may, space }) {
       const created = await client.auth.createKey({

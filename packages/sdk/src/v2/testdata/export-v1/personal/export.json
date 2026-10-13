@@ -1,0 +1,125 @@
+{
+  "format": "memax.export.v1",
+  "space": {
+    "id": "0199a1b2-c3d4-7e5f-8a9b-000000001001",
+    "tenant_id": "0199a1b2-c3d4-7e5f-8a9b-000000001002",
+    "slug": "personal",
+    "name": "Personal",
+    "kind": "personal",
+    "repository": null,
+    "v2_enabled_at": "2026-10-06T08:30:00.123456Z"
+  },
+  "as_of": "2026-10-06T10:00:00.134456Z",
+  "receipt": "0199a1b2-c3d4-7e5f-8a9b-00000000140c",
+  "counts": {
+    "memories": 2,
+    "tombstones": 0,
+    "brief_versions": 1,
+    "gates": 0,
+    "targets": 2,
+    "agents": 0,
+    "receipts": 12,
+    "checkpoints": 1
+  },
+  "seal": {
+    "sealed_receipts": 9,
+    "sealed_through_seq": 9,
+    "sealed_through_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000001409",
+    "unsealed": 3
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "e7928a0437d5099559aaba165a6c957e2afaf21e45b236cb07fdd352e73bbd63",
+      "bytes": 1809
+    },
+    {
+      "path": "agents.json",
+      "sha256": "fc636d70755768a409e52c95d5b4fdbfe45f41d81f14e0c04f3c8ee738b5b420",
+      "bytes": 50
+    },
+    {
+      "path": "brief/B-0001.md",
+      "sha256": "ff1a9e9db524d407e9db4f59c2032025175ea7d76b5005f87ca12d852d587eb9",
+      "bytes": 743
+    },
+    {
+      "path": "checkpoints.json",
+      "sha256": "f436f4fc650c2df3eb3fd724a568a6daaebf4b1ce38ad6c7a62067bf510c1593",
+      "bytes": 1543
+    },
+    {
+      "path": "decisions.md",
+      "sha256": "83bcd09e061a2b0be376e9f8c8936a4cce2431319fb674ef17a7d54a0ae9e27f",
+      "bytes": 157
+    },
+    {
+      "path": "gates.json",
+      "sha256": "15a5e1494503fe40f97f16933ceedba286acc7aa3a8b3ebb4e5741925019dde4",
+      "bytes": 141
+    },
+    {
+      "path": "memories/M-0001.md",
+      "sha256": "e9b18df33c5086d08fd3e4de60630d9e872a92a8740ac13720f2bd57a32bf569",
+      "bytes": 1158
+    },
+    {
+      "path": "memories/M-0002.md",
+      "sha256": "dfdff9ff255cf26da2deac9f70249420b058b0ea8cdaa9c58506d94ec44e3016",
+      "bytes": 830
+    },
+    {
+      "path": "reads.json",
+      "sha256": "d9ebd23f66183c898ab8bd460f5d9b1ca5ff68fd367281e78f351beda83f1a81",
+      "bytes": 642
+    },
+    {
+      "path": "receipts.jsonl",
+      "sha256": "e8f97bc56413cc6943c50e841c935e5677df8bbaca1cde84e0b096960ae6133b",
+      "bytes": 7711
+    },
+    {
+      "path": "targets.json",
+      "sha256": "ff1e3ab4bce15ab00754b2977cc6eb878e1df687bcc4a37d95ba380eb349a6bf",
+      "bytes": 5526
+    }
+  ],
+  "formats": [
+    {
+      "path": "memories/*.md",
+      "format": "memax.memory.v1"
+    },
+    {
+      "path": "tombstones/*.md",
+      "format": "memax.tombstone.v1"
+    },
+    {
+      "path": "brief/*.md",
+      "format": "memax.brief.v1"
+    },
+    {
+      "path": "gates.json",
+      "format": "memax.gates.v1"
+    },
+    {
+      "path": "targets.json",
+      "format": "memax.targets.v1"
+    },
+    {
+      "path": "agents.json",
+      "format": "memax.agents.v1"
+    },
+    {
+      "path": "reads.json",
+      "format": "memax.reads.v1"
+    },
+    {
+      "path": "receipts.jsonl",
+      "format": "memax.receipt.v1 (receiptchain format 1, as JSON lines)"
+    },
+    {
+      "path": "checkpoints.json",
+      "format": "memax.checkpoints.v1"
+    }
+  ]
+}

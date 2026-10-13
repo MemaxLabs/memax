@@ -152,7 +152,9 @@ func TestRecorder(t *testing.T) {
 			s.fail.Store(false)
 			r.Record(ev())
 			r.Close()
-			if st := r.Stats(); st.Written != 1 || st.FlushErrors != 1 {
+			// A slow runner can tick between the three Records, so they fail
+			// in one batch or more: every failed read is counted either way.
+			if st := r.Stats(); st.Written != 1 || st.DroppedFailed != 3 || st.FlushErrors < 1 || st.FlushErrors > 3 {
 				t.Errorf("after recovering: %+v", st)
 			}
 		}},
@@ -218,7 +220,7 @@ func TestRecorderUnderLoad(t *testing.T) {
 			if _, err := pool.Exec(ctx, `INSERT INTO users (id, email, name) VALUES ($1, $2, 'load')`, user, user.String()+"@load.test"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := pool.Exec(ctx, `INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind) VALUES ($1, 'load', $2, 'team', $3, 'project')`,
+			if _, err := pool.Exec(ctx, `INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind, v2_enabled_at) VALUES ($1, 'load', $2, 'team', $3, 'project', now())`,
 				space, space.String(), user); err != nil {
 				t.Fatal(err)
 			}

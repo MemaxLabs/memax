@@ -114,6 +114,15 @@ describe("the consent request", () => {
       ending: "expired",
     });
     expect(consentRefusal(e("network_error", 502)).refusal).toBe("failed");
+    // A plan's kinds of agent are connected (policy agent_kind_limit).
+    const plan = new MemaxError("no", "refused", 403, {
+      policy: {
+        effect: "refuse",
+        code: "agent_kind_limit",
+        limit: { plan: "free", allowed: 3, used: 3, upgrade: "pro" },
+      },
+    });
+    expect(consentRefusal(plan).refusal).toBe("plan");
     const own = new ConsentDecisionError("space");
     expect(consentRefusal(own)).toBe(own);
   });

@@ -5,7 +5,7 @@
 # it and on them unless only they can reach its port.
 #
 # The build context is the REPOSITORY ROOT, because the service depends on
-# the workspace package packages/compiler:
+# the workspace packages packages/compiler and packages/agents:
 #
 #   docker build -f packages/compile-service/Dockerfile .
 #
@@ -17,12 +17,15 @@ WORKDIR /repo
 # pnpm comes from the root package.json's packageManager field.
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
+COPY packages/agents/package.json packages/agents/
 COPY packages/compiler/package.json packages/compiler/
 COPY packages/compile-service/package.json packages/compile-service/
 RUN pnpm install --frozen-lockfile --filter @memaxlabs/compile-service...
+COPY packages/agents packages/agents
 COPY packages/compiler packages/compiler
 COPY packages/compile-service packages/compile-service
-RUN pnpm --filter @memaxlabs/compiler build \
+RUN pnpm --filter @memaxlabs/agents build \
+ && pnpm --filter @memaxlabs/compiler build \
  && pnpm --filter @memaxlabs/compile-service build \
  && pnpm --filter @memaxlabs/compile-service deploy --prod --legacy /out
 

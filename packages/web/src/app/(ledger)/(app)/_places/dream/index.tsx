@@ -250,6 +250,12 @@ function Edition({
       )
       .map((a) => [a.memory!.ref, a]),
   );
+  // What the edition reminds of: stale for a month, still waiting.
+  const waiting = new Set(
+    e.surfaced
+      .filter((s) => s.kind === "stale_waiting")
+      .map((s) => s.memory.ref),
+  );
   const withFor = (ref: string) =>
     flagFor.get(ref)?.related ??
     e.surfaced.find((s) => s.memory.ref === ref)?.with ??
@@ -399,10 +405,12 @@ function Edition({
                     note={
                       m.state === "conflict"
                         ? conflictNote(w, withFor(m.ref))
-                        : staleNote(w, m)
+                        : staleNote(w, m, waiting.has(m.ref))
                     }
                     href={
-                      m.state === "conflict" ? compareHref(m.ref) : undefined
+                      m.state === "conflict"
+                        ? compareHref(m.ref)
+                        : `${memoryHref(space.slug, m.ref)}?overlay=verify`
                     }
                     actions={
                       flag ? undoButton(flag, dc.needsYou.unflag) : undefined

@@ -22,6 +22,7 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     answered: "回答",
     undid: "撤销",
     returned: "退回审阅",
+    unflagged: "不再过时",
     asked: "提问",
     withdrawn: "撤回",
     updated: "更新",
@@ -68,6 +69,8 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     conflictAsked: "{agent} 在等你拿主意。",
     stale: "它的来源在 {date} 变了",
     staleSource: "它的来源在 {date} 变了 · {source}",
+    staleDate: "到了该再核对一次的日子",
+    staleCheck: "它的一个前提在 {date} 不再成立",
     merged: "已由 {name} 合并进 {ref}",
     faded: "已经 {n} 天没有 Agent 读过它了。可以恢复，也可以就这样放着。",
   },
@@ -109,7 +112,9 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     answer: "{ref} 没回答上。",
     withdraw: "{ref} 没撤回成。",
     forget: "{ref} 没忘记成。",
+    verify: "{ref} 没核对成。",
     declineForget: "{ref} 没保留上。",
+    scope: "{ref} 的适用范围没有改。",
     carriesChanged:
       "你确认之后，跟它一起被忘记的内容变了，所以什么都没忘记。再看一遍，然后再忘记它。",
     ended: {
@@ -136,8 +141,43 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     unavailable: "这个暂时还不能用。",
     unknown: "再试一次；要是一直这样，刷新一下页面。",
     retry: "再试一次",
+    createSpace: "{name} 没建成。",
+    refusedSpace: {
+      personal_exists: "你已经有个人空间了，每个人只有一个。",
+      space_kind: "团队空间随 Team 推出。现在先建一个项目空间。",
+      space_limit: "你已经有 50 个项目空间，这是一个人能拥有的上限。",
+      space_by_person: "只有本人登录后才能建空间，Agent 的密钥不行。",
+      other: "Memax 拒绝了：{message}",
+      otherBare: "Memax 拒绝了。",
+    },
+    planLimit: {
+      space_limit: "{plan} 套餐的 {allowed} 个项目空间你都在用了。",
+      space_limitOne: "{plan} 套餐的项目空间你已经在用了。",
+      agent_kind_limit:
+        "{plan} 套餐可以连接 {allowed} 种 Agent，你已经连满了。",
+      agent_kind_limitOne: "{plan} 套餐可以连接 1 种 Agent，你已经连上了。",
+      ask_limit:
+        "{plan} 套餐本月的 {allowed} 次提问你都用完了，下月 1 日重新计数。",
+      seat_needed:
+        "在 {plan} 套餐上，{space} 里只有所有者能保留。成员需要 Team 席位才能保留。",
+      dream_cadence:
+        "{plan} 套餐本周允许的立即运行次数已经用完。Dream 仍会按计划自动运行。",
+      dream_cadenceToday:
+        "{plan} 套餐今天允许的立即运行次数已经用完。Dream 仍会按计划自动运行。",
+      upgrade: {
+        space_limit: "Pro 套餐不限项目空间数量。",
+        agent_kind_limit:
+          "Pro 套餐不限 Agent 种类；同一种 Agent 换一台电脑不算新的一种。",
+        ask_limit: "Pro 套餐每月可以提问 1,000 次。",
+        seat_needed: "在 Team 套餐上，每位成员都有席位。",
+        dream_cadence: "Pro 套餐每晚运行 Dream。",
+      },
+    },
+    plans: { free: "Free", pro: "Pro", team: "Team", enterprise: "Enterprise" },
     refused: {
       viewer: "查看者可以提议和评论，保留要由成员来。",
+      seat_needed:
+        "在这个套餐上，{space} 里只有所有者能保留。成员需要 Team 席位才能保留。",
       owners_keep: "在 {space} 里只有所有者能保留。请所有者来保留吧。",
       external_needs_review:
         "它引用了外部来源，只有在网页上登录才能保留。退出后在这个页面重新登录，再来保留。",
@@ -159,6 +199,10 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
         "问题只能由真人回答。用你自己的账号登录，别用 Agent 的密钥。",
       not_your_gate:
         "只有提问的 Agent、它所属的人，或者能回答的人，才能撤回这个问题。",
+      verify_by_person:
+        "只有真人能核对它。用你自己的账号登录，别用 Agent 的密钥。",
+      space_on_v1:
+        "{space} 还在 V1 上，切换到 V2 之前这里什么都不会改动。所有者可以在它的今天页切换。",
       other: "Memax 没接受：{message}",
       otherBare: "Memax 没接受。",
     },
@@ -192,7 +236,10 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
       editKeep: "已撤销编辑和保留。{ref} 回到了审阅。",
       resolve: "已撤销这次裁定。{ref} 作为冲突回到了审阅。",
       fold: "已取消合并 {ref}。它回到了审阅。",
+      verify: "已撤销核对。{ref} 又标成过时了。",
+      verifyUpdate: "已撤销更新。{ref} 恢复了原来的说法，又标成过时了。",
       remember: "已撤销记住 {ref}。它已撤回。",
+      scope: "已撤销这次更改。{ref} 恢复了原来的适用范围。",
     },
     refused: {
       window_passed:

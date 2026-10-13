@@ -138,6 +138,21 @@ export interface AgentWeekView {
   heldExternal: number | null;
 }
 
+/**
+ * A cloud agent's latest counted session start (spec AgentStart): when,
+ * the compiles its repository's files held, and the memories whose lines
+ * it was told about. Refs only.
+ */
+export interface AgentStartView {
+  at: string;
+  spaceId: string;
+  sessionRef: string | null;
+  /** "C-0881": what the committed files held. */
+  compiles: string[];
+  /** The memories whose added or changed lines it was sent; empty when nothing was new. */
+  told: string[];
+}
+
 export interface AgentDetailView {
   connection: AgentConnectionView;
   week: AgentWeekView;
@@ -145,6 +160,37 @@ export interface AgentDetailView {
   recentWrites: AgentWrite[];
   /** Most recent first. */
   sessions: AgentSessionView[];
+  /** A cloud agent's latest start; null before its first; undefined for other agents. */
+  lastStart?: AgentStartView | null;
+}
+
+/** The cloud agents Memax starts from a committed hook (cloud warm-start design §2). */
+export const CLOUD_AGENTS = ["claude-code", "copilot", "codex"] as const;
+export type CloudAgent = (typeof CLOUD_AGENTS)[number];
+
+/** Codex Cloud runs no session-start hook yet: it starts from the committed AGENTS.md, with no key. */
+export function hasCloudStart(agent: CloudAgent): boolean {
+  return agent !== "codex";
+}
+
+/** A start key's secret, which the API answers once. */
+export interface StartKeyView {
+  secret: string;
+  /** Its first characters ("mxk_7f2c"). */
+  prefix: string;
+  expiresAt: string;
+}
+
+/** A cloud agent's connection after it was made or given a new key, with the key once. */
+export interface CloudAgentResultView {
+  connection: AgentConnectionView;
+  /** Null on a replay: the secret is never stored, so it's never answered twice. */
+  key: StartKeyView | null;
+}
+
+/** Whether a connection is a cloud agent on a start key (it only starts sessions). */
+export function isStartKeyAgent(agent: AgentConnectionView): boolean {
+  return agent.surface === "cloud" && agent.credential.kind === "api_key";
 }
 
 /** An API key, as Settings › Agents and keys lists it. Keys read or propose, never keep or forget. */
@@ -170,6 +216,10 @@ export type AgentRefusal =
   | "not_your_agent"
   /** Viewers can't raise, or Write needs someone who keeps in the space. */
   | "not_allowed"
+  /** The person has connected as many kinds of agent as their plan has (D9). */
+  | "agent_kind_limit"
+  /** On a plan that doesn't bill seats only the owner lets an agent write. */
+  | "seat_needed"
   /** Only a person changes what an agent may do. */
   | "person_must_manage"
   | "not_member"
@@ -228,6 +278,18 @@ export interface AgentsData {
   resumeAgent(input: AgentCommand): Promise<AgentConnectionView>;
   /** Ends the connection and revokes its credential in the same step. */
   disconnectAgent(input: AgentCommand): Promise<AgentConnectionView>;
+  /**
+   * Connects a cloud agent to one project or team space at Read, with a
+   * start key that only starts its sessions there. The secret comes back
+   * once. Throws AgentCommandError.
+   */
+  connectCloudAgent(input: {
+    agent: CloudAgent;
+    space: SpaceSummary;
+    idempotencyKey: string;
+  }): Promise<CloudAgentResultView>;
+  /** A new start key under the same connection; the old one stops at once. */
+  rekeyAgent(input: AgentCommand): Promise<CloudAgentResultView>;
   /** The autonomy a new agent starts at in the space (its rules). */
   newAgentAutonomy(space: SpaceSummary): Autonomy;
   /**

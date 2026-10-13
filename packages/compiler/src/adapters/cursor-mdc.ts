@@ -1,5 +1,7 @@
 /**
- * `cursor_mdc`: Cursor rules, for path-scoped facts only.
+ * `cursor_mdc`: Cursor rules, for path-scoped facts only. Opt-in
+ * (OPT_IN_TARGET_KINDS): Cursor and Devin CLI read AGENTS.md too, whose
+ * subsections hold the same facts unless it's set to `scoped: omit`.
  *
  * Cursor reads AGENTS.md (root and nested), so an always-on rule would load
  * the record twice. Instead each group of globs gets
@@ -8,15 +10,18 @@
  * there, takes `globs` as a comma-separated string (written unquoted, as
  * Cursor itself writes it), and suggests keeping a rule under 500 lines.
  */
+import { agent, capOf } from "@memaxlabs/agents";
 import { scoped } from "./scoped.js";
+
+const CURSOR = agent("cursor");
 
 export const cursorMdc = scoped({
   kind: "cursor_mdc",
-  tool: "Cursor",
+  tool: CURSOR.name,
   defaultPath: ".cursor/rules",
   dirs: [".cursor/rules"],
   extension: ".mdc",
-  accepts: (f) => f.agents.length === 0 || f.agents.includes("cursor"),
+  accepts: (f) => f.agents.length === 0 || f.agents.includes(CURSOR.key),
   frontmatter: (paths, space) => [
     "---",
     `description: Facts from ${space} for ${paths.join(", ")}`,
@@ -24,5 +29,10 @@ export const cursorMdc = scoped({
     "alwaysApply: false",
     "---",
   ],
-  limits: { lines: { value: 500, tool: "Cursor" } },
+  limits: {
+    lines: {
+      value: capOf(CURSOR.id, { repo: "cursor_mdc" }).lines!,
+      tool: CURSOR.name,
+    },
+  },
 });

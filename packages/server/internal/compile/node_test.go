@@ -33,11 +33,30 @@ func TestRealServiceMatchesTheLedgersTargets(t *testing.T) {
 	if h.Status != "ok" || h.ContractVersion != compile.ContractVersion {
 		t.Fatalf("health = %+v", h)
 	}
-	var kinds, defaults, optIn []string
+	var kinds, defaults, optIn, homeOnly []string
 	for _, a := range h.Adapters {
+		if len(a.Roots) == 0 {
+			t.Errorf("%s lists no roots", a.Kind)
+		}
+		// The home adapters write a personal space's files on a linked
+		// machine: never a repository default or opt-in.
+		if !slices.Contains(a.Roots, "repo") {
+			homeOnly = append(homeOnly, a.Kind)
+			if a.Default || a.OptIn {
+				t.Errorf("%s writes only at home, so it can't be a repository default or opt-in", a.Kind)
+			}
+		}
+		if slices.Contains(a.Roots, "home") != ledger.TargetKind(a.Kind).AtHome() {
+			t.Errorf("%s: compiler roots %v, ledger at home %v", a.Kind, a.Roots, ledger.TargetKind(a.Kind).AtHome())
+		}
 		kinds = append(kinds, a.Kind)
 		if a.Default {
 			defaults = append(defaults, a.Kind)
+		}
+		// Nearly every agent reads AGENTS.md, whose subsections hold the
+		// scoped facts, so no scoped format is a default.
+		if a.Role == "scoped" && (a.Default || !a.OptIn) {
+			t.Errorf("%s is a scoped format: opt-in, never a default", a.Kind)
 		}
 		if a.OptIn {
 			optIn = append(optIn, a.Kind)
@@ -73,6 +92,13 @@ func TestRealServiceMatchesTheLedgersTargets(t *testing.T) {
 	}
 	if !slices.Equal(optIn, goOptIn) {
 		t.Errorf("compiler opt-in kinds %v, ledger %v", optIn, goOptIn)
+	}
+	var goHome []string
+	for _, k := range ledger.HomeTargetKinds {
+		goHome = append(goHome, string(k))
+	}
+	if !slices.Equal(homeOnly, goHome) {
+		t.Errorf("compiler home kinds %v, ledger %v", homeOnly, goHome)
 	}
 }
 
@@ -202,7 +228,7 @@ func TestCoordinatorWithTheRealService(t *testing.T) {
 	scoped := f.apply(&ledger.Remember{Meta: f.meta(s.owner, policy.ViaWeb), NewMemory: ledger.NewMemory{
 		SpaceID: s.space, Statement: "Web screens use only packages/ledger components.", Section: ledger.SectionConventions,
 		Applies: json.RawMessage(`{"paths": ["packages/web/**"]}`)}}).Memory
-	for _, k := range ledger.DefaultTargetKinds {
+	for _, k := range []ledger.TargetKind{ledger.TargetAgentsMD, ledger.TargetClaudeMD, ledger.TargetCursorMDC, ledger.TargetChatGPT} {
 		f.run(s.targets[k])
 	}
 	ctx := context.Background()

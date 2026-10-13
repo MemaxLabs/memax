@@ -28,11 +28,11 @@ Every response is JSON. Errors look like a JSON Schema validator's output: a sta
 }
 ```
 
-| Route              | Body                                                               | Answer                                                                                                                                                                                 |
-| ------------------ | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /compile`    | A `CompileInput` (see the compiler's README)                       | `200` with the `CompileResult`, or `422 invalid_input` with every issue                                                                                                                |
-| `POST /parse-back` | `{"last": "<content>" or {"content", "drift_sha256"?}, "current"}` | `200` with the compiler's `ChangeSet` (`changes`, `drift`), plus `drifted` (does `current` differ from the last delivered file?) and `drift_sha256` (the hash to record for `current`) |
-| `GET /health`      | —                                                                  | `200 {"status": "ok", "contract_version", "adapters": [{kind, version, role, default_path, default}], "uptime_seconds"}`, or `503` with `"status": "draining"` while shutting down     |
+| Route              | Body                                                               | Answer                                                                                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /compile`    | A `CompileInput` (see the compiler's README)                       | `200` with the `CompileResult`, or `422 invalid_input` with every issue                                                                                                                           |
+| `POST /parse-back` | `{"last": "<content>" or {"content", "drift_sha256"?}, "current"}` | `200` with the compiler's `ChangeSet` (`changes`, `drift`), plus `drifted` (does `current` differ from the last delivered file?) and `drift_sha256` (the hash to record for `current`)            |
+| `GET /health`      | —                                                                  | `200 {"status": "ok", "contract_version", "adapters": [{kind, version, role, roots, default_path, default, opt_in}], "uptime_seconds"}`, or `503` with `"status": "draining"` while shutting down |
 
 Other errors: `400 invalid_json`, `401 unauthorized` (with `WWW-Authenticate`), `404 not_found`, `405 method_not_allowed` (with `Allow`), `413 too_large`, `415 unsupported_media_type` (send `application/json`), `500 internal_error`, and `503 unavailable` for a request that arrives while the service drains or a Worker that has no token. `X-Request-Id` is echoed back, or generated.
 

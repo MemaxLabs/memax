@@ -6,14 +6,22 @@
  * Code resolves `@path` imports up to four hops deep and dedupes repeated
  * `@AGENTS.md` imports. Its guidance is to keep memory files under 200 lines.
  */
+import { agent, capOf } from "@memaxlabs/agents";
 import { shim } from "./shim.js";
+
+const CLAUDE = agent("claude-code");
 
 export const claudeMd = shim({
   kind: "claude_md",
-  tool: "Claude Code",
-  agent: "claude-code",
+  tool: CLAUDE.name,
+  agent: CLAUDE.key,
   defaultPath: "CLAUDE.md",
   fileNames: ["CLAUDE.md", "CLAUDE.local.md"],
   importLine: (relative) => `@${relative}`,
-  limits: { lines: { value: 200, tool: "Claude Code" } },
+  limits: {
+    lines: {
+      value: capOf(CLAUDE.id, { repo: "claude_md" }).lines!,
+      tool: CLAUDE.name,
+    },
+  },
 });

@@ -4,8 +4,11 @@ import { MemoryList, MemoryRow } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { count } from "@/lib/v2/copy";
 import type { ReviewCardData, ReviewItem } from "@/lib/v2/data/review";
+import { groupTargets } from "@/lib/v2/data/home-files";
+import { isHome } from "@/lib/v2/data/targets";
 import { StatementText } from "../../_components/statement-text";
-import { TargetRow } from "../../_components/target-row";
+import { TargetList } from "../../_components/target-list";
+import { useSpaces } from "../../_lib/data";
 import type { RecordsView } from "../records-view";
 import styles from "./review.module.css";
 
@@ -30,6 +33,10 @@ export function Touches({
 }) {
   const { l, space } = view;
   const t = l.review.touches;
+  // A proposal going into another space recompiles that space's files.
+  const spaces = useSpaces().data;
+  const into =
+    (item.intoSpace && spaces?.find((s) => s.name === item.intoSpace)) || space;
   if (!card) return null;
   const replaces =
     editing && item.updates !== null && card.touches.basis === "links";
@@ -39,7 +46,8 @@ export function Touches({
   const targets = replaces ? null : card.touches.targets;
   const meta = [
     count(t.memoriesOne, t.memories, memories.length),
-    targets ? count(t.filesOne, t.files, targets.length) : null,
+    // A home file counts once, whatever the number of machines it's on.
+    targets ? count(t.filesOne, t.files, groupTargets(targets).length) : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -87,13 +95,15 @@ export function Touches({
             <p className="mx-section-label">{t.recompiles}</p>
           </div>
           {targets?.length ? (
-            targets.map((target) => (
-              <TargetRow key={target.id} space={space.slug} target={target} />
-            ))
+            <TargetList space={into} targets={targets} />
           ) : (
             // Nothing compiles yet, or the targets didn't load.
             <p className={styles.panelNote}>{t.targetsLater}</p>
           )}
+          {/* D8: a keep in Personal reaches every agent on every machine. */}
+          {into.kind === "personal" && targets?.some(isHome) ? (
+            <p className={styles.panelNote}>{l.machines.reach.keep}</p>
+          ) : null}
         </>
       )}
     </section>

@@ -61,6 +61,8 @@ export const DEMO_SPACES: readonly SpaceSummary[] = [
     agents: 0,
     people: 1,
     waiting: 0,
+    // EmptySpace.png: "created just now".
+    createdAt: DEMO_NOW,
   },
   {
     id: "0192a7c0-0000-7000-8000-000000000004",
@@ -76,7 +78,7 @@ export const DEMO_SPACES: readonly SpaceSummary[] = [
   },
 ];
 
-const EMPTY: SpaceOverview = {
+export const DEMO_EMPTY_OVERVIEW: SpaceOverview = {
   waiting: 0,
   gatesWaiting: 0,
   oldestWaitingAt: null,
@@ -97,14 +99,16 @@ const EMPTY: SpaceOverview = {
 
 export const DEMO_OVERVIEWS: Readonly<Record<string, SpaceOverview>> = {
   personal: {
-    ...EMPTY,
+    ...DEMO_EMPTY_OVERVIEW,
     // States board: "Last review today at 09:41 · 4 kept, 1 rejected".
     lastReview: { at: at("09:41"), kept: 4, rejected: 1 },
-    status: { kind: "in-sync", agents: 5 },
+    // What Personal's home files say (demo-targets-data.ts): Codex's
+    // block on ziyang-mbp has a hand edit, and home-linux is offline.
+    status: { kind: "machine-drifted", machine: "ziyang-mbp" },
     memories: { any: true, kept: 61, forgotten: 0 },
     brief: { title: "Personal", facts: 9, rewrittenAt: null },
     agents: { connected: 5, active: 5 },
-    targets: { total: 4, inSync: 4 },
+    targets: { total: 3, inSync: 1 },
     activity: { any: true },
   },
   "memax-v2": {
@@ -131,11 +135,13 @@ export const DEMO_OVERVIEWS: Readonly<Record<string, SpaceOverview>> = {
     activity: { any: true },
     decisions: null,
   },
-  "memax-web": EMPTY,
-  // The space still on V1 (demo-switch-data.ts) has no V2 record yet.
-  "acme-web": EMPTY,
+  "memax-web": DEMO_EMPTY_OVERVIEW,
+  // The space still on V1 (demo-switch-data.ts), once this session has
+  // switched it: an empty V2 record. Until then the frame shows
+  // SPACE_ON_V1_OVERVIEW and reads nothing.
+  "acme-web": DEMO_EMPTY_OVERVIEW,
   "memax-team": {
-    ...EMPTY,
+    ...DEMO_EMPTY_OVERVIEW,
     waiting: 2,
     // Ledger.png's two open questions (gates-demo.ts).
     gatesWaiting: 2,

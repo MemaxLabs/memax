@@ -39,16 +39,16 @@ import { LedgerProvider } from "./provider";
 
 const ALLOWED = new Set([
   // Agent names and monograms (never translated), people's initials.
-  ..."Claude Code Codex Cursor ChatGPT Gemini CLI Copilot OpenCode Dream".split(
+  ..."Claude Code Codex Cursor ChatGPT Gemini CLI Copilot OpenCode Windsurf Dream".split(
     " ",
   ),
-  ..."CC CX CU GPT CL GM CP OC DR ZZ JY WI".split(" "),
+  ..."CC CX CU GPT CL GM CP OC WS DR ZZ JY JU".split(" "),
   // Product terms kept in English in V1's Chinese copy, and the product name.
   ..."Agent MCP CLI IDE Memax memax".split(" "),
   // Keys.
   ..."Esc Tab".split(" "),
   // English proper nouns and file names inside the Chinese test data itself.
-  ..."agent River Postgres pnpm catalog Haiku windsurf AGENTS CLAUDE md".split(
+  ..."agent River Postgres pnpm catalog Haiku junie AGENTS CLAUDE md".split(
     " ",
   ),
 ]);
@@ -126,6 +126,7 @@ const CASES: Array<[string, ReactNode]> = [
       <AgentStamp agent="dream" />
       <AgentStamp person="ZZ" name="你" showName surface />
       <AgentStamp agent="windsurf" />
+      <AgentStamp agent="junie" />
     </>,
   ],
   [

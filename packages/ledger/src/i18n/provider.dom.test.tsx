@@ -84,13 +84,13 @@ describe("LedgerProvider", () => {
   it("extends the agent registry", () => {
     render(
       <LedgerProvider
-        agents={{ windsurf: { mono: "WS", name: "Windsurf", surface: "ide" } }}
+        agents={{ junie: { mono: "JN", name: "Junie", surface: "ide" } }}
       >
-        <AgentStamp agent="windsurf" showName surface />
+        <AgentStamp agent="junie" showName surface />
         <AgentStamp agent="codex" showName />
       </LedgerProvider>,
     );
-    expect(screen.getByText("WS")).toBeTruthy();
+    expect(screen.getByText("JN")).toBeTruthy();
     expect(screen.getByText("IDE")).toBeTruthy();
     expect(screen.getByText("CX")).toBeTruthy();
   });

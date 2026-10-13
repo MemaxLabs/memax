@@ -52,9 +52,9 @@ describe("agents", () => {
   });
 
   it("accepts unknown agents gracefully", () => {
-    expect(resolveAgent(AGENTS, { agent: "windsurf" })).toEqual({
-      mono: "WI",
-      name: "windsurf",
+    expect(resolveAgent(AGENTS, { agent: "junie" })).toEqual({
+      mono: "JU",
+      name: "junie",
       surface: "agent",
       kind: "agent",
     });

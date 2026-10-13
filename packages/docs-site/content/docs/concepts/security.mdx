@@ -112,18 +112,24 @@ the reviewed record (Memax V2) uses, each only while the feature is on:
 
 | Sub-processor | What it receives | Used for | Retention |
 | ------------- | ---------------- | -------- | --------- |
-| [OpenRouter](https://openrouter.ai) | A proposal and the memories it's compared with; an Ask question and the kept memories it may cite | Routing each model call to one of the hosts below | Zero data retention: every call sets `provider.zdr`, so OpenRouter refuses any host that retains prompts |
-| Together AI, Baseten, CoreWeave, DeepInfra (through OpenRouter, in that order) | The same, for DeepSeek V4.1 Flash | The judge's first pass, and Ask's answers | Zero-retention endpoints only, at fp8 precision or better. Never DeepSeek's own API |
-| Amazon Bedrock, then Google Vertex AI (through OpenRouter) | The same, for Claude Haiku 4.5 | The judge's fallback, when the first pass gives no usable answer | Zero-retention endpoints only |
-| Google Vertex AI (through OpenRouter) | A proposal and the decisions in force it touches, for Claude Sonnet 5.5 | Confirming any verdict about a decision in force | Zero-retention endpoints only |
+| [OpenRouter](https://openrouter.ai) | A proposal and the memories it's compared with; an Ask question and the kept memories it may cite; the notes and memories a Dream run reads | Routing each model call to one of the hosts below | Zero data retention: every call sets `provider.zdr`, so OpenRouter refuses any host that retains prompts |
+| Together AI, Baseten, CoreWeave, DeepInfra (through OpenRouter, in that order) | The same, for DeepSeek V4.1 Flash | The judge's first pass, Ask's answers and Dream | Zero-retention endpoints only, at fp8 precision or better. Never DeepSeek's own API |
+| Amazon Bedrock, then Google Vertex AI (through OpenRouter) | The same, for Claude Haiku 4.5 | The judge's and Dream's fallback, when the first pass gives no usable answer | Zero-retention endpoints only, at fp8 precision or better |
+| Google Vertex AI (through OpenRouter) | A proposal and the decisions in force it touches, for Claude Sonnet 5.5 | Confirming any verdict about a decision in force, for the judge and Dream | Zero-retention endpoints only, at fp8 precision or better |
 | [Voyage AI](https://www.voyageai.com) | Each kept memory and proposal, and each search query | Embeddings for search, and reranking | Voyage stores API inputs for training unless the account opts out, which gives zero-day retention. Treat embeddings as held under Voyage's terms until we publish that the opt-out is on |
+| [Resend](https://resend.com) | The morning Dream email: kept memories' words, sent to the people who may keep them in the space | Delivering that email | Resend's own terms; Memax doesn't control it |
 
 Each model call names its hosts as an allowlist (OpenRouter's
 `provider.only`) and the precisions they may run
 (`provider.quantizations`), so a host that isn't listed here never
 serves it, even as a fallback. The lists are server configuration
 (`JUDGE_PROVIDERS`, `ASK_PROVIDERS` and the `*_MIN_QUANTIZATION`
-settings), and a self-hosted server can change them.
+settings), and a self-hosted server can change them. Signed in, Settings ›
+Security in the app reads them from the running server, and
+[memax.app/security](https://memax.app/security) lists Memax cloud's.
+
+Database backups keep what Forget removed for 7 days (Neon's restore
+window), and Memax applies every Forget again after any restore.
 
 <Callout type="warn">
   The original Memax features (memory processing, dreams, and the first

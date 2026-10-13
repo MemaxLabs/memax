@@ -7,8 +7,10 @@
  * (the person's V2 UI flag, as the web app's server last read it)
  * redirect to the V1 home, or a signed-in browser once to /signin to read
  * the flag again; and V1's home, opened with the cookie, goes to the V2
- * landing instead. Every other path falls through to the V1 rules below
- * unchanged.
+ * landing instead. The public site (/welcome, /pricing, /security,
+ * /docs) opens for every browser, and with LANDING_AT_ROOT on, a
+ * signed-out "/" is rewritten to the public Landing. Every other path
+ * falls through to the V1 rules below unchanged.
  *
  * Plan 24 phase 4b retired v1 across the board. Legacy `/memories`
  * paths now unconditionally redirect to their v2 equivalents so URLs
@@ -106,6 +108,13 @@ export function proxy(request: NextRequest) {
     hasSession,
     rechecked: request.cookies.has(UI_RECHECK_COOKIE),
   });
+  if (gate.action === "rewrite") {
+    // The public Landing at "/" (lib/ui-gate.ts LANDING_AT_ROOT): the
+    // page is served at this address, query and all.
+    const target = new URL(gate.pathname, request.nextUrl.origin);
+    target.search = request.nextUrl.search;
+    return NextResponse.rewrite(target);
+  }
   if (gate.action === "redirect") {
     const target = new URL(gate.pathname, request.nextUrl.origin);
     if (gate.keepQuery) target.search = request.nextUrl.search;
@@ -185,11 +194,16 @@ export const config = {
     "/oauth/:path*",
     "/setup/:path*",
     "/join/:path*",
+    // The public site, open to every browser
+    "/welcome/:path*",
+    "/pricing/:path*",
+    "/security/:path*",
+    "/docs/:path*",
     "/settings/:path+",
     "/dev/ledger/:path*",
     // V2 spaces: /[space]/<place>/…
     "/:space/:place(today|review|brief|memories|handoffs|agents|decisions|dream|activity|search|settings)/:path*",
     // A bare /[space], which opens on its Today
-    "/:space((?!(?:account|admin|agents|api|assets|auth|billing|blog|brain|changelog|dev|device|discover|docs|download|dreams|h|help|home|images|inbox|invite|join|legal|login|logout|mcp|memories|oauth|pricing|privacy|public|pulse|register|security|settings|setup|share|signin|signout|signup|static|status|support|terms|v1|v2|waitlist)(?:/|$))[a-z0-9][a-z0-9-]*)",
+    "/:space((?!(?:account|admin|agents|api|assets|auth|billing|blog|brain|changelog|dev|device|discover|docs|download|dreams|h|help|home|images|inbox|invite|join|legal|login|logout|mcp|memories|oauth|pricing|privacy|public|pulse|register|security|settings|setup|share|signin|signout|signup|static|status|support|terms|v1|v2|waitlist|welcome)(?:/|$))[a-z0-9][a-z0-9-]*)",
   ],
 };

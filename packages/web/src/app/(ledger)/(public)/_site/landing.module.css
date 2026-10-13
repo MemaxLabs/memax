@@ -1,0 +1,407 @@
+/* Landing (Landing.png; exact values from Landing.dc.html). Tokens only. */
+
+.hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+  gap: 56px;
+  align-items: center;
+  padding: 72px 0;
+}
+
+.eyebrow {
+  margin: 0 0 24px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(52px, 6.4vw, 84px);
+  line-height: 1;
+  font-weight: 360;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 32px 0 0;
+  max-width: 30em;
+  font-family: var(--font-serif);
+  font-size: 21px;
+  line-height: 31px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.start {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-top: 40px;
+}
+
+/* The command, on ink. */
+.command {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 0 8px 0 16px;
+  box-sizing: border-box;
+  background: var(--ink);
+  color: var(--on-ink);
+  border-radius: var(--radius-sm);
+}
+
+.commandText {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 20px;
+  color: inherit;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.prompt {
+  opacity: 0.6;
+}
+
+.copy {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.copy:hover,
+.copy:focus-visible {
+  opacity: 1;
+}
+
+/* The page's focus ring is drawn for paper; on ink it is drawn in on-ink. */
+.copy:focus-visible {
+  outline: 2px solid var(--on-ink);
+  outline-offset: 0;
+}
+
+@media (pointer: coarse) {
+  .command {
+    min-height: 48px;
+  }
+
+  .copy {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+.worksWith {
+  margin: 16px 0 0;
+}
+
+/* The example space. */
+.example {
+  --receipt-rail: 176px;
+  min-width: 0;
+  margin: 0;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}
+
+.exampleHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.exampleSpace {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.exampleCard {
+  padding: 16px;
+}
+
+/* Too narrow for the receipt rail beside the statement: under it, as
+ * MemoryRow's `stacked` does for narrow panes. */
+@media (max-width: 560px) {
+  .example :global(.mx-row) {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+
+  .example :global(.mx-row)::after {
+    display: none;
+  }
+
+  .example :global(.mx-row-rail) {
+    grid-column: 2;
+    grid-row: 2;
+    padding: 6px 0 0;
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .example :global(.mx-row-rail-lines) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    column-gap: 10px;
+  }
+}
+
+/* Day one. */
+.dayOne {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+  gap: 64px;
+  align-items: center;
+  padding: 64px 0;
+  border-top: 1px solid var(--line);
+}
+
+.dayOne > * {
+  min-width: 0;
+}
+
+.kicker {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.dayOneTitle {
+  margin: 10px 0 16px;
+  font-family: var(--font-serif);
+  font-size: 44px;
+  line-height: 50px;
+  font-weight: 380;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.body {
+  margin: 0;
+  max-width: 30em;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 28px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.body + .body {
+  margin-top: 12px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 32px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.stats dt {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  line-height: 36px;
+}
+
+.stats dd {
+  margin: 4px 0 0;
+}
+
+/* How it works. */
+.how {
+  padding: 64px 0;
+  border-top: 1px solid var(--line);
+  scroll-margin-top: 16px;
+}
+
+.howHead {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+
+.howTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 36px;
+  line-height: 42px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.howGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 24px;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.columnTitle {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.targets {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+}
+
+.target,
+.liveRow {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.target:last-child,
+.liveRow:last-child {
+  border-bottom: 0;
+}
+
+.target {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.target code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.liveRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* A delivery, not a state: words without a mark (target-row.tsx). */
+.delivery {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+@media (max-width: 560px) {
+  .target {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .target code {
+    grid-column: 1;
+    grid-row: 2;
+  }
+}
+
+/* The principles. */
+.principles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 40px;
+  padding: 40px 0 64px;
+  border-top: 1px solid var(--line);
+}
+
+.number {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.principleTitle {
+  margin: 10px 0;
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 450;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+}
+
+.principleBody {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 25px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+/* The last word. */
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px 32px;
+  padding: 48px 0;
+  border-top: 1px solid var(--line);
+}
+
+.ctaTitle {
+  margin: 0;
+  max-width: 16em;
+  font-family: var(--font-serif);
+  font-size: 40px;
+  line-height: 46px;
+  font-weight: 380;
+  letter-spacing: -0.022em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.ctaActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}

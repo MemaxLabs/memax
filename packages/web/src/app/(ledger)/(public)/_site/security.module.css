@@ -1,0 +1,288 @@
+/* Trust and security (Security.png; exact values from Security.dc.html).
+ * Tokens only. */
+
+.rules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 0 48px;
+}
+
+.rule {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px 0;
+  border-top: 1px solid var(--line);
+}
+
+.rule :global(.mx-icon) {
+  color: var(--ink-3);
+}
+
+.rule h3 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 450;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+}
+
+.rule p {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 27px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.rule small {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.section {
+  padding: 56px 0 0;
+}
+
+.section > h2 {
+  margin-bottom: 20px;
+}
+
+.lede {
+  margin: -8px 0 20px;
+  max-width: 44em;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 27px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+/* The tables. */
+.table {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.head,
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.head {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.strong {
+  color: var(--ink);
+}
+
+.line {
+  display: block;
+}
+
+.line + .line {
+  margin-top: 6px;
+}
+
+/* Said, not hidden: Voyage's retention isn't confirmed. */
+.unconfirmed {
+  color: var(--ink);
+}
+
+/* One cell under another on a phone, the first one leading. */
+@media (max-width: 640px) {
+  .head {
+    display: none;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .row > :first-child {
+    font-weight: 550;
+  }
+}
+
+.note {
+  margin: 12px 0 0;
+  max-width: 64em;
+}
+
+.subTitle {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.table + .subTitle {
+  margin-top: 32px;
+}
+
+.places {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px 24px;
+  margin: 0;
+}
+
+.places dt {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.places dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 550;
+  color: var(--ink);
+}
+
+/* What Forget reaches, and what it can't. */
+.reach {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 24px 48px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.list li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.list :global(.mx-icon) {
+  margin-top: 2px;
+  color: var(--ink-3);
+}
+
+/* Check it yourself. */
+.checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 0 48px;
+}
+
+.check {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 20px 0;
+  border-top: 1px solid var(--line);
+}
+
+.check h3 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 450;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+}
+
+.check p {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 25px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.cmd {
+  margin: 4px 0 0;
+  padding: 12px 16px;
+  background: var(--night);
+  color: var(--night-ink);
+  border: 1px solid var(--night-line);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 21px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.cmd code {
+  font: inherit;
+}
+
+.cmdLine {
+  display: block;
+}
+
+.cmdLine > span {
+  color: var(--night-ink-2);
+}
+
+/* Found a problem. */
+.report {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 56px;
+  padding: 32px 0 48px;
+  border-top: 1px solid var(--line);
+}
+
+.reportTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.reportBody {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.reportBody a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: var(--radius-xs);
+}

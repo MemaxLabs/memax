@@ -1,4 +1,4 @@
-import type { V2 } from "memax-sdk";
+import { renameSuggestion, type V2 } from "memax-sdk";
 import type {
   StaleCause,
   StaleWhy,
@@ -62,10 +62,34 @@ export function staleWhyOf(
       : null,
     readsSince: report.reads_since,
     causes: report.causes.flatMap(causeOf),
-    // PLACEHOLDER: the server suggests no words yet (a rename's, then the
-    // judge's, come with the checker).
-    suggestion: null,
+    // A rename's new words need no model: the old path replaced by the new
+    // one (the SDK's renameSuggestion, as memax verify offers it). The
+    // judge's suggestions come later (stale design §3.2).
+    suggestion: renameSuggestionOf(report),
   };
+}
+
+/** The first renamed cause's new words, from Memax, citing its commit. */
+function renameSuggestionOf(report: V2.StaleReport): StaleWhy["suggestion"] {
+  if (!report.stale) return null;
+  for (const c of report.causes) {
+    if (c.kind !== "check" || c.evidence?.change !== "renamed") continue;
+    const from =
+      c.evidence.path ??
+      (c.condition.kind === "path_exists"
+        ? (c.condition.path ?? "")
+        : "path" in c.condition
+          ? c.condition.path
+          : "");
+    const statement = renameSuggestion(
+      report.statement,
+      from,
+      c.evidence.renamed_to ?? "",
+    );
+    if (statement)
+      return { statement, by: { kind: "memax" }, from: c.commit.slice(0, 7) };
+  }
+  return null;
 }
 
 export function verifyResultOf(

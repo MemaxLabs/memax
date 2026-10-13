@@ -9,7 +9,13 @@
 import { randomUUID } from "node:crypto";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { MemaxError, refusalOf, type Memax, type V2 } from "memax-sdk";
+import {
+  MemaxError,
+  refusalOf,
+  renameSuggestion,
+  type Memax,
+  type V2,
+} from "memax-sdk";
 import { getClient } from "../lib/client.js";
 import { repoKeyOf } from "../lib/daemon/checks.js";
 import { gitDirs, originUrl } from "../lib/daemon/git-tree.js";
@@ -18,12 +24,7 @@ import { findLinkedRepo } from "../lib/daemon/registry.js";
 import { gitRoot } from "../lib/project-context.js";
 import { ask, askPrefilled } from "../lib/prompt.js";
 import { localChange, type LocalChange } from "../lib/stale/local-change.js";
-import {
-  conditionWords,
-  evidenceWords,
-  ownPath,
-  renameSuggestion,
-} from "../lib/stale/words.js";
+import { conditionWords, evidenceWords, ownPath } from "../lib/stale/words.js";
 import { resolveSpace, SpaceChoiceError } from "../lib/v2-space.js";
 import { appBaseURL } from "./mcp-v2.js";
 import { apiFailureMessage, MARK } from "./v2-output.js";

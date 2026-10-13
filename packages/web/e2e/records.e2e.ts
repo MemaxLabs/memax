@@ -427,7 +427,8 @@ test("review, light, 390", async ({ page, baseURL }) => {
   await useTheme(page, baseURL, "light");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/memax-v2/review");
-  await expect(page.getByText("memax-v2 · 1 of 5")).toBeVisible();
+  // A phone's header says where you are in the deck (MobileReview.png).
+  await expect(page.getByText("1 of 5", { exact: true })).toBeVisible();
   await settle(page);
   await expect(page).toHaveScreenshot("records-review-light-390.png", {
     maxDiffPixelRatio: 0.002,

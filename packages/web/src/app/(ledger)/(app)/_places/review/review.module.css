@@ -335,7 +335,8 @@
 
   .queue,
   .metaRow,
-  .emptyHeading {
+  .emptyHeading,
+  .emptyHead :global(.mx-page-title) {
     display: none;
   }
 

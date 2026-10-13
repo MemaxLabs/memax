@@ -517,6 +517,13 @@
     display: none;
   }
 
+  /* MobileToday.png: the top bar names the space, so a receipt names
+   * only another one; and the first two rows, then Start review. */
+  .waiting :global(.mx-row):not(.elsewhere) :global(.mx-row-rail-rest),
+  .waiting :global(.mx-list > li:nth-child(n + 3)) {
+    display: none;
+  }
+
   .startPhone:global(.mx-btn) {
     width: 100%;
     height: 48px;

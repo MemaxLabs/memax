@@ -179,7 +179,9 @@ function ReviewEmpty({ view }: { view: RecordsView }) {
   if (hasNothing(view)) {
     return (
       <PlaceColumn>
+        {/* On a phone the header's title is the page's heading. */}
         <PageHeader
+          className={styles.emptyHead}
           eyebrow={view.eyebrow}
           title={copy.review.title}
           lede={copy.empty.review.detail}

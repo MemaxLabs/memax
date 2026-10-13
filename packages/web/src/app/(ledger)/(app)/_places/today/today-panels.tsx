@@ -194,6 +194,9 @@ export function WaitingPanel({
                 time={view.time(item.at)}
                 id={item.ref}
                 space={item.intoSpace ?? space.name}
+                // On a phone the top bar names this space; a row names
+                // only another one (MobileToday.png).
+                className={item.intoSpace ? styles.elsewhere : undefined}
                 href={href(item)}
                 note={
                   note

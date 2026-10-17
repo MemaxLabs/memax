@@ -26,6 +26,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Memax } from "memax-sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { CheckAnswer } from "../../src/commands/check.js";
 import { DAEMON_NODE_FLAGS } from "../../src/commands/daemon-control.js";
 import { startStack, type Stack } from "./e2e-stack.js";
 
@@ -198,6 +199,28 @@ describe.skipIf(!enabled)("stale detection, end to end", () => {
     );
     console.log(`stale ${stale.ms} ms after the push`);
     expect(stale.ms).toBeLessThan(90_000);
+
+    // The command must reach the running daemon and show the same result
+    // for this clone, not just pass its in-process tests against a fake API.
+    const checked = JSON.parse(cli("check", "--format", "json")) as CheckAnswer;
+    expect(checked).toMatchObject({
+      space: "memax-v2",
+      branch: "main",
+      view: { commit: moved },
+    });
+    expect(checked.run.skipped).not.toBe("error");
+    expect(checked.view.items).toContainEqual(
+      expect.objectContaining({
+        memory: ref,
+        armed: true,
+        outcome: "fails",
+        evidence: expect.objectContaining({
+          change: "renamed",
+          path: CITED,
+          renamed_to: MOVED,
+        }),
+      }),
+    );
 
     const why = await memax.v2.memories.stale(ref, { space: "memax-v2" });
     expect(why.flagged).toMatchObject({

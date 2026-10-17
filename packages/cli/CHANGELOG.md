@@ -2,6 +2,95 @@
 
 All notable changes to `memax-cli` are documented here.
 
+## 0.4.0
+
+Your Personal space on every machine, memories that say when they may no
+longer be true, and cloud agents. It needs `memax-sdk` 0.9.
+
+### New
+
+- **Your Personal space on every machine.** `memax link --home` writes
+  it into this machine's agents' own files: `~/.claude/rules/memax-personal.md`
+  (a file Memax owns), one managed block in `~/.codex/AGENTS.md` (or
+  `AGENTS.override.md` when that's what Codex reads),
+  `~/.copilot/copilot-instructions.md` and `~/.memax/personal/AGENTS.md`.
+  It names every file and asks first. Your own lines stay byte for byte,
+  a hand edit comes back as a proposal, and the daemon keeps the files
+  current on every machine you link. `memax unlink --home` takes them
+  off. It refuses CI, a shell without a terminal (unless `--yes
+  --home`), files outside your home, symlinks and folders inside a git
+  repository (such as dotfiles).
+- `memax connect` adds the agents whose home file waits to be confirmed:
+  `memax connect gemini` for `~/.gemini/AGENTS.md` (Antigravity, and
+  Gemini CLI once its settings list `AGENTS.md`: `--agents-md`),
+  `memax connect windsurf` for one block in Windsurf's global rules
+  (within its 6,000-character limit, your rules included), and
+  `memax connect opencode`, which adds the canonical copy to OpenCode's
+  `instructions` rather than writing a file of OpenCode's. Cursor reads
+  no file of the Personal space, so its session-start hook prints your
+  Personal space's kept lines at every start, within its budget.
+- `memax init` and `memax connect` offer the home link, in a repository
+  or not (`--home`, `--no-home`). After the first delivery, two tidy-ups
+  ask first: taking out lines that now load twice, and V1's old
+  instruction block.
+- **Stale memories.** The daemon checks what the space's memories rely
+  on (a path exists, a file contains a name, a manifest declares a
+  dependency, a file is unchanged) against each linked repository's
+  committed tree at `HEAD`, on the default branch as pushed, and only
+  results leave the machine: outcomes, the commit, the paths and
+  declared versions that changed, never a file's contents. A memory
+  whose condition stops holding is marked stale, and every compiled
+  file says "(Being verified)" beside it.
+- `memax check` runs those checks now and says what each condition
+  found. `memax verify <M-id>` says why a memory is stale, shows the
+  change from your clone (the commit and its diff, read from git and
+  never sent), and takes your answer: still true, new words (a rename's
+  new path suggested), or Forget on the web.
+- **Cloud agents.** `memax connect --cloud claude-code|copilot|codex`
+  connects a cloud agent to the repository's space at Read, prints its
+  start key once (never to a file) and commits the session-start hook,
+  `memax hook cloud-start`, which tells the agent what changed since the
+  compile its files hold, in one request.
+- **The session-start hook** also says what changed in your Personal
+  space's own file, which memories are being verified and why, and what
+  this machine's check found on the branch you're on, each once. In a
+  linked repository it asks the daemon to check it soon, so a memory's
+  page can say it was checked when that agent started.
+- `memax status`, `memax compile` and `memax daemon status` include home
+  files.
+- `memax export --okf` writes a space as an Open Knowledge Format (OKF
+  v0.2) bundle, for any tool that reads OKF.
+
+### Changed
+
+- Every scoped rules format (Cursor's `.mdc`, Claude Code's rules,
+  Copilot's instructions, Windsurf's rules) and the `GEMINI.md` shim are
+  opt-in for new spaces, since nearly every agent reads `AGENTS.md` and
+  would load each scoped fact twice.
+- A space switched back to V1 is left to V1's sync: the daemon writes
+  nothing for it, reports no hand edit and checks nothing until it is on
+  V2 again, and `memax status`, `memax compile` and `memax daemon status`
+  say so.
+- Signing out (`memax logout`), a session the API refuses, or signing
+  in as a different person takes the home files off the machine; the
+  same person signing in again puts them back. A Personal space that no
+  longer exists takes them off too.
+- `memax init` ties this repository's `CLAUDE.local.md` and Claude Code
+  auto memory to the repository (`scope.repos`), so they never load in
+  other projects; with no remote and no space repository it leaves
+  those two files on the machine.
+- Agents' JSON settings keep their comments and formatting when Memax
+  adds to them.
+- A check that sees a reverted change removes Memax's own stale mark
+  once the failed conditions hold again, with an `unflagged` receipt.
+  A person's stale mark and other outstanding causes stay in place.
+- The agent names, file formats and hook capabilities come from one
+  registry, shared with the compiler and web app, and copied into the
+  CLI so it needs no extra package at runtime.
+- Removing Memax's managed block now restores your file byte for byte;
+  the block adds no blank line when your file already ends with one.
+- The MCP SDK is 1.32.1.
+
 ## 0.3.0
 
 The first release for the V2 record: a space compiles into the files

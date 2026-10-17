@@ -1,7 +1,9 @@
 {
   "name": "@memaxlabs/start",
   "version": "1.0.0",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "Memax's warm start for cloud agents: what changed in your repository's compiled context since the commit, at session start",
   "homepage": "https://docs.memax.app/integrations/cloud-agents",
   "repository": {
@@ -26,6 +28,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "check:package": "node scripts/check-package.mjs",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

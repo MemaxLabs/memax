@@ -8,10 +8,6 @@ changed in the space's record since the compile those committed files
 hold: new and changed lines, memories a person forgot, and decisions
 waiting for a person, in a short `<memax-context>` block.
 
-> **Not published yet.** Publishing to npm waits for a founder's decision
-> (cloud warm-start design, decision 2). The package is built in this
-> repository and marked `private`, so it can't be published by accident.
-
 ```sh
 npx -y @memaxlabs/start@1.0.0 --agent copilot
 ```
@@ -45,6 +41,26 @@ anything but Node's built-ins.
 
 ```sh
 pnpm --filter @memaxlabs/start build    # dist/memax-start.js
+pnpm --filter @memaxlabs/start check:package
 ```
+
+The package check packs and installs the tarball into an empty temporary
+project, checks its file list and absence of runtime dependencies, and runs
+the installed command. It also accepts a tarball path to check the exact
+artifact a release will publish.
+
+Releases use the manual `release-start.yml` workflow with a full source
+commit SHA. Its default is a dry run: build, check and upload the tarball.
+The workflow's branch or tag must resolve to that commit; a mismatch is
+refused so provenance names the source that was built.
+Setting `publish` to `true` publishes that checked tarball with public access
+and npm provenance. This workflow releases only `@memaxlabs/start`; the SDK
+and CLI use `release-npm.yml`.
+
+The repository's `NPM_TOKEN` can bootstrap the first publication. Once the
+package exists, its npm trusted publisher can be set to GitHub repository
+`MemaxLabs/memax`, workflow `release-start.yml`, with direct publishing
+allowed. The workflow grants `id-token: write`, so npm can use that identity
+instead of a token when the trust relationship is configured.
 
 Apache-2.0.

@@ -17,17 +17,30 @@ permissions:
 
 jobs:
   preflight:
-    name: Check npm publish token
+    name: Check npm publish prerequisites
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Require NPM_TOKEN
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -z "$NPM_TOKEN" ]; then
-            echo "::error::NPM_TOKEN is not configured in MemaxLabs/memax. Add a classic npm token with publish access before running this workflow."
+            echo "::error::NPM_TOKEN is not configured in MemaxLabs/memax. Add an npm token with publish access before running this workflow."
             exit 1
           fi
+
+      - name: Require the pinned cloud start package
+        run: |
+          pin=$(node -p "const p=require('./packages/start/package.json'); p.name+'@'+p.version")
+          npm view "$pin" version
 
   publish-sdk-stable:
     name: Publish SDK stable to npm
@@ -92,10 +105,6 @@ jobs:
           - npm status: $status
           NOTES
           )
-          # Strip the leading 10-space indent introduced by the YAML
-          # block-scalar so the rendered release body isn't all
-          # quoted-as-code on GitHub.
-          notes=$(echo "$notes" | sed 's/^          //')
           gh release create "$tag" \
             --target "$target" \
             --title "$PACKAGE_NAME v$VERSION" \
@@ -142,7 +151,6 @@ jobs:
           - npm status: $status
           NOTES
           )
-          notes=$(echo "$notes" | sed 's/^          //')
           gh release create "$tag" \
             --target "$target" \
             --title "$PACKAGE_NAME v$VERSION" \

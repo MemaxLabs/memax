@@ -1,0 +1,81 @@
+name: Release cloud start package
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Full source commit SHA to build and publish"
+        type: string
+        required: true
+      publish:
+        description: "Publish the checked tarball to npm (false only builds and checks)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-start
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Require an immutable source ref
+        env:
+          SOURCE_REF: ${{ inputs.ref }}
+        run: |
+          if ! [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::ref must be a full 40-character commit SHA"
+            exit 1
+          fi
+          if [ "$SOURCE_REF" != "$GITHUB_SHA" ]; then
+            echo "::error::The workflow ref must name the same commit as ref, so provenance matches the built source"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - run: pnpm install --frozen-lockfile --filter @memaxlabs/start...
+      - run: pnpm --filter @memaxlabs/start build
+
+      - name: Pack and check the exact release artifact
+        id: pack
+        run: |
+          set -euo pipefail
+          pnpm --dir packages/start pack --pack-destination "$RUNNER_TEMP/start-pack"
+          version=$(node -p "require('./packages/start/package.json').version")
+          archive="$RUNNER_TEMP/start-pack/memaxlabs-start-$version.tgz"
+          node packages/start/scripts/check-package.mjs "$archive"
+          sha256sum "$archive"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cloud-start-package
+          path: ${{ steps.pack.outputs.archive }}
+          if-no-files-found: error
+
+      - name: Publish with provenance
+        if: inputs.publish
+        working-directory: ${{ runner.temp }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          ARCHIVE: ${{ steps.pack.outputs.archive }}
+        run: npm publish "$ARCHIVE" --access public --provenance --tag latest

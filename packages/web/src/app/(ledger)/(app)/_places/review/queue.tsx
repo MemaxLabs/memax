@@ -17,6 +17,7 @@ import { GateRow } from "../../_components/gate-row";
 import { StatementText } from "../../_components/statement-text";
 import { useOverlays } from "../../_lib/overlays";
 import type { RecordsView } from "../records-view";
+import { BulkActions } from "./bulk-actions";
 import { QueueSkeleton } from "./skeleton";
 import {
   matchesFilter,
@@ -120,6 +121,7 @@ export function Queue({
             (value) => ({ value, label: label(value) }),
           )}
         />
+        <BulkActions view={view} review={review} />
       </div>
       <div className={styles.list} ref={list}>
         {filter === "all" &&

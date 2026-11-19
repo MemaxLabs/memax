@@ -12,6 +12,7 @@ import {
 import type { MemoryListItem } from "./memories";
 import type { DecisionResult, TargetLine } from "./records";
 import type {
+  KeepAllResult,
   ReviewCardData,
   ReviewItem,
   ReviewQueue,
@@ -280,6 +281,22 @@ export function createDemoRecords({
           receipt,
         };
       });
+    },
+    async keepAll({ space, items, idempotencyKey }) {
+      const out: KeepAllResult = { kept: [], left: 0 };
+      for (const item of items) {
+        try {
+          await review.keep({
+            space,
+            item,
+            idempotencyKey: `${idempotencyKey}:${item.ref}`,
+          });
+          out.kept.push(item.ref);
+        } catch {
+          out.left += 1;
+        }
+      }
+      return out;
     },
     async conflict({ space, ref }) {
       if (decided.has(id(space.slug, ref))) return null;

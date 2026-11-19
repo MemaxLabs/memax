@@ -1416,3 +1416,86 @@ describe("Review on a phone", () => {
     ).toBeTruthy();
   });
 });
+
+describe("Review: everything at once", () => {
+  it("keeps every proposal that can be kept at once, after asking once", async () => {
+    const keepAll = vi.fn(async ({ items }: { items: { ref: string }[] }) => ({
+      kept: items.map((i) => i.ref),
+      left: 0,
+    }));
+    sourceWith(() => ({ review: { keepAll } }));
+    renderReview();
+    await ready();
+    const queue = createDemoSource().review.peekQueue!("memax-v2")!;
+    const proposals = queue.items.filter(
+      (i) => i.lifecycle === "proposed" && i.state === "proposed",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: `Keep all ${proposals.length}` }),
+    );
+    // Nothing is kept until the person confirms.
+    expect(keepAll).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: `Keep ${proposals.length} now` }),
+    );
+    await waitFor(() => expect(keepAll).toHaveBeenCalledTimes(1));
+    const sent = keepAll.mock.calls[0]![0];
+    // Conflicts and stale flags are never part of a bulk Keep.
+    expect(sent.items.map((i) => i.ref)).toEqual(proposals.map((i) => i.ref));
+    expect(await screen.findByText(`Kept ${proposals.length}`)).toBeTruthy();
+  });
+
+  it("says how many still need a look when some couldn't be kept", async () => {
+    sourceWith(() => ({
+      review: {
+        keepAll: async ({ items }) => ({
+          kept: items.slice(1).map((i) => i.ref),
+          left: 1,
+        }),
+      },
+    }));
+    renderReview();
+    await ready();
+    fireEvent.click(screen.getByRole("button", { name: /^Keep all \d+$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Keep \d+ now$/ }));
+    expect(
+      await screen.findByText(/^Kept \d+\. 1 still need your look$/),
+    ).toBeTruthy();
+  });
+
+  it("raises only the person's own proposing agents in this space to Write", async () => {
+    const source = sourceWith(() => ({}));
+    const mine = source.agentsPeek!.myAgents();
+    const expected = mine.filter(
+      (a) =>
+        a.mine &&
+        a.state === "active" &&
+        a.surface !== "cloud" &&
+        a.maxAutonomy === "write" &&
+        a.spaces.some((s) => s.slug === "memax-v2" && s.autonomy === "propose"),
+    );
+    expect(expected.length).toBeGreaterThan(0);
+    const setAutonomy = vi.spyOn(source, "setAutonomy");
+    renderReview();
+    await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Stop asking me" }));
+    expect(setAutonomy).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Let my agents keep" }));
+    await waitFor(() =>
+      expect(setAutonomy).toHaveBeenCalledTimes(expected.length),
+    );
+    for (const call of setAutonomy.mock.calls) {
+      expect(call[0].autonomy).toBe("write");
+      expect(call[0].space.slug).toBe("memax-v2");
+      expect(expected.map((a) => a.id)).toContain(call[0].agent);
+    }
+  });
+
+  it("offers neither to a viewer", async () => {
+    sourceWith(() => ({}));
+    renderReview({ ...v2, role: "viewer" });
+    await ready();
+    expect(screen.queryByRole("button", { name: /^Keep all/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop asking me" })).toBeNull();
+  });
+});

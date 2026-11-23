@@ -6,19 +6,25 @@ import { spaceMetaLine, type ConsentCopy } from "@/lib/v2/consent-copy";
 import type { ConsentSpaceView } from "@/lib/v2/data/consent";
 import styles from "./consent.module.css";
 
-/** "Which space": one of the person's spaces, as radios named hub_id. */
+/**
+ * "Which spaces": the person's spaces as checkboxes named hub_id, every
+ * one that can be connected ticked to begin with. The row last touched is
+ * `shown`: what the agent may do there is listed below.
+ */
 export function SpaceChoice({
   copy,
   client,
   spaces,
   chosen,
-  onChoose,
+  shown,
+  onToggle,
 }: {
   copy: ConsentCopy;
   client: string;
   spaces: ConsentSpaceView[];
-  chosen: string | null;
-  onChoose: (id: string) => void;
+  chosen: ReadonlySet<string>;
+  shown: string | null;
+  onToggle: (id: string) => void;
 }) {
   return (
     <fieldset className={styles.spaces}>
@@ -26,23 +32,24 @@ export function SpaceChoice({
         {copy.which}
       </legend>
       {spaces.map((space) => {
-        const on = space.id === chosen;
+        const on = chosen.has(space.id);
         return (
           <label
             key={space.id}
             className={[
               styles.space,
               on ? styles.on : "",
+              space.id === shown ? styles.shown : "",
               space.disabled ? styles.unavailable : "",
             ].join(" ")}
           >
             <input
-              type="radio"
+              type="checkbox"
               name="hub_id"
               value={space.id}
               checked={on}
               disabled={space.disabled}
-              onChange={() => onChoose(space.id)}
+              onChange={() => onToggle(space.id)}
             />
             <span className={styles.spaceText}>
               <span className={styles.spaceName}>{space.name}</span>

@@ -1286,7 +1286,9 @@ export interface OAuthRequest {
 
 export interface OAuthDecisionInput {
   decision: "approve" | "deny";
-  /** The one space an approval connects the agent to. */
+  /** The spaces an approval connects the agent to, each one of the person's. */
+  space_ids?: string[];
+  /** One space, as pages from before several could be chosen send it. Not with `space_ids`. */
   space_id?: string;
 }
 

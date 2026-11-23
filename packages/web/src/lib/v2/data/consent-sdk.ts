@@ -26,7 +26,7 @@ export function createSdkConsent(client: Pick<Memax, "auth">): ConsentSource {
         const res = await client.auth.decideOAuthRequest(
           requestId,
           d.decision === "approve"
-            ? { decision: "approve", space_id: d.spaceId }
+            ? { decision: "approve", space_ids: d.spaceIds }
             : { decision: "deny" },
         );
         return res.redirect_to;

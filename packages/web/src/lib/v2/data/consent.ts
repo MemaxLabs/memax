@@ -136,7 +136,9 @@ export interface ConsentSource {
   /** The URL to send the browser to: the client's redirect_uri. */
   decide(
     requestId: string,
-    decision: { decision: "approve"; spaceId: string } | { decision: "deny" },
+    decision:
+      | { decision: "approve"; spaceIds: string[] }
+      | { decision: "deny" },
   ): Promise<string>;
   /** "Not you?": lets go of the request. */
   release(requestId: string): Promise<void>;

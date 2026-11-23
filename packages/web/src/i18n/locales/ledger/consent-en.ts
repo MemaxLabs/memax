@@ -8,7 +8,7 @@ export const ledgerConsentEn = {
   notYou: "Not you?",
   servedFrom: "from {host}",
   servedFromLabel: "Memax read this agent's details from {host}",
-  which: "Which space",
+  which: "Which spaces",
   meta: {
     project: "Project",
     projectMeta: "Project · {memories}",

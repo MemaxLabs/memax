@@ -175,6 +175,15 @@ export interface ConflictData {
   tells: string[];
 }
 
+/** What a bulk Keep did: the refs kept, and how many still wait. */
+export interface KeepAllResult {
+  kept: string[];
+  left: number;
+}
+
+/** The most proposals one bulk Keep request takes (the spec's limit). */
+export const KEEP_ALL_BATCH = 200;
+
 export interface ReviewSource {
   /** The demo has the first page on hand, so screenshots never catch a loading frame. */
   peekQueue?(slug: string): ReviewQueue | undefined;
@@ -213,6 +222,17 @@ export interface ReviewSource {
     reason?: string;
     idempotencyKey: string;
   }): Promise<DecisionResult>;
+  /**
+   * Keeps every proposal given, each as its own Keep with its own receipt
+   * (POST …/memories:keep, 200 at a time). One that can't be kept this way
+   * (a conflict, one the judge is still checking, one that needs the
+   * person's own look) stays in the queue and is counted in `left`.
+   */
+  keepAll(input: {
+    space: SpaceSummary;
+    items: ReviewItem[];
+    idempotencyKey: string;
+  }): Promise<KeepAllResult>;
   /** Null when the memory has no linked conflict to compare. */
   conflict(input: {
     space: SpaceSummary;

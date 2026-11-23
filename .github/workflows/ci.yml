@@ -47,6 +47,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm --filter @memaxlabs/start check:package
       - run: pnpm lint
       - run: pnpm test
 

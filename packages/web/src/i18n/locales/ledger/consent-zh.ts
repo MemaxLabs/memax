@@ -10,7 +10,7 @@ export const ledgerConsentZh: Translations["ledger"]["consent"] = {
   notYou: "不是你？",
   servedFrom: "来自 {host}",
   servedFromLabel: "Memax 从 {host} 读取了这个 Agent 的信息",
-  which: "连接哪个空间",
+  which: "连接哪些空间",
   meta: {
     project: "项目",
     projectMeta: "项目 · {memories}",

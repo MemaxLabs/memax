@@ -19,7 +19,7 @@ import styles from "./consent.module.css";
 type Doing = "approve" | "deny" | "switch";
 
 /**
- * The card: who asks, who is signed in, the one space, what the agent
+ * The card: who asks, who is signed in, the spaces, what the agent
  * will and won't be able to do there (the server's words for it, from
  * policy), Cancel and Allow. Allow and Cancel go to the API through the
  * web app's proxy as this person; the API answers with the URL to send
@@ -43,12 +43,25 @@ export function ConsentForm({
   const copy = t.ledger.consent;
   const client = request.client.name || copy.fallbackClient;
   const short = shortName(client);
-  const [chosen, setChosen] = useState<string | null>(
+  // Every space that can be connected, to begin with: one approval
+  // connects the agent to all that stay ticked.
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(
+    () => new Set(request.spaces.filter((s) => !s.disabled).map((s) => s.id)),
+  );
+  const [shown, setShown] = useState<string | null>(
     () => request.spaces.find((s) => !s.disabled)?.id ?? null,
   );
+  const toggle = (id: string) => {
+    const next = new Set(chosen);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setChosen(next);
+    setShown(next.has(id) ? id : (spacesIn(request, next)[0]?.id ?? null));
+  };
   const [doing, setDoing] = useState<Doing | null>(null);
   const [error, setError] = useState<"space" | "plan" | "failed" | null>(null);
-  const space = request.spaces.find((s) => s.id === chosen);
+  const space = request.spaces.find((s) => s.id === shown);
+  const allowed = spacesIn(request, chosen);
 
   const failed = (err: unknown) => {
     setDoing(null);
@@ -65,14 +78,14 @@ export function ConsentForm({
   };
   const decide = (decision: "approve" | "deny") => {
     if (doing) return;
-    if (decision === "approve" && !space) return;
+    if (decision === "approve" && allowed.length === 0) return;
     setDoing(decision);
     setError(null);
     source
       .decide(
         request.requestId,
-        decision === "approve" && space
-          ? { decision, spaceId: space.id }
+        decision === "approve"
+          ? { decision, spaceIds: allowed.map((s) => s.id) }
           : { decision: "deny" },
       )
       .then((to) => {
@@ -162,7 +175,8 @@ export function ConsentForm({
             client={short}
             spaces={request.spaces}
             chosen={chosen}
-            onChoose={setChosen}
+            shown={shown}
+            onToggle={toggle}
           />
           {space ? (
             <Abilities copy={copy} client={short} space={space} />
@@ -175,12 +189,17 @@ export function ConsentForm({
         fullName={client}
         noSpaces={noSpaces}
         footnote={consentFootnote(copy, short, space)}
-        canAllow={space !== undefined && !space.disabled}
+        canAllow={allowed.length > 0}
         doing={doing}
         onCancel={() => decide("deny")}
       />
     </form>
   );
+}
+
+/** The chosen spaces that can be connected, in the page's order. */
+function spacesIn(request: ConsentRequestView, chosen: ReadonlySet<string>) {
+  return request.spaces.filter((s) => chosen.has(s.id) && !s.disabled);
 }
 
 /**

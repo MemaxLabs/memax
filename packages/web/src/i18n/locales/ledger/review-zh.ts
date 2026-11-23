@@ -27,6 +27,25 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
   viewer: "查看者可以提议和评论，保留要由成员来。",
   compareBoth: "对比两边",
   openSource: "打开来源",
+  bulk: {
+    label: "一次处理完",
+    keepAll: "全部保留（{n} 条）",
+    keepAllBare: "全部保留",
+    keepAllConfirm: "现在保留 {n} 条",
+    letAgents: "以后不用问我",
+    letAgentsConfirm: "让我的 Agent 直接保留",
+    letAgentsDetail:
+      "你在这个空间的 Agent 之后记下的内容会直接保留，不再等你。它们从外部来源读到的内容，以及和现行决策矛盾的内容，还是会来这里。",
+    cancel: "取消",
+    kept: "已保留 {n} 条",
+    keptSome: "已保留 {n} 条。还有 {left} 条要你看一眼",
+    keptNone: "没有能直接保留的。每一条都要你看一眼",
+    failed: "没成功，什么都没改。再试一次",
+    agentsDone: "之后你的 Agent 在这里记下的内容会直接保留",
+    agentsSome:
+      "你的 {n} 个 Agent 现在会直接保留。还有 {left} 个没改成，去 Agent 页看原因",
+    agentsFailed: "Agent 的级别没改成。去 Agent 页逐个改",
+  },
   legend: {
     keepEdited: "保留改后的",
     stopEditing: "不改了",

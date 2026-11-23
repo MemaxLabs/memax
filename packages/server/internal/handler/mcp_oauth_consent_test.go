@@ -571,3 +571,76 @@ func TestConsentLevelMatchesTheLedger(t *testing.T) {
 		t.Errorf("viewer's agent: can %v cannot %v", can, cannot)
 	}
 }
+
+// TestConsentToSeveralSpaces: one approval connects the agent to every
+// space the person chose, with one grant naming them all. A space that
+// isn't theirs refuses the whole approval, so nothing is connected by
+// halves; a request naming both forms, or none, is malformed.
+func TestConsentToSeveralSpaces(t *testing.T) {
+	f := newOAuthFlow(t)
+	ctx := context.Background()
+	one := f.project(f.user, "memax-v2", 0)
+	two := f.project(f.user, "memax-web", 0)
+	personal := f.hubs[0]
+	token := f.webSession(f.user)
+	other := uuid.New()
+	if _, err := f.authH.pool.Exec(ctx, `INSERT INTO users (id, email, name, display_name) VALUES ($1, $2, 'jh', 'Jiahao')`,
+		other, other.String()[:8]+"@oauth.test"); err != nil {
+		t.Fatal(err)
+	}
+	theirs := f.project(other, "theirs", 0)
+
+	request, _ := f.start(authorizeQuery(cimdClientID, cimdRedirect, "memax:read memax:write"))
+	if status, _ := f.open(request, token); status != http.StatusOK {
+		t.Fatalf("open: %d", status)
+	}
+	path := "/oauth/authorize/requests/" + request + "/decision"
+	for name, c := range map[string]struct {
+		body   map[string]any
+		status int
+	}{
+		"someone else's space among them": {map[string]any{"decision": "approve", "space_ids": []string{one, theirs}}, http.StatusUnprocessableEntity},
+		"both forms":                      {map[string]any{"decision": "approve", "space_id": one, "space_ids": []string{two}}, http.StatusBadRequest},
+		"no space":                        {map[string]any{"decision": "approve", "space_ids": []string{}}, http.StatusBadRequest},
+	} {
+		if rec := f.call(http.MethodPost, path, token, c.body); rec.Code != c.status {
+			t.Errorf("%s: %d %s, want %d", name, rec.Code, rec.Body.String(), c.status)
+		}
+	}
+	var grants int
+	if err := f.authH.pool.QueryRow(ctx, `SELECT count(*) FROM oauth_grants WHERE user_id = $1`, f.user).Scan(&grants); err != nil || grants != 0 {
+		t.Fatalf("a refused approval left %d grants (%v)", grants, err)
+	}
+
+	rec := f.call(http.MethodPost, path, token, map[string]any{
+		"decision": "approve", "space_ids": []string{one, two, personal, one},
+	})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "code=") {
+		t.Fatalf("allow: %d %s", rec.Code, rec.Body.String())
+	}
+	var hubs []string
+	if err := f.authH.pool.QueryRow(ctx, `
+		SELECT hub_ids::text[] FROM oauth_grants WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, f.user).
+		Scan(&hubs); err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(hubs)
+	want := []string{one, two, personal}
+	slices.Sort(want)
+	if !slices.Equal(hubs, want) {
+		t.Errorf("grant spaces %v, want %v", hubs, want)
+	}
+	var connected []string
+	if err := f.authH.pool.QueryRow(ctx, `
+		SELECT array_agg(s.space_id::text ORDER BY s.space_id)
+		  FROM v2.agent_connections c JOIN v2.agent_connection_spaces s ON s.connection_id = c.id
+		 WHERE c.credential_kind = 'oauth_grant' AND c.person_id = $1 AND s.space_id = ANY($2::uuid[])`,
+		f.user, []string{one, two}).Scan(&connected); err != nil {
+		t.Fatal(err)
+	}
+	wantV2 := []string{one, two}
+	slices.Sort(wantV2)
+	if !slices.Equal(connected, wantV2) {
+		t.Errorf("connected in %v, want both spaces on V2 %v", connected, wantV2)
+	}
+}

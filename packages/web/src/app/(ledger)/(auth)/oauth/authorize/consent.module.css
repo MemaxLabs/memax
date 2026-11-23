@@ -146,6 +146,12 @@
   background: var(--select);
 }
 
+/* The row whose abilities are listed below. */
+.shown .spaceName {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .unavailable {
   cursor: default;
   color: var(--ink-3);

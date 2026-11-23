@@ -117,8 +117,34 @@ type oauthRequestView struct {
 type oauthDecision struct {
 	// Decision is approve or deny.
 	Decision string `json:"decision"`
-	// SpaceID is the one space an approval connects the agent to.
-	SpaceID string `json:"space_id,omitempty"`
+	// SpaceIDs are the spaces an approval connects the agent to, each one
+	// of the person's. SpaceID is the one space a page from before
+	// several could be chosen sends; either may be given, not both.
+	SpaceIDs []string `json:"space_ids,omitempty"`
+	SpaceID  string   `json:"space_id,omitempty"`
+}
+
+// maxConsentSpaces bounds how many spaces one approval connects.
+const maxConsentSpaces = 100
+
+// spaces is what an approval names, once each; nil when it names none,
+// both forms, or more than maxConsentSpaces.
+func (d oauthDecision) spaces() []string {
+	if (d.SpaceID == "") == (len(d.SpaceIDs) == 0) || len(d.SpaceIDs) > maxConsentSpaces {
+		return nil
+	}
+	if d.SpaceID != "" {
+		return []string{d.SpaceID}
+	}
+	seen := make(map[string]bool, len(d.SpaceIDs))
+	out := make([]string, 0, len(d.SpaceIDs))
+	for _, id := range d.SpaceIDs {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // oauthDecided says where the browser goes next: the client's registered
@@ -232,7 +258,7 @@ func (h *MCPOAuthHandler) OpenRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 // DecideRequest serves POST /oauth/authorize/requests/{id}/decision: the
-// bound person's approve (one space) or deny. The answer is where to send
+// bound person's approve (one space or several) or deny. The answer is where to send
 // the browser: the client's registered redirect_uri, which Authorize
 // checked, with a code or access_denied (and state and iss).
 func (h *MCPOAuthHandler) DecideRequest(w http.ResponseWriter, r *http.Request) {
@@ -246,10 +272,11 @@ func (h *MCPOAuthHandler) DecideRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body oauthDecision
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&body); err != nil || (body.Decision != "approve" && body.Decision != "deny") {
-		writeError(w, http.StatusBadRequest, "invalid_request", `Send {"decision": "approve", "space_id": "…"} or {"decision": "deny"}.`)
+	if err := dec.Decode(&body); err != nil || (body.Decision != "approve" && body.Decision != "deny") ||
+		(body.Decision == "approve" && body.spaces() == nil) {
+		writeError(w, http.StatusBadRequest, "invalid_request", `Send {"decision": "approve", "space_ids": ["…"]} or {"decision": "deny"}.`)
 		return
 	}
 	session, err := h.openRequest(r.Context(), r.PathValue("id"), person)
@@ -269,7 +296,7 @@ func (h *MCPOAuthHandler) DecideRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	space, ok, err := h.consentSpace(r.Context(), person, body.SpaceID, session)
+	spaces, ok, err := h.consentSpaces(r.Context(), person, body.spaces(), session)
 	if err != nil {
 		slog.Error("MCP OAuth: can't check the consent space", "error", err)
 		writeError(w, http.StatusInternalServerError, "consent_failed", "That didn't go through. Try again.")
@@ -277,19 +304,19 @@ func (h *MCPOAuthHandler) DecideRequest(w http.ResponseWriter, r *http.Request) 
 	}
 	if !ok {
 		writeError(w, http.StatusUnprocessableEntity, "consent_space",
-			"That space can't be connected from this account. Choose one of your spaces.")
+			"A space you chose can't be connected from this account. Choose among your spaces.")
 		return
 	}
 	scope := consentScope(session.requestedScope)
 	perms, _, _ := oauthPermissionsFromScope(scope)
 	perms = perms.Intersect(session.requestedPermissions)
-	grantID, err := h.createOAuthGrant(r.Context(), session, []string{space}, perms, scope)
+	grantID, err := h.createOAuthGrant(r.Context(), session, spaces, perms, scope)
 	if err != nil {
 		slog.Error("failed to create MCP OAuth grant", "error", err)
 		writeError(w, http.StatusInternalServerError, "consent_failed", "That didn't go through. Try again.")
 		return
 	}
-	if refused := h.connectAgent(r.Context(), session, grantID, []string{space}, scope); refused != nil && refused.Limit != nil {
+	if refused := h.connectAgent(r.Context(), session, grantID, spaces, scope); refused != nil && refused.Limit != nil {
 		// A plan's limit (D9: the kinds of agent a person connects): the agent
 		// couldn't connect, so it would read nothing. The grant goes, the
 		// request stays open, and the page says why.
@@ -371,26 +398,34 @@ func (h *MCPOAuthHandler) LegacyConsent(w http.ResponseWriter, r *http.Request) 
 	h.ResumeOnWeb(w, r, r.FormValue("session_id"))
 }
 
-// consentSpace is the space an approval connects: one of the person's,
-// whose role can use what the client asked for.
-func (h *MCPOAuthHandler) consentSpace(ctx context.Context, person, spaceID string, session oauthPendingSession) (string, bool, error) {
+// consentSpaces are the spaces an approval connects: each one of the
+// person's, whose role can use what the client asked for. One that isn't
+// refuses the whole approval, so nothing is connected by halves.
+func (h *MCPOAuthHandler) consentSpaces(ctx context.Context, person string, spaceIDs []string, session oauthPendingSession) ([]string, bool, error) {
 	if h.authH.store == nil {
-		return "", false, errors.New("store is not configured")
+		return nil, false, errors.New("store is not configured")
 	}
-	if _, err := uuid.Parse(spaceID); err != nil {
-		return "", false, nil
+	for _, id := range spaceIDs {
+		if _, err := uuid.Parse(id); err != nil {
+			return nil, false, nil
+		}
 	}
 	hubs, err := h.authH.store.ListUserHubs(person)
 	if err != nil {
-		return "", false, err
+		return nil, false, err
 	}
+	usable := make(map[string]bool, len(hubs))
 	for _, item := range hubs {
-		if item.Hub.ID == spaceID {
-			usable := len(rolePermissionSet(item.Role, &item.Hub).Intersect(session.requestedPermissions)) > 0
-			return item.Hub.ID, usable, nil
-		}
+		usable[item.Hub.ID] = len(rolePermissionSet(item.Role, &item.Hub).Intersect(session.requestedPermissions)) > 0
 	}
-	return "", false, nil
+	out := make([]string, 0, len(spaceIDs))
+	for _, id := range spaceIDs {
+		if !usable[id] {
+			return nil, false, nil
+		}
+		out = append(out, id)
+	}
+	return out, true, nil
 }
 
 // requestView is the page's view of a request bound to its person.

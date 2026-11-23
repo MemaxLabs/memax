@@ -141,18 +141,22 @@ test("a person allows the agent one space, and the browser goes back to it", asy
     "Codex wants to connect to Memax",
   );
   await expect(page.getByText("Signed in as ZZ")).toBeVisible();
-  // The space on V2 comes first and is chosen; it says what's true there.
-  await expect(page.getByRole("radio", { name: /memax-v2/ })).toBeChecked();
+  // Every space is ticked; the space on V2 comes first and says what's true there.
+  await expect(page.getByRole("checkbox", { name: /memax-v2/ })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: /Personal/ })).toBeChecked();
   await expect(page.getByText("compiles AGENTS.md")).toBeVisible();
   await expect(
     page.getByRole("list", { name: "Codex will be able to" }),
   ).toContainText("Propose memories, which wait for you");
   // Personal, still on V1, says what V1 does.
-  await page.getByRole("radio", { name: /Personal/ }).check();
+  // Ticking Personal again shows what's true there.
+  await page.getByRole("checkbox", { name: /Personal/ }).uncheck();
+  await page.getByRole("checkbox", { name: /Personal/ }).check();
   await expect(
     page.getByRole("list", { name: "Codex will be able to" }),
   ).toContainText("Add memories, which are kept as written");
-  await page.getByRole("radio", { name: /memax-v2/ }).check();
+  // Only memax-v2 goes.
+  await page.getByRole("checkbox", { name: /Personal/ }).uncheck();
   await page.getByRole("button", { name: "Allow Codex" }).click();
 
   await expect(page).toHaveURL(
@@ -161,7 +165,7 @@ test("a person allows the agent one space, and the browser goes back to it", asy
   const decision = calls.find((c) => c.url().endsWith("/decision"))!;
   expect(JSON.parse(decision.postData() ?? "{}")).toEqual({
     decision: "approve",
-    space_id: "22222222-2222-4222-8222-222222222222",
+    space_ids: ["22222222-2222-4222-8222-222222222222"],
   });
   // Same-origin, through the web app's proxy (which refuses other sites),
   // never to the API directly.

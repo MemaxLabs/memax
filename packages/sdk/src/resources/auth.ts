@@ -272,7 +272,7 @@ export class AuthResource {
   }
 
   /**
-   * The bound person's answer: approve (one space) or deny. Answers where
+   * The bound person's answer: approve (one space or several) or deny. Answers where
    * to send the browser: the client's registered redirect_uri with a code,
    * or with access_denied.
    */

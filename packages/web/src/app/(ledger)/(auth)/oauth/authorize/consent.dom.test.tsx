@@ -116,13 +116,18 @@ describe("OAuthConsent", () => {
     ).toBeTruthy();
     expect(h.open).toHaveBeenCalledWith("req_1");
     expect(screen.getByText(/Signed in as Ziyang/)).toBeTruthy();
-    const radios = screen.getAllByRole("radio");
-    expect(radios.map((r) => (r as HTMLInputElement).value)).toEqual([
+    const boxes = screen.getAllByRole("checkbox");
+    expect(boxes.map((r) => (r as HTMLInputElement).value)).toEqual([
       project!.id,
       team!.id,
       personal!.id,
     ]);
-    expect((radios[0] as HTMLInputElement).checked).toBe(true);
+    // Every space that can be connected is ticked to begin with.
+    expect(boxes.map((r) => (r as HTMLInputElement).checked)).toEqual([
+      true,
+      true,
+      true,
+    ]);
     expect(screen.getByText("Project · 214 memories")).toBeTruthy();
     expect(screen.getByText("Team · 2 people")).toBeTruthy();
     expect(screen.getByText("Just you")).toBeTruthy();
@@ -149,14 +154,15 @@ describe("OAuthConsent", () => {
     ).toBeTruthy();
   });
 
-  it("allows one space as the person signed in, and follows the URL the API answers", async () => {
+  it("allows the ticked spaces as the person signed in, and follows the URL the API answers", async () => {
     h.open.mockResolvedValue(request());
     h.decide.mockResolvedValue({
       redirect_to: "http://127.0.0.1:1455/callback?code=c1&state=s&iss=x",
     });
     renderScreen();
     const allow = await screen.findByRole("button", { name: "Allow Codex" });
-    fireEvent.click(screen.getAllByRole("radio")[1]!);
+    // Untick Personal: the other two go.
+    fireEvent.click(screen.getAllByRole("checkbox")[2]!);
     fireEvent.click(allow);
     // Sent once: Allow waits, Cancel can't be pressed meanwhile.
     expect(allow.getAttribute("aria-busy")).toBe("true");
@@ -172,7 +178,7 @@ describe("OAuthConsent", () => {
     expect(h.decide).toHaveBeenCalledTimes(1);
     expect(h.decide).toHaveBeenCalledWith("req_1", {
       decision: "approve",
-      space_id: team!.id,
+      space_ids: [project!.id, team!.id],
     });
   });
 
@@ -307,7 +313,9 @@ describe("OAuthConsent", () => {
     );
     renderScreen();
     await screen.findByRole("button", { name: "Allow Codex" });
-    fireEvent.click(screen.getAllByRole("radio")[1]!);
+    // Ticking a space shows what's true there.
+    fireEvent.click(screen.getAllByRole("checkbox")[1]!);
+    fireEvent.click(screen.getAllByRole("checkbox")[1]!);
     expect(lists()).toEqual({
       can: ["Read the Brief and kept memories"],
       cannot: [
@@ -322,7 +330,8 @@ describe("OAuthConsent", () => {
         "You can let Codex propose, or disconnect it, any time in Agents.",
       ),
     ).toBeTruthy();
-    fireEvent.click(screen.getAllByRole("radio")[2]!);
+    fireEvent.click(screen.getAllByRole("checkbox")[2]!);
+    fireEvent.click(screen.getAllByRole("checkbox")[2]!);
     expect(screen.getByText("Just you · still on V1")).toBeTruthy();
     expect(lists().can).toEqual([
       "Read the memories in it",
@@ -448,5 +457,17 @@ describe("OAuthConsent", () => {
     ).toBeTruthy();
     expect(screen.getByText("项目 · 214 条记忆")).toBeTruthy();
     expect(screen.getByRole("button", { name: "允许 Codex" })).toBeTruthy();
+  });
+});
+
+describe("OAuthConsent: no space ticked", () => {
+  it("can't allow until a space is ticked again", async () => {
+    h.open.mockResolvedValue(request());
+    renderScreen();
+    const allow = await screen.findByRole("button", { name: "Allow Codex" });
+    for (const box of screen.getAllByRole("checkbox")) fireEvent.click(box);
+    expect((allow as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getAllByRole("checkbox")[0]!);
+    expect((allow as HTMLButtonElement).disabled).toBe(false);
   });
 });

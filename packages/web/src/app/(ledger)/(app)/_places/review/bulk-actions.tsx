@@ -70,6 +70,8 @@ export function BulkActions({
   const mine = useMyAgents();
   const [keys] = useState(() => new IntentKeys());
   const [step, setStep] = useState<Step>("idle");
+  // What a bulk Keep will send: the whole queue, read before it asks.
+  const [toKeep, setToKeep] = useState<ReviewItem[]>([]);
   const [pending, setPending] = useState(false);
 
   const { queue } = review;
@@ -95,11 +97,26 @@ export function BulkActions({
       .filter(keepableAtOnce);
   };
 
+  /** Reads every page first, so the question names the real number. */
+  const askKeep = async () => {
+    setPending(true);
+    try {
+      const items = await wholeQueue();
+      setToKeep(items);
+      setStep(items.length > 0 ? "keep" : "idle");
+      if (items.length === 0) toast({ text: copy.keptNone });
+    } catch {
+      toast({ text: copy.failed });
+    } finally {
+      setPending(false);
+    }
+  };
+
   const keepAll = async () => {
     setPending(true);
     const intent = `keep-all:${space.slug}`;
+    const items = toKeep;
     try {
-      const items = await wholeQueue();
       const result = await source.review.keepAll({
         space,
         items,
@@ -169,7 +186,7 @@ export function BulkActions({
     return (
       <div className={styles.bulk} role="group" aria-label={copy.label}>
         <Button size="sm" pending={pending} onClick={() => void keepAll()}>
-          {interpolate(copy.keepAllConfirm, { n: loaded.length })}
+          {interpolate(copy.keepAllConfirm, { n: toKeep.length })}
         </Button>
         <Button
           variant="quiet"
@@ -203,8 +220,15 @@ export function BulkActions({
   return (
     <div className={styles.bulk} role="group" aria-label={copy.label}>
       {loaded.length > 0 ? (
-        <Button variant="secondary" size="sm" onClick={() => setStep("keep")}>
-          {interpolate(copy.keepAll, { n: loaded.length })}
+        <Button
+          variant="secondary"
+          size="sm"
+          pending={pending}
+          onClick={() => void askKeep()}
+        >
+          {queue.hasNextPage
+            ? copy.keepAllBare
+            : interpolate(copy.keepAll, { n: loaded.length })}
         </Button>
       ) : null}
       {raise.length > 0 ? (

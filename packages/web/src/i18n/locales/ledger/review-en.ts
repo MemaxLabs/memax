@@ -23,6 +23,8 @@ export const ledgerReviewEn = {
   bulk: {
     label: "Everything at once",
     keepAll: "Keep all {n}",
+    // More pages than are loaded: the number comes once they're read.
+    keepAllBare: "Keep all",
     keepAllConfirm: "Keep {n} now",
     letAgents: "Stop asking me",
     letAgentsConfirm: "Let my agents keep",

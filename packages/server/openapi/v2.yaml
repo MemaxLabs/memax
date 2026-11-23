@@ -10830,7 +10830,7 @@ components:
           description: Its date to check again, if it has one.
           $ref: '#/components/schemas/Timestamp'
         flagged:
-          description: The receipt that set the flag (by Dream for a date, by Memax for a check).
+          description: The receipt that set the flag (by Memax for a date or a check; older dates may have been flagged by Dream).
           $ref: '#/components/schemas/Receipt'
         kept:
           description: Its latest keep or verification.

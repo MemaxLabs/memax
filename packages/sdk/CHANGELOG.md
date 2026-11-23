@@ -2,6 +2,87 @@
 
 All notable changes to `memax-sdk` are documented here.
 
+## 0.9.0
+
+The personal layer's machines, stale memories (Verify, conditions and
+check runs), cloud agents' session starts and search across spaces.
+Nothing is removed; two types are stricter (see Changed).
+
+### New
+
+- **Machines and home files.** `memax.v2.machines.list`, `link`,
+  `rename` and `unlink`: a person links a machine to their Personal
+  space, which then compiles into that machine's agents' own files
+  (Claude Code, Codex, Gemini CLI and Antigravity, Copilot, Windsurf, and
+  the canonical copy OpenCode and Cursor read). `Target.root` (`repo` or
+  `home`) and `Target.machine` describe a home target, and
+  `memax.v2.targets.list` takes `machine` to list one machine's files.
+  `TargetList.on_v2` says whether the V2 record serves the space (a
+  space switched back to V1 lists its targets, but its files are V1's).
+  Types: `Machine`, `MachineList`, `MachineResult`, `LinkMachineInput`,
+  `MachineFileInput`, `RenameMachineInput`, `TargetRoot`,
+  `TargetMachine`.
+- **Verify.** `memax.v2.memories.stale(ref)` says why a memory is stale
+  and `memax.v2.memories.verify(ref, …)` answers it: still true, update
+  or forget. Types: `StaleReport`, `StaleCause`, `VerifyInput`,
+  `VerifyAnswer`, `VerifyResult`.
+- **Conditions and checks.** A memory's `conditions` are typed
+  (`Condition`: `path_exists`, `file_contains`, `dep_present`,
+  `file_unchanged`, `pr_state`, each with an `id` and an `origin`).
+  `memax.v2.checks.conditions(space)` lists what a space's machines
+  check, with the memories marked stale and why (`stale`), and
+  `memax.v2.checks.report(space, …)` reports a machine's results, never
+  a file's contents. Types: `SpaceConditions`, `CheckedCondition`,
+  `StaleMemory`, `CheckRunInput`, `CheckResultInput`, `CheckEvidence`,
+  `CheckRun`, `CheckRunResult`, `ConditionOrigin`.
+- **Where a memory applies.** `memax.v2.memories.scope(ref, …)` changes
+  it, such as widening a fact kept for one repository to everywhere.
+  Types: `ScopeInput`, `MemoryScope`, `RepoKey`.
+- **Cloud agents.** `memax.v2.agents.connectCloud(…)` connects a cloud
+  agent (Claude Code, Copilot or Codex in a cloud sandbox) to one space
+  at Read, with a start key shown once; `memax.v2.agents.rekey(agent)`
+  gives it a new key in place. `memax.v2.sessionStarts.start(space, …)`
+  is what a cloud agent's session start asks: what changed since the
+  compile each committed file holds. Types: `CloudAgentResult`,
+  `StartKey`, `CreateCloudAgentInput`, `SessionStart`,
+  `SessionStartInput`, `SessionStartFile`, `SessionStartFileInput`,
+  `SessionStartLine`, `SessionStartForget`, `SessionStartGate`,
+  `AgentStart`.
+- **Open Knowledge Format.** `toOkf(parseExport(files), slug)` turns an
+  export into an OKF v0.2 bundle: one concept per memory in OKF's fields
+  (the rest under the `memax` key), tombstones without words, the Brief
+  as `index.md` and the receipts as `log.md`.
+- **Search across spaces.** `memax.v2.search(q, …)` searches every space
+  of yours on V2, or the ones you name. The spaces list says how many
+  memories and agents each has (`SpaceCounts`). Types: `SearchPage`,
+  `SearchHit`.
+- **Check history and reverted changes.** `MemoryDetail.checked` names
+  the latest check, its branch, commit, observer and triggering agent
+  (`MemoryChecked`). `CheckRunResult.unflagged` lists memories whose
+  failed conditions hold again; their receipts use the new `unflagged`
+  action. A rename can supply Verify's update words without a client
+  having to write them.
+- **Dream's stale reports.** `DreamSurfaced.kind` also admits `stale`
+  and `stale_waiting`, with the flag's `receipt_id`. Dates are flagged by
+  Memax's hourly sweep; Dream reports them and reminds once after
+  30 days, rather than flagging dates itself.
+- **Plan refusals.** The policy catalogue includes `space_limit`,
+  `agent_kind_limit`, `seat_needed` and `dream_cadence`. V2 plan
+  enforcement remains off by default until the server enables
+  `V2_PLAN_LIMITS`.
+- New policy codes: `space_on_v1`, `verify_by_person`, `checks_by_person`,
+  `flag_by_memax`, `cloud_propose_needs_web`, `personal_exists`, and
+  `machines_by_owner`, `machines_by_person` and `machines_personal`.
+
+### Changed
+
+- `MemoryScope` is a closed object (`paths`, `agents`, `repos`): the
+  API refuses any other key. Only `paths` was written before.
+- `Memory.conditions` is a list of typed `Condition`s, where it was
+  untyped.
+- Handle the added `ReceiptAction` and `DreamSurfaced.kind` cases if
+  your code switches exhaustively over those unions.
+
 ## 0.8.0
 
 The first release with `memax.v2`, the client for the `/v2` API (the

@@ -5778,7 +5778,7 @@ export interface components {
             stale: boolean;
             /** @description Its date to check again, if it has one. */
             stale_after?: components["schemas"]["Timestamp"];
-            /** @description The receipt that set the flag (by Dream for a date, by Memax for a check). */
+            /** @description The receipt that set the flag (by Memax for a date or a check; older dates may have been flagged by Dream). */
             flagged?: components["schemas"]["Receipt"];
             /** @description Its latest keep or verification. */
             kept?: components["schemas"]["Receipt"];

@@ -1436,7 +1436,9 @@ describe("Review: everything at once", () => {
     // Nothing is kept until the person confirms.
     expect(keepAll).not.toHaveBeenCalled();
     fireEvent.click(
-      screen.getByRole("button", { name: `Keep ${proposals.length} now` }),
+      await screen.findByRole("button", {
+        name: `Keep ${proposals.length} now`,
+      }),
     );
     await waitFor(() => expect(keepAll).toHaveBeenCalledTimes(1));
     const sent = keepAll.mock.calls[0]![0];
@@ -1457,7 +1459,9 @@ describe("Review: everything at once", () => {
     renderReview();
     await ready();
     fireEvent.click(screen.getByRole("button", { name: /^Keep all \d+$/ }));
-    fireEvent.click(screen.getByRole("button", { name: /^Keep \d+ now$/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Keep \d+ now$/ }),
+    );
     expect(
       await screen.findByText(/^Kept \d+\. 1 still need your look$/),
     ).toBeTruthy();
@@ -1497,5 +1501,43 @@ describe("Review: everything at once", () => {
     await ready();
     expect(screen.queryByRole("button", { name: /^Keep all/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Stop asking me" })).toBeNull();
+  });
+});
+
+describe("Review: keep all across pages", () => {
+  it("reads every page before it asks, and names the real number", async () => {
+    const first = createDemoSource().review.peekQueue!("memax-v2")!;
+    const extra = Array.from({ length: 3 }, (_, n) => ({
+      ...first.items.find(
+        (i) => i.lifecycle === "proposed" && i.state === "proposed",
+      )!,
+      ref: `M-9${n}00`,
+    }));
+    const keepAll = vi.fn(async ({ items }: { items: { ref: string }[] }) => ({
+      kept: items.map((i) => i.ref),
+      left: 0,
+    }));
+    const queue = vi.fn(async ({ cursor }: { cursor?: string }) =>
+      cursor
+        ? { items: extra, total: first.total + 3, nextCursor: null }
+        : { ...first, nextCursor: "page-2" },
+    );
+    sourceWith(() => ({
+      review: { keepAll, queue, peekQueue: () => undefined },
+    }));
+    renderReview();
+    await ready();
+    const plain = first.items.filter(
+      (i) => i.lifecycle === "proposed" && i.state === "proposed",
+    ).length;
+    // A second page waits: no number yet.
+    fireEvent.click(screen.getByRole("button", { name: "Keep all" }));
+    const confirm = await screen.findByRole("button", {
+      name: `Keep ${plain + 3} now`,
+    });
+    expect(keepAll).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(keepAll).toHaveBeenCalledTimes(1));
+    expect(keepAll.mock.calls[0]![0].items).toHaveLength(plain + 3);
   });
 });

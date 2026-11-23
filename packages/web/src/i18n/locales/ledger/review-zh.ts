@@ -30,6 +30,7 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
   bulk: {
     label: "一次处理完",
     keepAll: "全部保留（{n} 条）",
+    keepAllBare: "全部保留",
     keepAllConfirm: "现在保留 {n} 条",
     letAgents: "以后不用问我",
     letAgentsConfirm: "让我的 Agent 直接保留",

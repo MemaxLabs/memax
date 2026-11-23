@@ -18,6 +18,27 @@ export const ledgerReviewEn = {
     external: "External",
     stale: "Stale",
   },
+  // Clearing the queue in one go, and letting one's own agents keep what
+  // they write from now on (their level in this space goes to Write).
+  bulk: {
+    label: "Everything at once",
+    keepAll: "Keep all {n}",
+    keepAllConfirm: "Keep {n} now",
+    letAgents: "Stop asking me",
+    letAgentsConfirm: "Let my agents keep",
+    letAgentsDetail:
+      "Your agents here will keep what they write without waiting for you. What they read from outside sources, and anything that contradicts a decision in force, still comes to Review.",
+    cancel: "Cancel",
+    kept: "Kept {n}",
+    keptSome: "Kept {n}. {left} still need your look",
+    keptNone: "Nothing could be kept at once. Each one needs your look",
+    failed: "That didn't go through. Nothing was changed. Try again",
+    agentsDone: "Your agents keep what they write here from now on",
+    agentsSome:
+      "{n} of your agents keep what they write here now. {left} couldn't be changed; open Agents to see why",
+    agentsFailed:
+      "Your agents' levels couldn't be changed. Open Agents to change them one at a time",
+  },
   position: "{space} · {n} of {total}",
   positionEditing: "{space} · {n} of {total} · editing",
   session: "Proposed in session {session}",

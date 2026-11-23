@@ -1,6 +1,12 @@
 import { MemaxError, type V2 } from "memax-sdk";
 import type { DecisionResult } from "./records";
-import type { ReviewCardData, ReviewSource, TouchedMemory } from "./review";
+import {
+  KEEP_ALL_BATCH,
+  type KeepAllResult,
+  type ReviewCardData,
+  type ReviewSource,
+  type TouchedMemory,
+} from "./review";
 import { choiceFor, conflictOf } from "./sdk-conflict";
 import {
   actorOf,
@@ -238,6 +244,27 @@ export function createSdkReview(
         { space: space.slug, idempotencyKey, ifMatch: item.version },
       );
       return decision(result, "rejected");
+    },
+
+    async keepAll({ space, items, idempotencyKey }) {
+      const out: KeepAllResult = { kept: [], left: 0 };
+      for (let at = 0; at < items.length; at += KEEP_ALL_BATCH) {
+        const batch = items.slice(at, at + KEEP_ALL_BATCH);
+        // One key per request: a retry of the whole action replays each.
+        const result = await client.v2.memories.keepMany(
+          space.slug,
+          {
+            items: batch.map((i) => ({ memory: i.ref, version: i.version })),
+          },
+          { idempotencyKey: `${idempotencyKey}:${at / KEEP_ALL_BATCH}` },
+        );
+        for (const item of result.items) {
+          if (item.outcome === "applied") {
+            out.kept.push(item.ref ?? item.memory);
+          } else out.left += 1;
+        }
+      }
+      return out;
     },
 
     async conflict({ space, ref, signal }) {

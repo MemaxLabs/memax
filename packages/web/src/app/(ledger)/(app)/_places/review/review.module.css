@@ -189,6 +189,22 @@
   font-weight: 600;
 }
 
+/* Everything at once: keep the whole queue, or stop being asked. */
+.bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulkDetail {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
 /* The queue couldn't read the gates: one quiet line above the rows. */
 .gatesFailed {
   display: flex;
